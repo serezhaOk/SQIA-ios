@@ -18,6 +18,10 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A1B2C3D4E5F60718293A4B06 /* SQIA */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
 			path = SQIA;
 			sourceTree = "<group>";
 		};

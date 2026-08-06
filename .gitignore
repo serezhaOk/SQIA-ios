@@ -26,4 +26,6 @@ node_modules/
 # Xcode user state inside the project bundle
 *.xcodeproj/project.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
-Package.resolved
+
+# Package.resolved is deliberately NOT ignored: an app pins the versions it
+# ships with.
