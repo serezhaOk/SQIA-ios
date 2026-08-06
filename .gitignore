@@ -1,0 +1,24 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# Fastlane / signing artifacts
+fastlane/report.xml
+fastlane/screenshots/**/*.png
+*.mobileprovision
+*.p12
+
+# Node (tools/gen-fixtures)
+node_modules/
