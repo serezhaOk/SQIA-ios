@@ -16,7 +16,7 @@ each part maps onto iOS.
 | --- | --- |
 | M0 — project bootstrap | done |
 | M1 — music core + golden fixtures | done |
-| M2 — audio foundation | next |
+| M2 — audio foundation | clock done; the engine is next |
 | M3–M10 | see [PLAN.md](PLAN.md) |
 
 What runs today: an app shell that draws the dot field through the real dome
@@ -27,8 +27,8 @@ arrive with the sequencer.
 
 ```
 Core/          SQIACore — pitch mapping, the note matrix, dome geometry,
-               the project snapshot format. Pure Swift, no Apple frameworks,
-               so it builds and tests on any platform.
+               the lookahead clock, the project snapshot format. Pure Swift,
+               no Apple frameworks, so it builds and tests on any platform.
 SQIA/          The app. Xcode syncs this folder, so new files need no
                project edits.
 Support/       Info.plist
