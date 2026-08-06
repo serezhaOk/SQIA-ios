@@ -1,0 +1,12 @@
+{
+  "name": "sqia-gen-fixtures",
+  "private": true,
+  "type": "module",
+  "description": "Dumps golden fixtures from the SQIA web sources for the Swift tests",
+  "scripts": {
+    "gen": "node --import ./register.mjs generate.mjs"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The parity suite is pure Swift with no Apple frameworks, so it runs on a
+  # Linux container in seconds rather than waiting for a macOS runner.
+  core:
+    name: Core parity tests
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        working-directory: Core
+        run: swift test
+
+  app:
+    name: Build the app
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: xcodebuild -version
+      - name: Build
+        run: |
+          xcodebuild build \
+            -project SQIA.xcodeproj \
+            -scheme SQIA \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify || exit ${PIPESTATUS[0]}
+
+  # The fixtures are generated from the web app's sources. If those change,
+  # the iOS port is being measured against stale data — worth knowing about,
+  # but not worth blocking a build over, so this reports without failing.
+  fixtures:
+    name: Fixtures still match the web
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: ios
+      - uses: actions/checkout@v4
+        with:
+          repository: serezhaOk/funny-steps
+          path: funny-steps
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Regenerate and diff
+        working-directory: ios/tools/gen-fixtures
+        env:
+          WEB_SRC: ${{ github.workspace }}/funny-steps/src
+        run: |
+          node --run gen
+          cd "$GITHUB_WORKSPACE/ios"
+          if ! git diff --quiet -- Core/Tests/SQIACoreTests/Fixtures; then
+            echo "::warning::Fixtures differ from the current web sources — regenerate and re-run the parity suite."
+            git diff --stat -- Core/Tests/SQIACoreTests/Fixtures
+            exit 1
+          fi
+          echo "Fixtures are current."

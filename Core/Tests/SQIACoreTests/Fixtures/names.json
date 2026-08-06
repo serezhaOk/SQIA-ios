@@ -1,0 +1,91 @@
+{
+  "streams": [
+    {
+      "seed": 1,
+      "names": [
+        "Salt Coccus",
+        "Blue Green",
+        "Chlorella",
+        "Rogue Hydra",
+        "Nostoc",
+        "Silent Diatom",
+        "Diatom",
+        "Slow Paramecium",
+        "Motile Chlorella",
+        "Micrococcus",
+        "Silent Foraminifera",
+        "Protist",
+        "Twin Radiolaria",
+        "Nostoc",
+        "Slow Blue Green",
+        "Deep Diatom",
+        "Twin Tardigrade",
+        "Silent Mycelium",
+        "Volvox",
+        "Rogue Cyanobacteria",
+        "Drifting Hydra",
+        "Desmid",
+        "Choanoflagellate",
+        "Dinoflagellate"
+      ]
+    },
+    {
+      "seed": 12345,
+      "names": [
+        "Salt Blue Green",
+        "Streptococcus",
+        "Slow Vibrio",
+        "Blue Green",
+        "Anabaena",
+        "Cyanobacteria",
+        "Salt Coccus",
+        "Bacillus",
+        "Cyanobacteria",
+        "Radiolaria",
+        "Protist",
+        "Silent Paramecium",
+        "Drifting Copepod",
+        "Paramecium",
+        "Silent Choanoflagellate",
+        "Amoeba",
+        "Night Foraminifera",
+        "Desmid",
+        "Volvox",
+        "Dinoflagellate",
+        "Lactobacillus",
+        "Salt Tardigrade",
+        "Wild Hydra",
+        "Soft Lactobacillus"
+      ]
+    },
+    {
+      "seed": 3737844653,
+      "names": [
+        "Blooming Ciliate",
+        "Diatom",
+        "Vorticella",
+        "Archaea",
+        "Deep Diatom",
+        "Vorticella",
+        "Protist",
+        "Radiolaria",
+        "Bright Spirulina",
+        "Salt Copepod",
+        "Lactobacillus",
+        "Slow Slime Mould",
+        "Spirulina",
+        "Split Daphnia",
+        "Spirogyra",
+        "Micrococcus",
+        "Rogue Anabaena",
+        "Cyanobacteria",
+        "Paramecium",
+        "Ciliate",
+        "Archaea",
+        "Cyanobacteria",
+        "Silent Anabaena",
+        "Bacillus"
+      ]
+    }
+  ]
+}

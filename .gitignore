@@ -22,3 +22,8 @@ fastlane/screenshots/**/*.png
 
 # Node (tools/gen-fixtures)
 node_modules/
+
+# Xcode user state inside the project bundle
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+Package.resolved
