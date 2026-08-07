@@ -17,6 +17,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { installDocumentStub, makeRecorder } from './recorder.mjs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolvePath(HERE, '../..');
 const OUT = resolvePath(REPO, 'Core/Tests/SQIACoreTests/Fixtures');
@@ -260,6 +262,160 @@ const snapshots = [12345, 0xdecafbad].map((seed) => {
   return { seed, snapshot: { bpm: 120, root_pc: 9, scale: 'minor', tracks } };
 });
 
+// ------------------------------------------------------------- 7. the field --
+// What the live field actually draws, primitive by primitive: the dome, the
+// decay of a flash, the jelly push on a dot's neighbours, the colour ripple
+// spreading ring by ring, the breath under all of it.
+//
+// Each case runs the real `render` for a number of frames and keeps the last
+// one, so the state the frame is drawn from is state the web built.
+installDocumentStub();
+
+function fieldCase({ name, seed, viewport, frames, dt, playhead, detail, alpha, flashes }) {
+  const grid = new Grid();
+  seeded(seed, () => grid.random());
+
+  // Flashes are given as [row, column, velocity, frameToFireOn].
+  const schedule = new Map();
+  for (const [r, c, vel, frame = 0] of flashes ?? []) {
+    if (!schedule.has(frame)) schedule.set(frame, []);
+    schedule.get(frame).push([r, c, vel]);
+  }
+
+  const { ctx, ops, reset } = makeRecorder();
+  const { vx, vy, vw, vh } = viewport;
+
+  for (let frame = 0; frame < frames; frame++) {
+    for (const [r, c, vel] of schedule.get(frame) ?? []) grid.flash(r, c, vel);
+    reset(); // only the final frame is compared
+    grid.render(ctx, vx, vy, vw, vh, playhead, dt, detail, alpha);
+  }
+
+  return {
+    name,
+    seed,
+    viewport,
+    frames,
+    dt,
+    playhead,
+    detail,
+    alpha,
+    flashes: flashes ?? [],
+    cells: cellsOf(grid),
+    ops,
+  };
+}
+
+const PHONE = { vx: 0, vy: 0, vw: 375, vh: 600 };
+const PANEL = { vx: 10, vy: 64.8, vw: 168.75, vh: 270 };
+
+const field = [
+  // The field at rest: dome, breath and the playhead row, nothing else.
+  fieldCase({
+    name: 'at-rest',
+    seed: 12345,
+    viewport: PHONE,
+    frames: 1,
+    dt: 1 / 60,
+    playhead: -1,
+    detail: 1,
+    alpha: 1,
+  }),
+  fieldCase({
+    name: 'playhead',
+    seed: 12345,
+    viewport: PHONE,
+    frames: 1,
+    dt: 1 / 60,
+    playhead: 7,
+    detail: 1,
+    alpha: 1,
+  }),
+  // Breath is a function of accumulated time, so this only differs from
+  // 'at-rest' if the clock is being kept the same way.
+  fieldCase({
+    name: 'breathing',
+    seed: 12345,
+    viewport: PHONE,
+    frames: 40,
+    dt: 1 / 60,
+    playhead: 3,
+    detail: 1,
+    alpha: 1,
+  }),
+  // One flash, two frames old: the bloom is near its peak, the push is
+  // shoving its neighbours outward and the first colour ring has moved on.
+  fieldCase({
+    name: 'fresh-flash',
+    seed: 12345,
+    viewport: PHONE,
+    frames: 3,
+    dt: 1 / 60,
+    playhead: 5,
+    detail: 1,
+    alpha: 1,
+    flashes: [[5, 6, 1]],
+  }),
+  // A whole row lit, then left to decay for a third of a second — the
+  // ripples have spread several rings and started to overlap.
+  fieldCase({
+    name: 'decaying-row',
+    seed: 12345,
+    viewport: PHONE,
+    frames: 20,
+    dt: 1 / 60,
+    playhead: 9,
+    detail: 1,
+    alpha: 1,
+    flashes: [
+      [4, 1, 1],
+      [4, 4, 0.6],
+      [4, 7, 0.85],
+      [4, 10, 0.4],
+    ],
+  }),
+  // Overlapping ripples from three different moments.
+  fieldCase({
+    name: 'overlapping-waves',
+    seed: 0xdecafbad,
+    viewport: PHONE,
+    frames: 14,
+    dt: 1 / 60,
+    playhead: 2,
+    detail: 1,
+    alpha: 1,
+    flashes: [
+      [2, 2, 1, 0],
+      [6, 5, 0.9, 4],
+      [3, 8, 0.7, 8],
+    ],
+  }),
+  // A mixer panel: small, dimmed, and with the expensive extras turned off.
+  fieldCase({
+    name: 'mixer-panel',
+    seed: 12345,
+    viewport: PANEL,
+    frames: 6,
+    dt: 1 / 60,
+    playhead: 11,
+    detail: 0.4,
+    alpha: 0.45,
+    flashes: [[11, 3, 1]],
+  }),
+  // Mid-transition: the active track on its way out to its slot.
+  fieldCase({
+    name: 'mid-transition',
+    seed: 12345,
+    viewport: { vx: 40, vy: 60, vw: 260, vh: 430 },
+    frames: 4,
+    dt: 1 / 60,
+    playhead: 0,
+    detail: 0.7,
+    alpha: 0.8,
+    flashes: [[0, 0, 1]],
+  }),
+];
+
 // ----------------------------------------------------------------- write it --
 const files = {
   'prng.json': prng,
@@ -268,6 +424,7 @@ const files = {
   'geometry.json': { viewports: geometry },
   'names.json': { streams: names },
   'snapshot.json': { cases: snapshots },
+  'field.json': { cases: field },
 };
 
 await mkdir(OUT, { recursive: true });

@@ -1,0 +1,255 @@
+// The field, compared with the web primitive for primitive.
+//
+// The fixture is not a description of what the web draws — it is what the
+// web drew, captured by standing a recorder in for its 2D context. So these
+// replay the same flashes over the same frames and check every dot, halo and
+// streak that comes out: position, size, colour and alpha.
+
+import Foundation
+import Testing
+
+@testable import SQIACore
+
+struct FieldFixture: Decodable {
+    struct Viewport: Decodable {
+        let vx: Double
+        let vy: Double
+        let vw: Double
+        let vh: Double
+    }
+    struct Op: Decodable {
+        let op: String
+        let x: Double
+        let y: Double
+        let x0: Double?
+        let y0: Double?
+        let x1: Double?
+        let y1: Double?
+        let radius: Double?
+        let width: Double?
+        let height: Double?
+        let r: Double
+        let g: Double
+        let b: Double
+        let alpha: Double
+
+        enum CodingKeys: String, CodingKey {
+            case op, x, y, x0, y0, x1, y1, radius, width, height, r, g, b, alpha
+        }
+
+        init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            op = try c.decode(String.self, forKey: .op)
+            x0 = try c.decodeIfPresent(Double.self, forKey: .x0)
+            y0 = try c.decodeIfPresent(Double.self, forKey: .y0)
+            // A streak records its start as x0/y0; everything else uses x/y.
+            x = try c.decodeIfPresent(Double.self, forKey: .x) ?? x0 ?? 0
+            y = try c.decodeIfPresent(Double.self, forKey: .y) ?? y0 ?? 0
+            x1 = try c.decodeIfPresent(Double.self, forKey: .x1)
+            y1 = try c.decodeIfPresent(Double.self, forKey: .y1)
+            radius = try c.decodeIfPresent(Double.self, forKey: .radius)
+            width = try c.decodeIfPresent(Double.self, forKey: .width)
+            height = try c.decodeIfPresent(Double.self, forKey: .height)
+            r = try c.decode(Double.self, forKey: .r)
+            g = try c.decode(Double.self, forKey: .g)
+            b = try c.decode(Double.self, forKey: .b)
+            alpha = try c.decode(Double.self, forKey: .alpha)
+        }
+    }
+    struct Case: Decodable {
+        let name: String
+        let seed: UInt32
+        let viewport: Viewport
+        let frames: Int
+        let dt: Double
+        let playhead: Int
+        let detail: Double
+        let alpha: Double
+        /// row, column, velocity, frame
+        let flashes: [[Double]]
+        let cells: [Float]
+        let ops: [Op]
+    }
+    let cases: [Case]
+}
+
+@Suite("Field")
+struct FieldTests {
+    /// Everything here is multiply, add and the odd `exp`/`sin`, so the two
+    /// platforms land within a whisker of each other; this is the size of
+    /// the gap actually observed, not a comfortable round number.
+    static let tolerance = 1e-9
+
+    private func replay(_ c: FieldFixture.Case) -> (NoteGrid, [FieldDraw]) {
+        var grid = NoteGrid()
+        grid.randomize(using: Mulberry32(seed: c.seed))
+
+        let animator = FieldAnimator()
+        let layout = Field.layout(
+            x: c.viewport.vx, y: c.viewport.vy,
+            width: c.viewport.vw, height: c.viewport.vh)
+
+        var draws: [FieldDraw] = []
+        for frame in 0..<c.frames {
+            for flash in c.flashes where Int(flash.count > 3 ? flash[3] : 0) == frame {
+                animator.flash(
+                    row: Int(flash[0]), column: Int(flash[1]), velocity: flash[2])
+            }
+            animator.advance(by: c.dt)
+            animator.draws(
+                grid: grid, layout: layout, playhead: c.playhead,
+                detail: c.detail, alpha: c.alpha, into: &draws)
+        }
+        return (grid, draws)
+    }
+
+    @Test("Every primitive matches the web, in the same order")
+    func matchesTheWeb() throws {
+        let fixture: FieldFixture = try Fixtures.load("field")
+        #expect(!fixture.cases.isEmpty)
+
+        for c in fixture.cases {
+            let (grid, draws) = replay(c)
+
+            // The pattern itself has to line up first, or nothing else means
+            // anything.
+            #expect(grid.cells == c.cells, "\(c.name): pattern")
+            #expect(draws.count == c.ops.count, "\(c.name): primitive count")
+            if draws.count != c.ops.count { continue }
+
+            var worst = 0.0
+            for (i, (got, expected)) in zip(draws, c.ops).enumerated() {
+                let where_ = "\(c.name) op \(i)"
+
+                let kind: String
+                switch got.kind {
+                case .dot: kind = "dot"
+                case .glow: kind = "glow"
+                case .streak: kind = "streak"
+                }
+                #expect(kind == expected.op, "\(where_): kind")
+                if kind != expected.op { break }
+
+                // Colour is an integer on both sides — no tolerance for it.
+                #expect(got.color.red == expected.r, "\(where_): red")
+                #expect(got.color.green == expected.g, "\(where_): green")
+                #expect(got.color.blue == expected.b, "\(where_): blue")
+
+                var mine = [got.x, got.y, got.alpha]
+                var theirs = [expected.x, expected.y, expected.alpha]
+                switch got.kind {
+                case .dot:
+                    mine.append(got.size)
+                    theirs.append(expected.radius ?? .nan)
+                case .glow:
+                    mine += [got.size, got.size]
+                    theirs += [expected.width ?? .nan, expected.height ?? .nan]
+                case .streak:
+                    mine += [got.x1, got.y1, got.size]
+                    theirs += [expected.x1 ?? .nan, expected.y1 ?? .nan, expected.width ?? .nan]
+                }
+                worst = max(worst, maxRelativeError(mine, theirs))
+            }
+            #expect(worst < Self.tolerance, "\(c.name): worst relative error \(worst)")
+        }
+    }
+
+    @Test("A fresh field draws one dot per cell and nothing else")
+    func atRestIsJustDots() {
+        let animator = FieldAnimator()
+        let layout = Field.layout(x: 0, y: 0, width: 375, height: 600)
+        animator.advance(by: 1 / 60)
+        let draws = animator.draws(grid: NoteGrid(), layout: layout, playhead: -1)
+
+        #expect(draws.count == NoteGrid.count)
+        #expect(draws.allSatisfy { $0.kind == .dot })
+        #expect(draws.allSatisfy { $0.color == .white })
+    }
+
+    @Test("The playhead row is brighter than the rest")
+    func playheadLifts() {
+        let animator = FieldAnimator()
+        let layout = Field.layout(x: 0, y: 0, width: 375, height: 600)
+        animator.advance(by: 1 / 60)
+        let draws = animator.draws(grid: NoteGrid(), layout: layout, playhead: 4)
+
+        let onHead = draws[(4 * NoteGrid.columns)..<(5 * NoteGrid.columns)]
+        let elsewhere = draws[0..<NoteGrid.columns]
+        #expect(onHead.map(\.alpha).min()! > elsewhere.map(\.alpha).max()!)
+    }
+
+    @Test("A flash decays away and takes its ripple with it")
+    func flashDecays() {
+        let animator = FieldAnimator()
+        animator.flash(row: 5, column: 6, velocity: 1)
+        #expect(animator.energy[5 * NoteGrid.columns + 6] == 1)
+        #expect(animator.activeWaveCount == 1)
+
+        // The ripple outlives the bloom, but not by much.
+        for _ in 0..<Int(FieldAnimator.waveLife * 60) + 2 {
+            animator.advance(by: 1 / 60)
+        }
+        #expect(animator.activeWaveCount == 0)
+
+        for _ in 0..<180 { animator.advance(by: 1 / 60) }
+        #expect(animator.energy.allSatisfy { $0 == 0 })
+    }
+
+    @Test("Ripples are capped so a wall of notes cannot pile them up")
+    func waveBudget() {
+        let animator = FieldAnimator()
+        for i in 0..<200 {
+            animator.flash(row: i % NoteGrid.rows, column: i % NoteGrid.columns, velocity: 1)
+        }
+        #expect(animator.activeWaveCount == FieldAnimator.maxWaves)
+    }
+
+    @Test("The colour cycle steps rather than blends")
+    func waveColourSteps() {
+        #expect(FieldAnimator.waveColor(phase: 0) == FieldAnimator.waveStops[0])
+        #expect(FieldAnimator.waveColor(phase: 0.32) == FieldAnimator.waveStops[0])
+        #expect(FieldAnimator.waveColor(phase: 0.34) == FieldAnimator.waveStops[1])
+        #expect(FieldAnimator.waveColor(phase: 0.99) == FieldAnimator.waveStops[2])
+        // Out of range clamps rather than crashing.
+        #expect(FieldAnimator.waveColor(phase: 1.5) == FieldAnimator.waveStops[2])
+        #expect(FieldAnimator.waveColor(phase: -1) == FieldAnimator.waveStops[0])
+    }
+
+    @Test("A faded-out field draws nothing at all")
+    func invisibleFieldIsFree() {
+        let animator = FieldAnimator()
+        var grid = NoteGrid()
+        grid.randomize(using: Mulberry32(seed: 1))
+        animator.flash(row: 0, column: 0, velocity: 1)
+        animator.advance(by: 1 / 60)
+
+        let layout = Field.layout(x: 0, y: 0, width: 375, height: 600)
+        #expect(animator.draws(grid: grid, layout: layout, playhead: 0, alpha: 0).isEmpty)
+        #expect(animator.draws(grid: grid, layout: layout, playhead: 0, alpha: 0.005).isEmpty)
+    }
+
+    @Test("Thumbnails skip the expensive extras")
+    func lowDetailSkipsStreaks() {
+        let animator = FieldAnimator()
+        var grid = NoteGrid()
+        grid.randomize(using: Mulberry32(seed: 1))
+        animator.flash(row: 0, column: 0, velocity: 1)
+        animator.advance(by: 1 / 60)
+        let layout = Field.layout(x: 0, y: 0, width: 169, height: 270)
+
+        let full = animator.draws(grid: grid, layout: layout, playhead: 0, detail: 1)
+        let thumb = animator.draws(grid: grid, layout: layout, playhead: 0, detail: 0.4)
+        #expect(full.contains { $0.kind == .streak })
+        #expect(!thumb.contains { $0.kind == .streak })
+    }
+
+    @Test("Resetting puts the field back to rest")
+    func resetting() {
+        let animator = FieldAnimator()
+        animator.flash(row: 3, column: 3, velocity: 1)
+        animator.advance(by: 1 / 60)
+        animator.reset()
+        #expect(animator.activeWaveCount == 0)
+        #expect(animator.energy.allSatisfy { $0 == 0 })
+    }
+}

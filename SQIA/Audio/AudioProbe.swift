@@ -24,13 +24,16 @@ final class AudioProbe {
         didSet { sequencer.bpm = bpm }
     }
 
-    /// The pattern the bench plays. Fixed, so a drift is a drift and not a
-    /// different pattern.
-    private(set) var pattern: NoteGrid = {
-        var grid = NoteGrid()
-        grid.randomize(using: Mulberry32(seed: 20_260_806))
-        return grid
-    }()
+    /// What the field draws. The pattern is fixed, so a drift is a drift
+    /// and not a different pattern.
+    let scene = FieldScene(
+        grid: {
+            var grid = NoteGrid()
+            grid.randomize(using: Mulberry32(seed: 20_260_806))
+            return grid
+        }())
+
+    var pattern: NoteGrid { scene.grid }
 
     private let engine = AudioEngine()
     private lazy var sequencer = Sequencer(engine: engine)
@@ -76,7 +79,7 @@ final class AudioProbe {
         // Everything the transport reads is captured by value here, so the
         // callback never reaches back into main-actor state from the
         // transport queue.
-        let grid = pattern
+        let grid = scene.grid
         let rates = Music.rateTable(rootPc: 9, scale: Music.scales[0])
         let voice = VoiceKind.sample(rates: rates)
         let random = SystemRandomSource()
@@ -84,7 +87,8 @@ final class AudioProbe {
 
         sequencer.onStep = { [weak self] step, frame, lead in
             let mixer = engine.mixer
-            for hit in StepVoicing.hits(step: step, in: grid, voice: voice, using: random) {
+            let hits = StepVoicing.hits(step: step, in: grid, voice: voice, using: random)
+            for hit in hits {
                 mixer.schedule(
                     AudioEvent(
                         kind: .sampleHit,
@@ -96,10 +100,12 @@ final class AudioProbe {
                     ))
             }
 
-            // Light the row when the note lands, not when it was scheduled.
+            // Bloom the dots exactly when their sound lands, not when it was
+            // scheduled — the whole point of scheduling ahead.
+            let lit = hits.map { ($0.column, $0.velocity) }
             let delay = max(0, lead)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                Task { @MainActor in self?.advance(to: step, mixer: mixer) }
+                Task { @MainActor in self?.land(step: step, lit: lit, mixer: mixer) }
             }
         }
 
@@ -114,6 +120,7 @@ final class AudioProbe {
         engine.stop()
         isPlaying = false
         playhead = -1
+        scene.playhead = -1
         status = "stopped"
     }
 
@@ -121,7 +128,11 @@ final class AudioProbe {
         bpm = Tempo.bump(bpm)
     }
 
-    private func advance(to step: Int, mixer: AudioMixer) {
+    private func land(step: Int, lit: [(Int, Double)], mixer: AudioMixer) {
+        for (column, velocity) in lit {
+            scene.flash(row: step, column: column, velocity: velocity)
+        }
+        scene.playhead = step
         playhead = step
         stepsPlayed += 1
         droppedNotes = mixer.droppedNotes
