@@ -12,7 +12,8 @@ let package = Package(
         .library(name: "SQIACore", targets: ["SQIACore"])
     ],
     targets: [
-        .target(name: "SQIACore"),
+        .target(name: "CSQIAAtomics"),
+        .target(name: "SQIACore", dependencies: ["CSQIAAtomics"]),
         .testTarget(
             name: "SQIACoreTests",
             dependencies: ["SQIACore"],
