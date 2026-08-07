@@ -16,21 +16,31 @@ each part maps onto iOS.
 | --- | --- |
 | M0 — project bootstrap | done |
 | M1 — music core + golden fixtures | done |
-| M2 — audio foundation | clock done; the engine is next |
-| M3–M10 | see [PLAN.md](PLAN.md) |
+| M2 — audio foundation | written and tested; awaiting a device |
+| M3 — the field on Metal | next |
+| M4–M10 | see [PLAN.md](PLAN.md) |
 
-What runs today: an app shell that draws the dot field through the real dome
-geometry, in the real palette and typeface. No audio and no touch yet — those
-arrive with the sequencer.
+What runs today: a shell that draws the dot field through the real dome
+geometry, in the real palette and typeface, and plays a fixed pattern through
+the real engine. Press PLAY. There is no sequencer screen and no touch yet —
+those arrive with M4.
+
+The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
+lives in `SQIACore`, where it can be tested off a device. [PLAN.md](PLAN.md)
+explains why, and what it costs.
 
 ## Layout
 
 ```
 Core/          SQIACore — pitch mapping, the note matrix, dome geometry,
-               the lookahead clock, the project snapshot format. Pure Swift,
-               no Apple frameworks, so it builds and tests on any platform.
-SQIA/          The app. Xcode syncs this folder, so new files need no
-               project edits.
+               the lookahead clock, the whole signal path, the project
+               snapshot format. Pure Swift, no Apple frameworks, so it
+               builds and tests on any platform.
+  CSQIAAtomics  Acquire/release for one lock-free queue. Swift's own
+                atomics need iOS 18 and SQIA targets 17.
+SQIA/          The app: the AVFoundation shell around SQIACore, the design
+               system, the screens. Xcode syncs this folder, so new files
+               need no project edits.
 Support/       Info.plist
 tools/         gen-fixtures (golden data from the web sources),
                make-icon.py, make-fonts.py
