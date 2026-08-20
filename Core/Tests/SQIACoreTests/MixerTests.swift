@@ -354,6 +354,50 @@ struct AudioMixerTests {
         #expect((after.map(abs).max() ?? 0) > 1e-3, "the mixer never came back")
     }
 
+    /// A click is a step in the waveform, so a crackle can be looked for
+    /// rather than described: render a passage at rising density and measure
+    /// the largest jump between one sample and the next.
+    ///
+    /// The threshold is generous — a legitimate transient is a fast slope,
+    /// not a vertical one — but a real discontinuity is orders of magnitude
+    /// above it, so this separates "the mixer is producing clicks" from "the
+    /// device is not keeping up", which sound identical and are not.
+    @Test("The waveform stays continuous however dense it gets")
+    func noDiscontinuities() {
+        for voicesPerStep in [1, 3, 7, 12] {
+            let mixer = AudioMixer(sampleRate: rate)
+            let random = Mulberry32(seed: 4242)
+            var previous = 0.0
+            var largest = 0.0
+            var next: Int64 = 0
+
+            for _ in 0..<Int(rate * 8) / 1024 {
+                while next < mixer.frame + 1024 {
+                    for i in 0..<voicesPerStep {
+                        for voice in SynthVoicing.notes(
+                            preset: .reverie, midi: 48 + (i * 5) % 24, velocity: 0.9,
+                            using: random)
+                        {
+                            mixer.schedule(
+                                AudioEvent.note(
+                                    voice.recipe, at: next + Int64(voice.offset * rate)))
+                        }
+                    }
+                    next += Int64(rate * 0.125)
+                }
+                for sample in render(mixer, frames: 1024) {
+                    largest = max(largest, abs(sample - previous))
+                    previous = sample
+                }
+            }
+
+            #expect(
+                largest < 0.05,
+                "\(voicesPerStep) voices a step stepped by \(largest)")
+            #expect(mixer.recoveredBlowups == 0)
+        }
+    }
+
     /// The number the UI shows while the sound is being tuned. It has to mean
     /// something: seconds of work per second of audio.
     @Test("The renderer reports what it costs")

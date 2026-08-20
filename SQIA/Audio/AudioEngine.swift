@@ -105,7 +105,17 @@ final class AudioEngine {
         }
 
         engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: format)
+        // Straight to the output. Going through the main mixer would add a
+        // stage that mixes one input into one output and can quietly insert
+        // a sample-rate converter — work for nothing, on the thread that can
+        // least afford it. It is only used when the hardware wants a format
+        // this cannot produce.
+        let outputFormat = engine.outputNode.inputFormat(forBus: 0)
+        if abs(outputFormat.sampleRate - sampleRate) < 0.5 && outputFormat.channelCount == 2 {
+            engine.connect(node, to: engine.outputNode, format: format)
+        } else {
+            engine.connect(node, to: engine.mainMixerNode, format: format)
+        }
         source = node
     }
 

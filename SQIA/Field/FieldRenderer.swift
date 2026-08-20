@@ -124,11 +124,6 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
     func draw(in view: MTKView) {
-        guard
-            let drawable = view.currentDrawable,
-            let descriptor = view.currentRenderPassDescriptor
-        else { return }
-
         let now = CACurrentMediaTime()
         // The web clamps its frame time the same way: a long stall must not
         // teleport the animation, it should just skip.
@@ -149,7 +144,13 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             }
         }
 
+        // The drawable is taken here rather than at the top of the frame:
+        // asking for one blocks until the GPU frees it, and blocking before
+        // the CPU work rather than after it holds the main thread for the
+        // whole frame instead of the tail of it.
         guard
+            let drawable = view.currentDrawable,
+            let descriptor = view.currentRenderPassDescriptor,
             let commands = commandQueue.makeCommandBuffer(),
             let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor)
         else {
