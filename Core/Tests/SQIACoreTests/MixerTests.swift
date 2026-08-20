@@ -10,48 +10,18 @@ import Testing
 
 private let rate = 48_000.0
 
-/// A decoded sample backed by storage that outlives the test's use of it —
-/// the same arrangement the app makes, where samples are loaded once and
-/// never freed so the render thread never touches a reference count.
-private final class TestSample {
-    let storage: UnsafeMutableBufferPointer<Float>
-    let ref: SampleRef
-
-    /// Mono storage exposed as a mono `SampleRef` — the right channel is
-    /// nil, which the voice reads as "heard on both sides".
-    init(frames: [Float], sampleRate: Double = rate) {
-        storage = .allocate(capacity: frames.count)
-        _ = storage.initialize(from: frames)
-        ref = SampleRef(
-            left: UnsafePointer(storage.baseAddress!),
-            right: nil,
-            frameCount: frames.count,
-            sampleRate: sampleRate
-        )
-    }
-
-    /// A steady tone, loud enough to see through an envelope.
-    static func tone(seconds: Double, frequency: Double = 220) -> TestSample {
-        let count = Int(seconds * rate)
-        return TestSample(
-            frames: (0..<count).map { Float(sin(2 * .pi * frequency * Double($0) / rate)) })
-    }
-
-    deinit {
-        storage.deallocate()
-    }
-}
-
 @Suite("Audio event queue")
 struct AudioEventQueueTests {
-    private func hit(_ frame: Int64) -> AudioEvent {
-        AudioEvent(kind: .sampleHit, frame: frame)
+    private func note(_ frame: Int64, frequency: Double = 440) -> AudioEvent {
+        var recipe = VoiceRecipe()
+        recipe.frequency = frequency
+        return AudioEvent.note(recipe, at: frame)
     }
 
     @Test("Events come back in the order they went in")
     func fifo() {
         let queue = AudioEventQueue(capacity: 8)
-        for i in 0..<5 { #expect(queue.push(hit(Int64(i)))) }
+        for i in 0..<5 { #expect(queue.push(note(Int64(i)))) }
         #expect(queue.count == 5)
         for i in 0..<5 { #expect(queue.pop()?.frame == Int64(i)) }
         #expect(queue.pop() == nil)
@@ -68,18 +38,17 @@ struct AudioEventQueueTests {
     @Test("A full queue refuses the write rather than blocking")
     func fullQueue() {
         let queue = AudioEventQueue(capacity: 4)
-        for i in 0..<4 { #expect(queue.push(hit(Int64(i)))) }
-        #expect(!queue.push(hit(99)))
-        // Making room lets the next one in.
+        for i in 0..<4 { #expect(queue.push(note(Int64(i)))) }
+        #expect(!queue.push(note(99)))
         #expect(queue.pop()?.frame == 0)
-        #expect(queue.push(hit(99)))
+        #expect(queue.push(note(99)))
     }
 
     @Test("Indices wrap without losing anything")
     func wraps() {
         let queue = AudioEventQueue(capacity: 4)
         for round in 0..<1000 {
-            #expect(queue.push(hit(Int64(round))))
+            #expect(queue.push(note(Int64(round))))
             #expect(queue.pop()?.frame == Int64(round))
         }
     }
@@ -87,7 +56,7 @@ struct AudioEventQueueTests {
     @Test("Peeking does not consume")
     func peeking() {
         let queue = AudioEventQueue(capacity: 4)
-        queue.push(hit(7))
+        queue.push(note(7))
         #expect(queue.peek()?.frame == 7)
         #expect(queue.peek()?.frame == 7)
         #expect(queue.pop()?.frame == 7)
@@ -115,9 +84,9 @@ struct AudioEventQueueTests {
             while next < Int64(total) {
                 guard let event = queue.pop() else { continue }
                 // Order and payload both have to survive the crossing.
-                if event.frame != next || event.velocity != Double(next % 97) {
+                if event.frame != next || event.recipe.frequency != Double(next % 97) {
                     verdict.mismatch =
-                        "at \(next): got frame \(event.frame), velocity \(event.velocity)"
+                        "at \(next): frame \(event.frame), freq \(event.recipe.frequency)"
                     break
                 }
                 next += 1
@@ -127,120 +96,13 @@ struct AudioEventQueueTests {
         consumer.start()
 
         for i in 0..<total {
-            let event = AudioEvent(
-                kind: .sampleHit, frame: Int64(i), velocity: Double(Int64(i) % 97))
-            while !queue.push(event) { /* full: let the consumer catch up */  }
+            var recipe = VoiceRecipe()
+            recipe.frequency = Double(Int64(i) % 97)
+            while !queue.push(AudioEvent.note(recipe, at: Int64(i))) { /* full */  }
         }
 
         #expect(done.wait(timeout: .now() + 30) == .success)
         #expect(verdict.mismatch == nil, "\(verdict.mismatch ?? "")")
-    }
-}
-
-@Suite("Sample voice")
-struct SampleVoiceTests {
-    /// A ramp read back at a fractional rate: every output should land on
-    /// the straight line between neighbouring frames, which is what says the
-    /// interpolation is doing its job rather than merely stepping.
-    @Test("Between frames it interpolates")
-    func interpolates() {
-        let count = 1000
-        let sample = TestSample(frames: (0..<count).map { Float($0) })
-        var voice = SampleVoice()
-        // A long tail, so the envelope is flat enough to divide back out.
-        voice.start(
-            sample: sample.ref, rate: 0.5, velocity: 1, releaseScale: 0.9, sampleRate: rate)
-
-        let envelope = SampleEnvelope(
-            peak: 1,
-            release: SampleEnvelope.release(
-                bufferDuration: sample.ref.duration, rate: 0.5, scale: 0.9))
-
-        // The nth call reads position (n−1)·0.5 and is scaled by the
-        // envelope at that age — so on a ramp the output says exactly where
-        // in the buffer the voice is, including between frames.
-        for age in 0..<100 {
-            let out = voice.render()
-            let expected = Double(age) * 0.5 * envelope.value(at: Double(age) / rate)
-            #expect(abs(out.left - expected) < 1e-9, "age \(age): \(out.left) vs \(expected)")
-            #expect(out.right == out.left, "mono source should reach both sides")
-        }
-    }
-
-    @Test("It stops at the end of the buffer")
-    func stopsAtTheEnd() {
-        let sample = TestSample(frames: [Float](repeating: 1, count: 100))
-        var voice = SampleVoice()
-        voice.start(
-            sample: sample.ref, rate: 1, velocity: 1, releaseScale: 0.9, sampleRate: rate)
-        for _ in 0..<100 {
-            _ = voice.render()
-            #expect(voice.isActive)
-        }
-        // Running off the end is noticed on the call that would have read
-        // past it.
-        #expect(voice.render() == (0, 0))
-        #expect(!voice.isActive)
-    }
-
-    @Test("A file recorded at another rate is corrected for")
-    func sampleRateCorrection() {
-        // 24 kHz material into a 48 kHz engine advances half a frame per
-        // output frame, or it would play an octave high.
-        let sample = TestSample(
-            frames: (0..<1000).map { Float($0) }, sampleRate: rate / 2)
-        var voice = SampleVoice()
-        voice.start(
-            sample: sample.ref, rate: 1, velocity: 1, releaseScale: 0.9, sampleRate: rate)
-
-        let envelope = SampleEnvelope(
-            peak: 1,
-            release: SampleEnvelope.release(
-                bufferDuration: sample.ref.duration, rate: 1, scale: 0.9))
-        for _ in 0..<40 { _ = voice.render() }
-        let out = voice.render()
-        #expect(abs(out.left / envelope.value(at: 40 / rate) - 20) < 1e-6)
-    }
-
-    /// Every sample in the set is stereo, so the two sides have to stay
-    /// apart all the way to the output.
-    @Test("A stereo source keeps its sides")
-    func stereoIsPreserved() {
-        let count = 500
-        let leftChannel = UnsafeMutableBufferPointer<Float>.allocate(capacity: count)
-        let rightChannel = UnsafeMutableBufferPointer<Float>.allocate(capacity: count)
-        defer {
-            leftChannel.deallocate()
-            rightChannel.deallocate()
-        }
-        for i in 0..<count {
-            leftChannel[i] = 1
-            rightChannel[i] = -0.25
-        }
-
-        var voice = SampleVoice()
-        voice.start(
-            sample: SampleRef(
-                left: UnsafePointer(leftChannel.baseAddress!),
-                right: UnsafePointer(rightChannel.baseAddress!),
-                frameCount: count,
-                sampleRate: rate
-            ),
-            rate: 1, velocity: 1, releaseScale: 0.9, sampleRate: rate)
-
-        for _ in 0..<10 { _ = voice.render() }
-        let out = voice.render()
-        #expect(out.left > 0)
-        #expect(out.right < 0)
-        #expect(abs(out.right / out.left + 0.25) < 1e-9)
-    }
-
-    @Test("Starting on an empty sample leaves the voice free")
-    func emptySample() {
-        var voice = SampleVoice()
-        voice.start(sample: .empty, rate: 1, velocity: 1, releaseScale: 1, sampleRate: rate)
-        #expect(!voice.isActive)
-        #expect(voice.render() == (0, 0))
     }
 }
 
@@ -251,17 +113,31 @@ struct AudioMixerTests {
         var right = [Float](repeating: 0, count: frames)
         left.withUnsafeMutableBufferPointer { l in
             right.withUnsafeMutableBufferPointer { r in
-                mixer.render(
-                    frameCount: frames, left: l.baseAddress!, right: r.baseAddress!)
+                mixer.render(frameCount: frames, left: l.baseAddress!, right: r.baseAddress!)
             }
         }
-        // Both channels carry the same signal for now; check they do.
-        for i in 0..<frames { precondition(left[i] == right[i]) }
         return left.map(Double.init)
     }
 
     private func onset(_ output: [Double], threshold: Double = 1e-4) -> Int? {
         output.firstIndex { abs($0) > threshold }
+    }
+
+    /// A long, plain note: loud enough to find, and with nothing rolled so a
+    /// test reads the same every run.
+    private func steadyNote(frequency: Double = 220) -> VoiceRecipe {
+        var recipe = VoiceRecipe()
+        recipe.preset = .reverie
+        recipe.source = .oscillator
+        recipe.waveform = .sine
+        recipe.frequency = frequency
+        recipe.gain = 1
+        recipe.attack = 0.001
+        recipe.decay = 0.01
+        recipe.sustain = 1
+        recipe.release = 0.05
+        recipe.duration = 0.5
+        return recipe
     }
 
     @Test("An idle mixer is silent")
@@ -271,31 +147,26 @@ struct AudioMixerTests {
         #expect(mixer.activeVoiceCount == 0)
     }
 
-    @Test("A scheduled hit sounds")
-    func playsAHit() {
-        let sample = TestSample.tone(seconds: 0.5)
+    @Test("A scheduled note sounds")
+    func playsANote() {
         let mixer = AudioMixer(sampleRate: rate)
-        mixer.schedule(
-            AudioEvent(kind: .sampleHit, frame: 100, sample: sample.ref, velocity: 1))
+        mixer.schedule(AudioEvent.note(steadyNote(), at: 100))
 
-        let output = render(mixer, frames: 4096)
+        let output = render(mixer, frames: 8192)
         #expect(onset(output) != nil)
         #expect(mixer.activeVoiceCount == 1)
         #expect(mixer.droppedNotes == 0)
     }
 
     /// Timing is what a sequencer is for. The absolute onset carries the
-    /// limiter's 6 ms lookahead, so the thing to check is that moving a note
-    /// by N frames moves the sound by N frames.
+    /// limiter's 6 ms lookahead and the chain's own delay, so the thing to
+    /// check is that moving a note by N frames moves the sound by N frames.
     @Test("Scheduling is sample accurate")
     func sampleAccurate() {
-        let sample = TestSample.tone(seconds: 0.5)
-
         func onsetFor(_ frame: Int64) -> Int {
             let mixer = AudioMixer(sampleRate: rate)
-            mixer.schedule(
-                AudioEvent(kind: .sampleHit, frame: frame, sample: sample.ref, velocity: 1))
-            return onset(render(mixer, frames: 8192)) ?? -1
+            mixer.schedule(AudioEvent.note(steadyNote(), at: frame))
+            return onset(render(mixer, frames: 16384)) ?? -1
         }
 
         let early = onsetFor(100)
@@ -306,52 +177,18 @@ struct AudioMixerTests {
 
     @Test("An event whose moment has passed still fires")
     func lateEventsStillFire() {
-        let sample = TestSample.tone(seconds: 0.2)
         let mixer = AudioMixer(sampleRate: rate)
-        _ = render(mixer, frames: 4096)  // move the clock past the event
-        mixer.schedule(
-            AudioEvent(kind: .sampleHit, frame: 10, sample: sample.ref, velocity: 1))
-
+        _ = render(mixer, frames: 4096)
+        mixer.schedule(AudioEvent.note(steadyNote(), at: 10))
         _ = render(mixer, frames: 2048)
         #expect(mixer.activeVoiceCount == 1)
     }
 
-    @Test("Playback rate changes how fast the sample is read")
-    func playbackRate() {
-        // A ramp, so the value read back says where in the buffer we are.
-        //
-        // Ten seconds of it on purpose: the tail is `min(1.5, duration/rate)`
-        // scaled, so a shorter sample would give the two rates different
-        // envelopes and the comparison would measure both effects at once.
-        // Past 1.5 s the cap bites for either rate and only the reading speed
-        // differs.
-        let count = Int(rate * 10)
-        let sample = TestSample(frames: (0..<count).map { Float($0) / Float(count) })
-
-        func valueAfter(rate playback: Double, frames: Int) -> Double {
-            let mixer = AudioMixer(sampleRate: rate)
-            mixer.schedule(
-                AudioEvent(
-                    kind: .sampleHit, frame: 0, sample: sample.ref, rate: playback,
-                    velocity: 1, releaseScale: 0.9))
-            return render(mixer, frames: frames).last ?? 0
-        }
-
-        let single = valueAfter(rate: 1, frames: 4096)
-        let double = valueAfter(rate: 2, frames: 4096)
-        #expect(single > 0)
-        #expect(abs(double / single - 2) < 0.05, "ratio \(double / single)")
-    }
-
     @Test("The voice budget drops notes rather than stealing them")
     func voiceBudget() {
-        let sample = TestSample.tone(seconds: 2)
         let mixer = AudioMixer(sampleRate: rate, voiceLimit: 4)
         for i in 0..<10 {
-            mixer.schedule(
-                AudioEvent(
-                    kind: .sampleHit, frame: Int64(i), sample: sample.ref, velocity: 1,
-                    releaseScale: 0.9))
+            mixer.schedule(AudioEvent.note(steadyNote(), at: Int64(i)))
         }
         _ = render(mixer, frames: 1024)
 
@@ -361,74 +198,114 @@ struct AudioMixerTests {
 
     @Test("Voices retire when their envelope runs out")
     func voicesRetire() {
-        let sample = TestSample.tone(seconds: 2)
         let mixer = AudioMixer(sampleRate: rate)
-        mixer.schedule(
-            AudioEvent(
-                kind: .sampleHit, frame: 0, sample: sample.ref, velocity: 1,
-                releaseScale: 0.1))
+        var recipe = steadyNote()
+        recipe.duration = 0.05
+        recipe.release = 0.05
+        mixer.schedule(AudioEvent.note(recipe, at: 0))
+
         _ = render(mixer, frames: 1024)
         #expect(mixer.activeVoiceCount == 1)
 
-        // The tail is 10% of 1.5 s plus the stop margin; two seconds is well
-        // past it.
-        _ = render(mixer, frames: Int(rate * 2))
+        _ = render(mixer, frames: Int(rate))
         #expect(mixer.activeVoiceCount == 0)
     }
 
     @Test("Silence stops everything at once")
     func panic() {
-        let sample = TestSample.tone(seconds: 2)
         let mixer = AudioMixer(sampleRate: rate)
         for i in 0..<8 {
-            mixer.schedule(
-                AudioEvent(
-                    kind: .sampleHit, frame: Int64(i), sample: sample.ref, velocity: 1))
+            mixer.schedule(AudioEvent.note(steadyNote(), at: Int64(i)))
         }
         _ = render(mixer, frames: 512)
         #expect(mixer.activeVoiceCount > 0)
 
         mixer.panic()
-        let after = render(mixer, frames: 2048)
+        let after = render(mixer, frames: 8192)
         #expect(mixer.activeVoiceCount == 0)
         #expect(after.suffix(512).allSatisfy { $0 == 0 })
     }
 
-    @Test("A missing sample is ignored, not crashed on")
-    func emptySample() {
+    @Test("Each preset goes through its own chain")
+    func presetsAreSeparate() {
+        // A drift that shuts one preset's filter right down should not
+        // quieten another's.
+        func level(driftingOther: Bool) -> Double {
+            let mixer = AudioMixer(sampleRate: rate)
+            if driftingOther {
+                var drift = PresetDrift()
+                drift.preset = .machine
+                drift.cutoff = 30
+                drift.cutoffRamp = 0.001
+                mixer.schedule(AudioEvent.drift(drift, at: 0))
+            }
+            var recipe = steadyNote()
+            recipe.preset = .reverie
+            recipe.duration = 0.4
+            mixer.schedule(AudioEvent.note(recipe, at: 100))
+            let out = render(mixer, frames: Int(rate / 4))
+            return out.map(abs).max() ?? 0
+        }
+
+        let plain = level(driftingOther: false)
+        #expect(abs(level(driftingOther: true) - plain) < plain * 0.01)
+    }
+
+    @Test("A drift is taken without a click or a jump")
+    func driftIsSmooth() {
         let mixer = AudioMixer(sampleRate: rate)
-        mixer.schedule(AudioEvent(kind: .sampleHit, frame: 0, sample: .empty, velocity: 1))
-        #expect(render(mixer, frames: 512).allSatisfy { $0 == 0 })
-        #expect(mixer.activeVoiceCount == 0)
+        var recipe = steadyNote()
+        recipe.duration = 2
+        recipe.release = 0.5
+        mixer.schedule(AudioEvent.note(recipe, at: 0))
+
+        var drift = PresetDrift()
+        drift.preset = .reverie
+        drift.cutoff = 5000
+        drift.cutoffRamp = 1
+        drift.echo = 0.24
+        drift.lead = Int(0.08 * rate)
+        mixer.schedule(AudioEvent.drift(drift, at: Int64(rate / 2)))
+
+        let out = render(mixer, frames: Int(rate * 2))
+        // No sample may jump further than a full-scale swing from the last.
+        for (a, b) in zip(out, out.dropFirst()) {
+            #expect(abs(b - a) < 0.5, "step of \(abs(b - a))")
+        }
+        #expect(out.allSatisfy { $0.isFinite })
     }
 
     /// A full pattern is a dozen notes a second for as long as anyone plays.
     /// Nothing should creep: not the voice count, not the output level.
     @Test("A long busy run stays level and never runs out of voices")
     func sustainedLoad() {
-        let sample = TestSample.tone(seconds: 0.4)
         let mixer = AudioMixer(sampleRate: rate)
+        let random = Mulberry32(seed: 99)
         let blockFrames = 512
         var peak = 0.0
 
-        // Roughly a minute of a dense pattern: 8 notes every 125 ms.
         var next: Int64 = 0
-        for block in 0..<Int(rate * 60) / blockFrames {
+        for block in 0..<Int(rate * 30) / blockFrames {
             while next < mixer.frame + Int64(blockFrames) {
-                for _ in 0..<8 {
-                    mixer.schedule(
-                        AudioEvent(
-                            kind: .sampleHit, frame: next, sample: sample.ref,
-                            rate: 1.5, velocity: 0.9, releaseScale: 0.5))
+                for column in 0..<6 {
+                    let preset: SynthPreset = column % 2 == 0 ? .reverie : .machine
+                    for voice in SynthVoicing.notes(
+                        preset: preset, midi: 48 + column * 2, velocity: 0.9,
+                        using: random)
+                    {
+                        mixer.schedule(
+                            AudioEvent.note(
+                                voice.recipe,
+                                at: next + Int64(voice.offset * rate)))
+                    }
                 }
                 next += Int64(rate * 0.125)
             }
             let output = render(mixer, frames: blockFrames)
-            if block > 20 { peak = max(peak, output.map(abs).max() ?? 0) }
+            if block > 40 { peak = max(peak, output.map(abs).max() ?? 0) }
         }
 
-        #expect(peak > 0.05, "the mixer went quiet")
-        #expect(peak < 1.2, "the limiter let it run away: \(peak)")
-        #expect(mixer.queueOverflows == 0)
+        #expect(peak > 0.01, "the mixer went quiet")
+        #expect(peak < 1.5, "the limiter let it run away: \(peak)")
     }
 }

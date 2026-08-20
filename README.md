@@ -18,8 +18,8 @@ each part maps onto iOS.
 | M1 — music core + golden fixtures | done |
 | M2 — audio foundation | done |
 | M3 — the field on Metal | done |
-| M4 — the sequencer screen | done, minus the voices |
-| M5 — the five synths | next |
+| M4 — the sequencer screen | done |
+| M5 — the five synths | REVERIE and MACHINE done; three to go |
 | M6–M10 | see [PLAN.md](PLAN.md) |
 
 What runs today: the sequencer. Draw on the field with a finger and it
@@ -27,10 +27,12 @@ sounds; drag the tempo, cycle the key, erase, scatter a pattern, pick a
 sound, step between the two tracks. The dots bloom exactly when their note
 lands.
 
-One thing is not the web app yet: the sounds. The five synths arrive with M5,
-and until then the picker offers the sample set instead — the same sixteen
-samples, the same labels, just brought forward from the parked list the web
-keeps commented out.
+The sounds are synthesised, not sampled — the sample set is gone. Two of the
+five presets are written: REVERIE, the drifting pad, and MACHINE, the drums
+whose instrument is chosen by the column's register. They are the two the web
+starts its tracks on, so a new session sounds like a new session there.
+KALIMBA, RHODES and ACID are next, and the picker only offers what can
+actually be heard.
 
 The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
 lives in `SQIACore`, where it can be tested off a device. [PLAN.md](PLAN.md)

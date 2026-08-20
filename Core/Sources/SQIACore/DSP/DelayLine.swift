@@ -38,4 +38,23 @@ public struct DelayLine: Sendable {
         if writeIndex == buffer.count { writeIndex = 0 }
         return y
     }
+
+    /// The same, but reading from a delay that can sit between samples and
+    /// move while it plays — which is what a chorus is.
+    public mutating func process(_ x: Double, delaySamples delay: Double) -> Double {
+        let wanted = min(max(delay, 1), Double(buffer.count - 2))
+        let whole = Int(wanted)
+        let fraction = wanted - Double(whole)
+
+        var first = writeIndex - whole
+        if first < 0 { first += buffer.count }
+        var second = first - 1
+        if second < 0 { second += buffer.count }
+
+        let y = buffer[first] + (buffer[second] - buffer[first]) * fraction
+        buffer[writeIndex] = x
+        writeIndex += 1
+        if writeIndex == buffer.count { writeIndex = 0 }
+        return y
+    }
 }

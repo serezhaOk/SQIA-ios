@@ -8,40 +8,6 @@
 
 import CSQIAAtomics
 
-/// One instruction for the renderer, timed to an absolute frame on the
-/// engine's clock.
-public struct AudioEvent: Sendable {
-    public enum Kind: UInt8, Sendable {
-        case sampleHit
-        /// Drop every sounding voice — used when the graph restarts.
-        case silence
-    }
-
-    public var kind: Kind
-    /// When it happens, in frames since the renderer started.
-    public var frame: Int64
-    public var sample: SampleRef
-    public var rate: Double
-    public var velocity: Double
-    public var releaseScale: Double
-
-    public init(
-        kind: Kind,
-        frame: Int64,
-        sample: SampleRef = .empty,
-        rate: Double = 1,
-        velocity: Double = 1,
-        releaseScale: Double = 1
-    ) {
-        self.kind = kind
-        self.frame = frame
-        self.sample = sample
-        self.rate = rate
-        self.velocity = velocity
-        self.releaseScale = releaseScale
-    }
-}
-
 /// A wait-free queue between one writer and one reader.
 ///
 /// Capacity is rounded up to a power of two so the wrap is a mask rather

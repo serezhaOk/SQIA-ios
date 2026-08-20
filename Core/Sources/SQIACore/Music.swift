@@ -71,6 +71,11 @@ public enum Music {
         (0..<columns).map { columnRate($0, rootPc: rootPc, scale: scale, baseMidi: baseMidi) }
     }
 
+    /// Concert pitch: A above middle C is MIDI 69 at 440 Hz.
+    public static func frequency(ofMidi midi: Int) -> Double {
+        440 * exp2(Double(midi - 69) / 12)
+    }
+
     public static func midiTable(rootPc: Int, scale: Scale) -> [Int] {
         (0..<columns).map { columnMidi($0, rootPc: rootPc, scale: scale) }
     }

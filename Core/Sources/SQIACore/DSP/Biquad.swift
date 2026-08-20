@@ -24,18 +24,53 @@ public struct Biquad: Sendable {
         setLowpass(frequency: frequency, q: q, sampleRate: sampleRate)
     }
 
-    public mutating func setLowpass(frequency: Double, q: Double, sampleRate: Double) {
-        // Nyquist and DC are both degenerate; clamp rather than divide by zero.
+    public init(bandpass frequency: Double, q: Double, sampleRate: Double) {
+        setBandpass(frequency: frequency, q: q, sampleRate: sampleRate)
+    }
+
+    public init(highpass frequency: Double, q: Double = defaultQ, sampleRate: Double) {
+        setHighpass(frequency: frequency, q: q, sampleRate: sampleRate)
+    }
+
+    /// Shared setup: the angular frequency and the bandwidth term every
+    /// cookbook filter is built from. Nyquist and DC are both degenerate, so
+    /// the frequency is clamped rather than allowed to divide by zero.
+    private static func terms(
+        _ frequency: Double, _ q: Double, _ sampleRate: Double
+    ) -> (cosW0: Double, alpha: Double) {
         let nyquist = sampleRate / 2
         let f = min(max(frequency, 1), nyquist * 0.999)
         let w0 = 2 * Double.pi * f / sampleRate
-        let cosW0 = cos(w0)
-        let alpha = sin(w0) / (2 * max(q, 1e-4))
+        return (cos(w0), sin(w0) / (2 * max(q, 1e-4)))
+    }
 
+    public mutating func setLowpass(frequency: Double, q: Double, sampleRate: Double) {
+        let (cosW0, alpha) = Self.terms(frequency, q, sampleRate)
         let a0 = 1 + alpha
         b0 = ((1 - cosW0) / 2) / a0
         b1 = (1 - cosW0) / a0
         b2 = b0
+        a1 = (-2 * cosW0) / a0
+        a2 = (1 - alpha) / a0
+    }
+
+    public mutating func setHighpass(frequency: Double, q: Double, sampleRate: Double) {
+        let (cosW0, alpha) = Self.terms(frequency, q, sampleRate)
+        let a0 = 1 + alpha
+        b0 = ((1 + cosW0) / 2) / a0
+        b1 = -(1 + cosW0) / a0
+        b2 = b0
+        a1 = (-2 * cosW0) / a0
+        a2 = (1 - alpha) / a0
+    }
+
+    /// Constant-skirt bandpass, peaking at Q — what Web Audio's bandpass is.
+    public mutating func setBandpass(frequency: Double, q: Double, sampleRate: Double) {
+        let (cosW0, alpha) = Self.terms(frequency, q, sampleRate)
+        let a0 = 1 + alpha
+        b0 = alpha / a0
+        b1 = 0
+        b2 = -alpha / a0
         a1 = (-2 * cosW0) / a0
         a2 = (1 - alpha) / a0
     }

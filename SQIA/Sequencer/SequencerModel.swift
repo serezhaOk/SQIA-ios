@@ -18,22 +18,29 @@ private final class VoicingBox: @unchecked Sendable {
     struct Track {
         var grid = NoteGrid()
         var muted = false
-        var sample = SampleRef.empty
-        var rates: [Double] = []
+        var preset = SynthPreset.reverie
+        /// The MIDI note each column plays, in the current key.
+        var midi: [Int] = []
     }
 
     private let lock = NSLock()
     private var tracks: [Track] = []
+    private var storedBPM = SequencerState.defaultBPM
 
-    func read() -> [Track] {
+    /// Which subdivision each preset's echo currently sits on. Only the
+    /// transport thread touches it, and only once a bar.
+    var divisions = [Int](repeating: 0, count: SynthPreset.allCases.count)
+
+    func read() -> (tracks: [Track], bpm: Double) {
         lock.lock()
         defer { lock.unlock() }
-        return tracks
+        return (tracks, storedBPM)
     }
 
-    func write(_ value: [Track]) {
+    func write(tracks: [Track], bpm: Double) {
         lock.lock()
-        tracks = value
+        self.tracks = tracks
+        storedBPM = bpm
         lock.unlock()
     }
 }
@@ -44,7 +51,6 @@ final class SequencerModel {
     private(set) var state: SequencerState
     /// The eraser clears a 2×2 block per touch instead of painting.
     private(set) var eraseMode = false
-    private(set) var isLoadingVoice = false
     private(set) var isRunning = false
     private(set) var failure: String?
 
@@ -71,7 +77,7 @@ final class SequencerModel {
         scenes = (0..<SequencerState.trackCount).map { _ in FieldScene() }
 
         syncScenes()
-        loadVoices()
+        publishVoicing()
         wireTransport()
     }
 
@@ -115,29 +121,53 @@ final class SequencerModel {
         let voicing = voicing
         let engine = engine
         let random = random
+        let sampleRate = engine.sampleRate
+        // The echo is ducked across the bar line, so its drift has to arrive
+        // before the bar it belongs to.
+        let driftLead = Int(0.08 * sampleRate)
 
         sequencer.onStep = { [weak self] step, frame, lead in
             let mixer = engine.mixer
-            let tracks = voicing.read()
+            let (tracks, bpm) = voicing.read()
             var lit: [(track: Int, column: Int, velocity: Double)] = []
+            var drifted = Set<Int>()
 
             for (index, track) in tracks.enumerated() {
                 // A muted track draws nothing from the random stream either,
                 // which is what the web does.
                 if track.muted { continue }
-                let hits = StepVoicing.hits(
-                    step: step, in: track.grid,
-                    voice: .sample(rates: track.rates), using: random)
-                for hit in hits {
+
+                // Once a bar, and once per preset however many tracks use
+                // it, the chain wanders somewhere new.
+                let presetIndex = track.preset.rawValue
+                if step == 0 && !drifted.contains(presetIndex) {
+                    drifted.insert(presetIndex)
+                    var drift = SynthVoicing.drift(
+                        preset: track.preset, bpm: bpm,
+                        division: voicing.divisions[presetIndex], using: random)
+                    if drift.echo > 0 {
+                        voicing.divisions[presetIndex] =
+                            Int((drift.echo / (60 / bpm / 4)).rounded())
+                        drift.lead = driftLead
+                    }
                     mixer.schedule(
-                        AudioEvent(
-                            kind: .sampleHit,
-                            frame: frame,
-                            sample: track.sample,
-                            rate: hit.rate ?? 1,
-                            velocity: hit.velocity,
-                            releaseScale: hit.releaseScale ?? 1
-                        ))
+                        AudioEvent.drift(drift, at: frame - Int64(driftLead)))
+                }
+
+                for hit in StepVoicing.hits(
+                    step: step, in: track.grid, voice: .synth, using: random)
+                {
+                    let midi =
+                        track.midi.indices.contains(hit.column) ? track.midi[hit.column] : 60
+                    for voice in SynthVoicing.notes(
+                        preset: track.preset, midi: midi, velocity: hit.velocity,
+                        using: random)
+                    {
+                        mixer.schedule(
+                            AudioEvent.note(
+                                voice.recipe,
+                                at: frame + Int64(voice.offset * sampleRate)))
+                    }
                     lit.append((index, hit.column, hit.velocity))
                 }
             }
@@ -233,6 +263,7 @@ final class SequencerModel {
     private func setTempo(_ value: Double) {
         state.bpm = Tempo.clamp(value)
         sequencer.bpm = state.bpm
+        publishVoicing()
     }
 
     // ------------------------------------------------------------ the voice --
@@ -241,33 +272,11 @@ final class SequencerModel {
         VoiceCatalog.label(at: state.activeTrack.voiceIndex)
     }
 
-    func selectVoice(_ index: Int) {
+    func selectVoice(_ preset: SynthPreset) {
+        let index = VoiceCatalog.index(of: preset)
         guard index != state.activeTrack.voiceIndex else { return }
         state.activeTrack.voiceIndex = index
-        loadVoices()
-    }
-
-    /// Decode whatever the tracks are set to, then republish.
-    ///
-    /// Decoding reads a file, which is not something to do on the main
-    /// thread, so the label dims until the sound is ready — the same as the
-    /// web app's loading state.
-    private func loadVoices() {
-        let wanted = state.tracks.map { VoiceCatalog.voice(at: $0.voiceIndex).file }
-        if wanted.allSatisfy(SampleLibrary.shared.isLoaded) {
-            publishVoicing()
-            return
-        }
-
-        isLoadingVoice = true
-        Task.detached(priority: .userInitiated) { [weak self] in
-            for file in wanted { _ = SampleLibrary.shared.sample(named: file) }
-            await MainActor.run {
-                guard let self else { return }
-                self.isLoadingVoice = false
-                self.publishVoicing()
-            }
-        }
+        publishVoicing()
     }
 
     // ------------------------------------------------------------ plumbing --
@@ -281,19 +290,17 @@ final class SequencerModel {
         }
     }
 
-    /// Every stroke of a finger comes through here, so it only ever reads
-    /// what is already decoded — a track whose sound is still loading stays
-    /// silent for a moment rather than blocking the drawing.
     private func publishVoicing() {
+        let midi = state.midiTable
         voicing.write(
-            state.tracks.map { track in
-                let voice = VoiceCatalog.voice(at: track.voiceIndex)
-                return VoicingBox.Track(
+            tracks: state.tracks.map { track in
+                VoicingBox.Track(
                     grid: track.grid,
                     muted: track.muted,
-                    sample: SampleLibrary.shared.cached(voice.file) ?? .empty,
-                    rates: state.rateTable(baseMidi: voice.baseMidi)
+                    preset: VoiceCatalog.preset(at: track.voiceIndex),
+                    midi: midi
                 )
-            })
+            },
+            bpm: state.bpm)
     }
 }

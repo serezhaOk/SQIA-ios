@@ -23,8 +23,8 @@ struct SequencerView: View {
         .sheet(isPresented: $showingVoices) {
             VoiceSheet(
                 selected: model.state.activeTrack.voiceIndex,
-                onPick: { index in
-                    model.selectVoice(index)
+                onPick: { preset in
+                    model.selectVoice(preset)
                     showingVoices = false
                 }
             )
@@ -131,7 +131,6 @@ struct SequencerView: View {
                     .regular, TextStyle.labelSize, tracking: TextStyle.voiceLabelTracking
                 )
                 .foregroundStyle(Palette.ink)
-                .opacity(model.isLoadingVoice ? 0.4 : 1)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 4)
                 .contentShape(Rectangle())

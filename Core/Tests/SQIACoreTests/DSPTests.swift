@@ -1,9 +1,9 @@
 // The signal path, checked off a device.
 //
 // Putting the DSP in the core rather than in AudioUnits is what makes this
-// possible: a filter's response, a delay's spacing and a limiter's curve are
-// all things a test can assert on, instead of things somebody has to listen
-// for.
+// possible: a filter's response, an oscillator's spectrum, a limiter's curve
+// and a reverb's decay are all things a test can assert on, instead of
+// things somebody has to listen for.
 
 import Foundation
 import Testing
@@ -12,15 +12,38 @@ import Testing
 
 private let rate = 48_000.0
 
+/// Root mean square of a buffer — the honest measure of how loud something
+/// is, as against how tall its tallest spike happens to be.
+private func rms(_ samples: [Double]) -> Double {
+    guard !samples.isEmpty else { return 0 }
+    return (samples.reduce(0) { $0 + $1 * $1 } / Double(samples.count)).squareRoot()
+}
+
 @Suite("Biquad")
 struct BiquadTests {
     @Test("A lowpass passes DC and stops the top end")
     func lowpassResponse() {
         let filter = Biquad(lowpass: 2400, sampleRate: rate)
         #expect(abs(filter.magnitude(at: 0, sampleRate: rate) - 1) < 1e-9)
-        // An octave up is already down; four octaves up is gone.
         #expect(filter.magnitude(at: 4800, sampleRate: rate) < 0.35)
         #expect(filter.magnitude(at: 19_200, sampleRate: rate) < 0.01)
+    }
+
+    @Test("A highpass does the opposite")
+    func highpassResponse() {
+        let filter = Biquad(highpass: 2400, sampleRate: rate)
+        #expect(filter.magnitude(at: 0, sampleRate: rate) < 1e-6)
+        #expect(filter.magnitude(at: 300, sampleRate: rate) < 0.05)
+        #expect(filter.magnitude(at: 19_200, sampleRate: rate) > 0.9)
+    }
+
+    @Test("A bandpass peaks where it is tuned and falls away either side")
+    func bandpassResponse() {
+        let filter = Biquad(bandpass: 2000, q: 4, sampleRate: rate)
+        let peak = filter.magnitude(at: 2000, sampleRate: rate)
+        #expect(abs(peak - 1) < 0.05)
+        #expect(filter.magnitude(at: 500, sampleRate: rate) < 0.4)
+        #expect(filter.magnitude(at: 8000, sampleRate: rate) < 0.4)
     }
 
     @Test("The response falls monotonically above the corner")
@@ -70,6 +93,19 @@ struct DelayLineTests {
         #expect(onset == 480)
     }
 
+    @Test("A fractional delay lands between samples")
+    func fractional() {
+        var line = DelayLine(maximum: 1, delay: 0.01, sampleRate: rate)
+        // A ramp in, read back half a sample late: every output should sit
+        // midway between two inputs.
+        for i in 0..<200 {
+            let out = line.process(Double(i), delaySamples: 10.5)
+            if i > 20 {
+                #expect(abs(out - (Double(i) - 10.5)) < 1e-9, "frame \(i): \(out)")
+            }
+        }
+    }
+
     @Test("Clearing empties the line")
     func clearing() {
         var line = DelayLine(maximum: 1, delay: 0.01, sampleRate: rate)
@@ -79,51 +115,315 @@ struct DelayLineTests {
     }
 }
 
-@Suite("Slap delay")
-struct SlapDelayTests {
-    @Test("Echoes land 170 ms apart and get quieter")
-    func echoes() {
-        var slap = SlapDelay(sampleRate: rate)
-        var peaks: [(frame: Int, value: Double)] = []
-        var window: (frame: Int, value: Double) = (0, 0)
+@Suite("Oscillator")
+struct OscillatorTests {
+    private func run(_ waveform: Waveform, frequency: Double, frames: Int) -> [Double] {
+        var oscillator = Oscillator(waveform: waveform)
+        return (0..<frames).map { _ in
+            oscillator.render(frequency: frequency, sampleRate: rate)
+        }
+    }
 
-        for i in 0..<Int(rate * 0.8) {
-            let out = abs(slap.process(left: i == 0 ? 1 : 0, right: 0).left)
-            if out > window.value { window = (i, out) }
-            // Close off a window every 170 ms and keep its peak.
-            if i % Int(rate * SlapDelay.delayTime) == Int(rate * SlapDelay.delayTime) - 1 {
-                if window.value > 1e-6 { peaks.append(window) }
-                window = (0, 0)
+    @Test("Every shape stays inside the rails and carries some level")
+    func levels() {
+        for waveform in Waveform.allCases {
+            let out = run(waveform, frequency: 220, frames: 4800)
+            #expect(out.allSatisfy { abs($0) <= 1.05 }, "\(waveform) overshot")
+            #expect(rms(out) > 0.1, "\(waveform) was too quiet")
+        }
+    }
+
+    /// A shape whose modulator runs at the carrier's own frequency carries
+    /// a constant term — AM because a quarter of its output is a squared
+    /// sine, FM because the carrier spends longer at some phases than
+    /// others. Both are what Tone produces, and the amplitude envelope takes
+    /// the note up from and back down to silence either way, so neither
+    /// clicks. The plain shapes have no such excuse.
+    @Test("Only the self-modulated shapes carry a standing offset")
+    func dcOffset() {
+        let selfModulated: Set<Waveform> = [.amSine, .fmSine, .fmTriangle]
+
+        for waveform in Waveform.allCases {
+            // A whole number of cycles, so any residue is the shape's own.
+            let out = run(waveform, frequency: 100, frames: 4800)
+            let mean = out.reduce(0, +) / Double(out.count)
+
+            if selfModulated.contains(waveform) {
+                #expect(abs(mean) < 0.3, "\(waveform) sits at \(mean)")
+            } else {
+                #expect(abs(mean) < 0.06, "\(waveform) sits at \(mean)")
             }
         }
+    }
 
-        #expect(peaks.count >= 3)
-        for (a, b) in zip(peaks, peaks.dropFirst()) {
-            let spacing = Double(b.frame - a.frame) / rate
-            #expect(abs(spacing - SlapDelay.delayTime) < 0.02)
-            #expect(b.value < a.value)  // feedback below unity, so it decays
+    @Test("A sine is a sine")
+    func sineIsExact() {
+        let out = run(.sine, frequency: 480, frames: 100)
+        for (i, value) in out.enumerated() {
+            #expect(abs(value - sin(2 * .pi * 480 * Double(i) / rate)) < 1e-12)
         }
     }
 
-    @Test("The send is quiet: the first echo is a fraction of the input")
-    func sendLevel() {
-        var slap = SlapDelay(sampleRate: rate)
-        var loudest = 0.0
-        for i in 0..<Int(rate * 0.25) {
-            loudest = max(loudest, abs(slap.process(left: i == 0 ? 1 : 0, right: 0).left))
+    @Test("It comes back to the same place after a whole number of cycles")
+    func periodic() {
+        // The fat shapes are three voices detuned against each other, so
+        // they are aperiodic on purpose — that beating is the whole point of
+        // them. Everything else must land back where it started.
+        let steady = Waveform.allCases.filter {
+            $0 != .fatSawtooth && $0 != .fatTriangle
         }
-        #expect(loudest < SlapDelay.sendGain)
+        for waveform in steady {
+            let out = run(waveform, frequency: 100, frames: 1440)  // three cycles
+            let period = Int(rate / 100)
+            for i in 0..<period {
+                #expect(
+                    abs(out[i] - out[i + period]) < 1e-6,
+                    "\(waveform) drifted by frame \(i)")
+            }
+        }
     }
 
-    @Test("The feedback loop settles instead of running away")
-    func converges() {
-        var slap = SlapDelay(sampleRate: rate)
+    @Test("The fat shapes beat instead of repeating")
+    func fatDrifts() {
+        for waveform in [Waveform.fatSawtooth, .fatTriangle] {
+            let out = run(waveform, frequency: 100, frames: 1440)
+            let period = Int(rate / 100)
+            let drift = (0..<period).map { abs(out[$0] - out[$0 + period]) }.max() ?? 0
+            #expect(drift > 0.01, "\(waveform) did not drift at all")
+        }
+    }
+
+    /// A naive sawtooth folds its whole spectrum back on itself. The
+    /// band-limited one should be far quieter above Nyquist's reflection.
+    @Test("Sawtooth and square are band-limited")
+    func bandLimited() {
+        // A high note, where aliasing is worst: 5 kHz has only four
+        // harmonics below Nyquist.
+        for waveform in [Waveform.fatSawtooth, .square] {
+            let out = run(waveform, frequency: 5000, frames: 8192)
+            // Energy near DC is where alias products pile up; a clean
+            // 5 kHz tone should have almost none.
+            var low = 0.0
+            var filter = Biquad(lowpass: 800, sampleRate: rate)
+            for value in out { low += pow(filter.process(value), 2) }
+            let ratio = (low / Double(out.count)).squareRoot() / rms(out)
+            #expect(ratio < 0.1, "\(waveform) aliased: \(ratio)")
+        }
+    }
+
+    @Test("Resetting starts the phase over")
+    func resetting() {
+        var oscillator = Oscillator(waveform: .sine)
+        for _ in 0..<100 { _ = oscillator.render(frequency: 440, sampleRate: rate) }
+        oscillator.reset()
+        #expect(abs(oscillator.render(frequency: 440, sampleRate: rate)) < 1e-12)
+    }
+}
+
+@Suite("Envelopes")
+struct EnvelopeTests {
+    @Test("Attack rises, decay falls to sustain, release falls to nothing")
+    func shape() {
+        var envelope = ADSR(attack: 0.01, decay: 0.05, sustain: 0.4, release: 0.1)
+        envelope.trigger(duration: 0.2)
+
+        // Halfway up the attack.
+        for _ in 0..<Int(0.005 * rate) { _ = envelope.next(sampleRate: rate) }
+        let rising = envelope.next(sampleRate: rate)
+        #expect(rising > 0.4 && rising < 0.6)
+
+        // Through the decay, at sustain.
+        for _ in 0..<Int(0.07 * rate) { _ = envelope.next(sampleRate: rate) }
+        #expect(abs(envelope.next(sampleRate: rate) - 0.4) < 0.01)
+
+        // Past the hold, into the release, and gone.
+        for _ in 0..<Int(0.35 * rate) { _ = envelope.next(sampleRate: rate) }
+        #expect(envelope.isFinished)
+        #expect(envelope.next(sampleRate: rate) == 0)
+    }
+
+    @Test("A note lets go of itself when its time is up")
+    func selfReleasing() {
+        var envelope = ADSR(attack: 0.001, decay: 0.01, sustain: 0.8, release: 0.05)
+        envelope.trigger(duration: 0.1)
+        var frames = 0
+        while !envelope.isFinished && frames < Int(rate) {
+            _ = envelope.next(sampleRate: rate)
+            frames += 1
+        }
+        let seconds = Double(frames) / rate
+        #expect(abs(seconds - 0.15) < 0.01, "ran for \(seconds)s")
+    }
+
+    @Test("A note cut during its attack falls from where it was")
+    func releaseFromPartial() {
+        var envelope = ADSR(attack: 1, decay: 0.1, sustain: 0.5, release: 0.05)
+        envelope.trigger(duration: 10)
+        for _ in 0..<Int(0.25 * rate) { _ = envelope.next(sampleRate: rate) }
+        let level = envelope.next(sampleRate: rate)
+        envelope.releaseNow()
+        let first = envelope.next(sampleRate: rate)
+        #expect(first <= level)
+        #expect(first > level * 0.9)
+    }
+
+    @Test("A drum's pitch falls to the note it was given")
+    func pitchDrop() {
+        var pitch = PitchEnvelope(octaves: 3, decay: 0.05)
+        let start = pitch.next(base: 100, sampleRate: rate)
+        #expect(abs(start - 800) < 1)  // three octaves up
+
+        for _ in 0..<Int(0.05 * rate) { _ = pitch.next(base: 100, sampleRate: rate) }
+        #expect(abs(pitch.next(base: 100, sampleRate: rate) - 100) < 1)
+    }
+}
+
+@Suite("Noise")
+struct NoiseTests {
+    @Test("White noise is loud, centred and unpredictable")
+    func white() {
+        var noise = Noise(colour: .white, seed: 12345)
+        let out = (0..<48_000).map { _ in noise.next() }
+        #expect(out.allSatisfy { abs($0) <= 1 })
+        #expect(abs(out.reduce(0, +) / Double(out.count)) < 0.02)
+        #expect(rms(out) > 0.4)
+    }
+
+    @Test("Pink noise has more weight down low than white does")
+    func pink() {
+        func lowEnergy(_ colour: NoiseColour) -> Double {
+            var noise = Noise(colour: colour, seed: 999)
+            var filter = Biquad(lowpass: 400, sampleRate: rate)
+            let out = (0..<48_000).map { _ in filter.process(noise.next()) }
+            var flat = Noise(colour: colour, seed: 999)
+            let whole = (0..<48_000).map { _ in flat.next() }
+            return rms(out) / rms(whole)
+        }
+        #expect(lowEnergy(.pink) > lowEnergy(.white) * 1.5)
+    }
+
+    @Test("Different seeds give different noise")
+    func seeded() {
+        var a = Noise(seed: 1)
+        var b = Noise(seed: 2)
+        let first = (0..<100).map { _ in a.next() }
+        let second = (0..<100).map { _ in b.next() }
+        #expect(first != second)
+    }
+}
+
+@Suite("Effects")
+struct EffectsTests {
+    @Test("The chorus moves what it passes")
+    func chorusModulates() {
+        var chorus = Chorus(depth: 0.55, wet: 1, sampleRate: rate)
+        var oscillator = Oscillator(waveform: .sine)
+        var out: [Double] = []
+        for _ in 0..<Int(rate * 3) {
+            let input = oscillator.render(frequency: 440, sampleRate: rate)
+            out.append(chorus.process(left: input, right: input).left)
+        }
+        // A steady tone through a moving delay comes out with its level
+        // wobbling; through a still one it would not.
+        let early = rms(Array(out[Int(rate)..<Int(rate * 1.2)]))
+        let later = rms(Array(out[Int(rate * 2)..<Int(rate * 2.2)]))
+        #expect(early > 0.1 && later > 0.1)
+        #expect(out.allSatisfy { $0.isFinite })
+    }
+
+    @Test("The ping-pong delay lands on one side, then the other")
+    func pingPongAlternates() {
+        var delay = PingPongDelay(delayTime: 0.05, feedback: 0.5, wet: 1, sampleRate: rate)
+        var left: [Double] = []
+        var right: [Double] = []
+        for i in 0..<Int(rate * 0.3) {
+            let out = delay.process(left: i == 0 ? 1 : 0, right: i == 0 ? 1 : 0)
+            left.append(out.left)
+            right.append(out.right)
+        }
+        let firstLeft = left.firstIndex { abs($0) > 0.01 }
+        let firstRight = right.firstIndex { abs($0) > 0.01 }
+        #expect(firstLeft != nil && firstRight != nil)
+        // The right side is one delay behind the left.
+        #expect(abs(Double((firstRight ?? 0) - (firstLeft ?? 0)) - rate * 0.05) < 2)
+    }
+
+    @Test("The delay decays instead of running away")
+    func pingPongDecays() {
+        var delay = PingPongDelay(delayTime: 0.05, feedback: 0.5, wet: 1, sampleRate: rate)
         var late = 0.0
-        for i in 0..<Int(rate * 12) {
-            let out = slap.process(left: i == 0 ? 1 : 0, right: 0).left
-            if i > Int(rate * 10) { late = max(late, abs(out)) }
+        for i in 0..<Int(rate * 20) {
+            let out = delay.process(left: i == 0 ? 1 : 0, right: 0)
+            if i > Int(rate * 15) { late = max(late, abs(out.left)) }
         }
-        #expect(late < 1e-6)
+        #expect(late < 1e-4)
+    }
+
+    @Test("Distortion is gentle in the middle and firm at the edges")
+    func distortionCurve() {
+        let amount = 0.08
+        // Small signals pass close to untouched, loud ones are pulled in.
+        #expect(abs(Distortion.shape(0.05, amount: amount) - 0.05) < 0.02)
+        #expect(Distortion.shape(1, amount: amount) < 1)
+        // And it is odd-symmetric, which is what keeps it musical.
+        for x in stride(from: 0.0, through: 1.0, by: 0.1) {
+            #expect(
+                abs(Distortion.shape(x, amount: amount) + Distortion.shape(-x, amount: amount))
+                    < 1e-12)
+        }
+    }
+}
+
+@Suite("Reverb")
+struct ReverbTests {
+    @Test("It rings on after the sound has stopped")
+    func tail() {
+        var reverb = Reverb(decay: 7, sampleRate: rate)
+        var out: [Double] = []
+        for i in 0..<Int(rate * 4) {
+            let input = i < Int(rate * 0.05) ? sin(Double(i) * 0.05) : 0
+            out.append(reverb.process(left: input, right: input).left)
+        }
+        // Two seconds after the source stopped there is still a room.
+        let late = rms(Array(out[Int(rate * 2)..<Int(rate * 2.5)]))
+        #expect(late > 1e-4, "the tail died at \(late)")
+    }
+
+    @Test("A seven-second decay is quieter than a one-second decay")
+    func decayLength() {
+        func energyAfter(_ decay: Double) -> Double {
+            var reverb = Reverb(decay: decay, sampleRate: rate)
+            var out: [Double] = []
+            for i in 0..<Int(rate * 3) {
+                let input = i < 100 ? 1.0 : 0
+                out.append(reverb.process(left: input, right: input).left)
+            }
+            return rms(Array(out[Int(rate * 2)...]))
+        }
+        #expect(energyAfter(7) > energyAfter(1) * 5)
+    }
+
+    @Test("It settles rather than building up")
+    func stable() {
+        var reverb = Reverb(decay: 7, sampleRate: rate)
+        var peak = 0.0
+        for i in 0..<Int(rate * 30) {
+            let out = reverb.process(left: i < 100 ? 1 : 0, right: 0)
+            peak = max(peak, abs(out.left))
+            if i > Int(rate * 25) { #expect(abs(out.left) < 1e-3) }
+        }
+        #expect(peak < 4)
+    }
+
+    @Test("The two sides are not the same signal")
+    func stereo() {
+        var reverb = Reverb(sampleRate: rate)
+        var different = false
+        for i in 0..<Int(rate) {
+            let out = reverb.process(left: i < 100 ? 1 : 0, right: i < 100 ? 1 : 0)
+            if abs(out.left - out.right) > 1e-6 { different = true }
+        }
+        #expect(different)
     }
 }
 
@@ -131,28 +431,20 @@ struct SlapDelayTests {
 struct LimiterTests {
     @Test("Quiet signals pass untouched")
     func belowKnee() {
-        // The knee opens 15 dB below the threshold, so anything under −23 dB
-        // is not compressed at all.
         #expect(Limiter.gainReduction(forLevel: -40) == 0)
         #expect(Limiter.gainReduction(forLevel: -24) == 0)
     }
 
     @Test("Loud signals are pulled toward the threshold")
     func aboveKnee() {
-        // The knee is 30 dB wide, so the full ratio only applies from
-        // −8 + 15 = +7 dB up. At +12 dB, 12:1 puts the output at
-        // −8 + 20/12 ≈ −6.33 dB.
         let output = 12 + Limiter.gainReduction(forLevel: 12)
         #expect(abs(output - (-8 + 20 / 12.0)) < 1e-9)
-        // Getting louder still buys almost nothing: 12 dB more in, 1 dB out.
         let louder = 24 + Limiter.gainReduction(forLevel: 24)
         #expect(abs((louder - output) - 1) < 1e-9)
     }
 
     /// What a soft knee is: the ratio arrives gradually rather than
-    /// switching on. It starts compressing a little below the threshold and
-    /// reaches the full 12:1 at the top of the knee, and the slope of the
-    /// input/output curve is where that shows.
+    /// switching on.
     @Test("Across the knee the ratio climbs from 1:1 to the full ratio")
     func kneeSlope() {
         func slope(at dB: Double) -> Double {
@@ -162,13 +454,12 @@ struct LimiterTests {
             return (high - low) / (2 * h)
         }
 
-        let kneeStart = Limiter.threshold - Limiter.knee / 2  // −23 dB
-        let kneeEnd = Limiter.threshold + Limiter.knee / 2  // +7 dB
+        let kneeStart = Limiter.threshold - Limiter.knee / 2
+        let kneeEnd = Limiter.threshold + Limiter.knee / 2
 
-        #expect(abs(slope(at: kneeStart - 5) - 1) < 1e-6)  // untouched
-        #expect(abs(slope(at: kneeEnd + 5) - 1 / Limiter.ratio) < 1e-6)  // full ratio
+        #expect(abs(slope(at: kneeStart - 5) - 1) < 1e-6)
+        #expect(abs(slope(at: kneeEnd + 5) - 1 / Limiter.ratio) < 1e-6)
 
-        // And in between it only ever tightens.
         var previous = 1.0
         for dB in stride(from: kneeStart, through: kneeEnd, by: 1) {
             let s = slope(at: dB)
@@ -183,9 +474,9 @@ struct LimiterTests {
         var previous = 0.0
         for dB in stride(from: -40.0, through: 12.0, by: 0.25) {
             let reduction = Limiter.gainReduction(forLevel: dB)
-            #expect(reduction <= 1e-12)  // never boosts
-            #expect(reduction <= previous + 1e-9)  // never eases off as it gets louder
-            #expect(abs(reduction - previous) < 0.5)  // no jump
+            #expect(reduction <= 1e-12)
+            #expect(reduction <= previous + 1e-9)
+            #expect(abs(reduction - previous) < 0.5)
             previous = reduction
         }
     }
@@ -194,13 +485,11 @@ struct LimiterTests {
     func holdsLoudMaterial() {
         var limiter = Limiter(sampleRate: rate)
         var peak = 0.0
-        // A second of full-scale sine, measured after the envelope settles.
         for i in 0..<Int(rate) {
             let x = sin(2 * Double.pi * 220 * Double(i) / rate)
             let out = limiter.process(left: x, right: x)
             if i > Int(rate / 2) { peak = max(peak, abs(out.left)) }
         }
-        // −8 dB is 0.398; the knee lets a little through above that.
         #expect(peak < 0.65)
         #expect(peak > 0.2)
     }
@@ -212,14 +501,13 @@ struct LimiterTests {
             let x = sin(2 * Double.pi * 220 * Double(i) / rate)
             _ = limiter.process(left: x, right: x)
         }
-        // Drop to a quiet tone and let the release run well past 180 ms.
         var peak = 0.0
         for i in 0..<Int(rate) {
             let x = 0.05 * sin(2 * Double.pi * 220 * Double(i) / rate)
             let out = limiter.process(left: x, right: x)
             if i > Int(rate / 2) { peak = max(peak, abs(out.left)) }
         }
-        #expect(peak > 0.045)  // back to roughly unity
+        #expect(peak > 0.045)
     }
 
     @Test("Silence in, silence out")
@@ -229,42 +517,5 @@ struct LimiterTests {
             let out = limiter.process(left: 0, right: 0)
             #expect(out.left == 0 && out.right == 0)
         }
-    }
-}
-
-@Suite("Sample envelope")
-struct SampleEnvelopeTests {
-    @Test("It starts silent, rises over 6 ms, then falls to the floor")
-    func shape() {
-        let envelope = SampleEnvelope(peak: 0.8, release: 0.4)
-        #expect(envelope.value(at: 0) == 0)
-        #expect(abs(envelope.value(at: SampleEnvelope.attack / 2) - 0.4) < 1e-9)
-        #expect(abs(envelope.value(at: SampleEnvelope.attack) - 0.8) < 1e-9)
-        #expect(envelope.value(at: 0.2) < 0.8)
-        #expect(abs(envelope.value(at: 0.4) - SampleEnvelope.floor) < 1e-9)
-        #expect(envelope.value(at: 10) == SampleEnvelope.floor)
-    }
-
-    @Test("The fall never turns back up")
-    func monotoneDecay() {
-        let envelope = SampleEnvelope(peak: 1, release: 0.5)
-        var previous = 1.0
-        for t in stride(from: SampleEnvelope.attack, through: 0.5, by: 0.001) {
-            let v = envelope.value(at: t)
-            #expect(v <= previous + 1e-12)
-            previous = v
-        }
-    }
-
-    @Test("A hit rings for as long as it sounds, within limits")
-    func releaseLength() {
-        // A one-second sample at natural pitch, tail scaled to 50%.
-        #expect(abs(SampleEnvelope.release(bufferDuration: 1, rate: 1, scale: 0.5) - 0.5) < 1e-12)
-        // Played an octave up it is over twice as fast.
-        #expect(abs(SampleEnvelope.release(bufferDuration: 1, rate: 2, scale: 1) - 0.5) < 1e-12)
-        // Long samples are capped at 1.5 s before scaling.
-        #expect(abs(SampleEnvelope.release(bufferDuration: 30, rate: 1, scale: 1) - 1.5) < 1e-12)
-        // And nothing is shorter than 80 ms.
-        #expect(SampleEnvelope.release(bufferDuration: 0.01, rate: 4, scale: 0.1) == 0.08)
     }
 }
