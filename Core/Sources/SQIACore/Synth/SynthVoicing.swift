@@ -42,9 +42,7 @@ public enum SynthVoicing {
         case .rhodes:
             return rhodes(midi: midi, velocity: velocity, using: random)
         case .acid:
-            // Not written yet; `SynthPreset.available` keeps them out of the
-            // picker, and silence is better than a stand-in that lies.
-            return []
+            return acid(midi: midi, velocity: velocity, using: random)
         }
     }
 
@@ -177,6 +175,68 @@ public enum SynthVoicing {
                 ScheduledVoice(recipe: ghost, offset: random.value(0.01, 0.05)))
         }
         return voices
+    }
+
+    // --------------------------------------------------------------- ACID --
+    // A 303 in spirit: one blade through a steep resonant lowpass that an
+    // envelope sweeps on every note. Two octaves below the grid, so it sits
+    // under the other tracks as a bass.
+    //
+    // Resonance and cutoff are where the character lives, so they are what
+    // gets rolled. A loud cell is an accent, and an accent pushes the filter
+    // as well as the amplitude — which is what the accent line on a real 303
+    // does.
+
+    /// Above this a cell counts as an accent.
+    public static let acidAccent = 0.7
+
+    private static func acid(
+        midi: Int,
+        velocity: Double,
+        using random: RandomSource
+    ) -> [ScheduledVoice] {
+        let frequency = Music.frequency(ofMidi: midi)
+        let accent = velocity > acidAccent
+
+        // How resonant the filter is. High Q with a low base is the squelch.
+        let q = accent ? random.value(9, 15) : random.value(4, 11)
+        // Where the sweep starts, and how many octaves it climbs.
+        let base = random.value(90, 260) * (accent ? random.value(1.1, 1.6) : 1)
+        let octaves = accent ? random.value(3, 4.6) : random.value(1.6, 3.4)
+        // How fast it falls back — short is a blip, long is a wow.
+        let sweep = random.value(0.09, 0.42)
+        let duration = random.value(0.06, 0.22)
+        let release = random.value(0.03, 0.14)
+
+        var recipe = VoiceRecipe()
+        recipe.preset = .acid
+        recipe.source = .oscillator
+        // Bass carries far more energy than the other voices at the same
+        // nominal level, so it sits deliberately under them.
+        recipe.gain = VoiceRecipe.gain(
+            db: -18, velocity: accent ? 1 : velocity * 0.85)
+        recipe.frequency = frequency / 4
+        recipe.duration = duration
+
+        recipe.waveform = random.pick([Waveform.sawtooth, .square])
+        recipe.filter = .lowpass
+        recipe.filterCascaded = true
+        recipe.filterQ = q
+        recipe.attack = 0.002
+        recipe.decay = random.value(0.05, 0.3)
+        recipe.sustain = accent ? random.value(0.25, 0.5) : random.value(0.05, 0.25)
+        recipe.release = release
+
+        recipe.filterAttack = random.value(0.002, 0.014)
+        recipe.filterDecay = sweep
+        recipe.filterSustain = random.value(0.02, 0.22)
+        recipe.filterRelease = random.value(0.05, 0.25)
+        recipe.filterFrequency = base
+        recipe.filterOctaves = octaves
+        recipe.detuneCents = random.value(-6, 6)
+
+        recipe.lifetime = duration + release + 0.5
+        return [ScheduledVoice(recipe: recipe)]
     }
 
     // ------------------------------------------------------------- RHODES --

@@ -274,6 +274,192 @@ struct KalimbaTests {
     }
 }
 
+@Suite("ACID")
+struct AcidTests {
+    private func roll(seed: UInt32, velocity: Double) -> VoiceRecipe {
+        SynthVoicing.notes(
+            preset: .acid, midi: 60, velocity: velocity, using: Mulberry32(seed: seed)
+        )[0].recipe
+    }
+
+    @Test("Every rolled value lands inside the web's range")
+    func ranges() {
+        let random = Mulberry32(seed: 61)
+        for run in 0..<400 {
+            // Alternate between accented and soft cells so both branches are
+            // walked, and both sets of ranges checked.
+            let velocity = run % 2 == 0 ? 1.0 : 0.4
+            let accent = velocity > SynthVoicing.acidAccent
+            let voices = SynthVoicing.notes(
+                preset: .acid, midi: 60, velocity: velocity, using: random)
+            #expect(voices.count == 1, "acid is one voice a note")
+            let r = voices[0].recipe
+
+            #expect(r.preset == .acid)
+            #expect(r.waveform == .sawtooth || r.waveform == .square)
+            #expect(r.filter == .lowpass)
+            #expect(r.filterCascaded)
+            // Two octaves below the grid, so it sits under everything else.
+            #expect(abs(r.frequency - Music.frequency(ofMidi: 60) / 4) < 1e-9)
+
+            if accent {
+                #expect(r.filterQ >= 9 && r.filterQ <= 15)
+                #expect(r.filterFrequency >= 90 * 1.1 && r.filterFrequency <= 260 * 1.6)
+                #expect(r.filterOctaves >= 3 && r.filterOctaves <= 4.6)
+                #expect(r.sustain >= 0.25 && r.sustain <= 0.5)
+            } else {
+                #expect(r.filterQ >= 4 && r.filterQ <= 11)
+                #expect(r.filterFrequency >= 90 && r.filterFrequency <= 260)
+                #expect(r.filterOctaves >= 1.6 && r.filterOctaves <= 3.4)
+                #expect(r.sustain >= 0.05 && r.sustain <= 0.25)
+            }
+
+            #expect(r.filterDecay >= 0.09 && r.filterDecay <= 0.42)
+            #expect(r.duration >= 0.06 && r.duration <= 0.22)
+            #expect(r.release >= 0.03 && r.release <= 0.14)
+            #expect(r.attack == 0.002)
+            #expect(r.decay >= 0.05 && r.decay <= 0.3)
+            #expect(r.filterAttack >= 0.002 && r.filterAttack <= 0.014)
+            #expect(r.filterSustain >= 0.02 && r.filterSustain <= 0.22)
+            #expect(r.filterRelease >= 0.05 && r.filterRelease <= 0.25)
+            #expect(abs(r.detuneCents) <= 6)
+        }
+    }
+
+    @Test("Values come off the stream in the web's order")
+    func drawOrder() {
+        let expected = Mulberry32(seed: 21)
+        // A soft cell: no accent, so the base takes no second draw.
+        let q = expected.value(4, 11)
+        let base = expected.value(90, 260)
+        let octaves = expected.value(1.6, 3.4)
+        let sweep = expected.value(0.09, 0.42)
+        let duration = expected.value(0.06, 0.22)
+        let release = expected.value(0.03, 0.14)
+        let waveform = expected.pick([Waveform.sawtooth, .square])
+        let decay = expected.value(0.05, 0.3)
+        let sustain = expected.value(0.05, 0.25)
+        let filterAttack = expected.value(0.002, 0.014)
+        let filterSustain = expected.value(0.02, 0.22)
+        let filterRelease = expected.value(0.05, 0.25)
+        let detune = expected.value(-6, 6)
+
+        let r = roll(seed: 21, velocity: 0.5)
+        #expect(r.filterQ == q)
+        #expect(r.filterFrequency == base)
+        #expect(r.filterOctaves == octaves)
+        #expect(r.filterDecay == sweep)
+        #expect(r.duration == duration)
+        #expect(r.release == release)
+        #expect(r.waveform == waveform)
+        #expect(r.decay == decay)
+        #expect(r.sustain == sustain)
+        #expect(r.filterAttack == filterAttack)
+        #expect(r.filterSustain == filterSustain)
+        #expect(r.filterRelease == filterRelease)
+        #expect(r.detuneCents == detune)
+    }
+
+    @Test("An accent pushes the filter as well as the amp")
+    func accentsPushBoth() {
+        // Averaged, because every value is rolled: what is being checked is
+        // that the accented branch sits higher, not any one note.
+        var loudQ = 0.0
+        var softQ = 0.0
+        var loudOctaves = 0.0
+        var softOctaves = 0.0
+        var loudGain = 0.0
+        var softGain = 0.0
+        let runs = 200
+
+        for seed in 0..<UInt32(runs) {
+            let loud = roll(seed: seed, velocity: 1)
+            let soft = roll(seed: seed, velocity: 0.5)
+            loudQ += loud.filterQ
+            softQ += soft.filterQ
+            loudOctaves += loud.filterOctaves
+            softOctaves += soft.filterOctaves
+            loudGain += loud.gain
+            softGain += soft.gain
+        }
+
+        #expect(loudQ > softQ, "the accent did not squelch harder")
+        #expect(loudOctaves > softOctaves, "the accent did not open further")
+        #expect(loudGain > softGain, "the accent was no louder")
+        // And the level is where the web puts it: -18 dB at full accent.
+        #expect(abs(loudGain / Double(runs) - VoiceRecipe.gain(db: -18)) < 1e-12)
+    }
+
+    // ------------------------------------------------------------- sound --
+
+    private func note(q: Double, octaves: Double) -> VoiceRecipe {
+        var recipe = VoiceRecipe()
+        recipe.preset = .acid
+        recipe.source = .oscillator
+        recipe.waveform = .sawtooth
+        recipe.frequency = 55
+        recipe.gain = 1
+        recipe.duration = 0.2
+        recipe.attack = 0.002
+        recipe.decay = 0.2
+        recipe.sustain = 0.4
+        recipe.release = 0.1
+        recipe.filter = .lowpass
+        recipe.filterCascaded = true
+        recipe.filterQ = q
+        recipe.filterFrequency = 120
+        recipe.filterOctaves = octaves
+        recipe.filterAttack = 0.005
+        recipe.filterDecay = 0.3
+        recipe.filterSustain = 0.05
+        recipe.filterRelease = 0.15
+        recipe.lifetime = 0.8
+        return recipe
+    }
+
+    /// How much of a signal sits in its fast-moving part.
+    private func edge(_ samples: [Double]) -> Double {
+        var difference = 0.0
+        var total = 0.0
+        for i in 1..<samples.count {
+            let d = samples[i] - samples[i - 1]
+            difference += d * d
+            total += samples[i] * samples[i]
+        }
+        return total > 0 ? difference / total : 0
+    }
+
+    @Test("The filter opens at the attack and closes behind it")
+    func filterSweeps() {
+        let out = render(note(q: 8, octaves: 4), frames: Int(rate / 2))
+        let opened = edge(Array(out[512..<3072]))
+        let closed = edge(Array(out[12288..<14848]))
+        #expect(opened > closed * 1.5, "open \(opened) against closed \(closed)")
+        #expect(rms(Array(out[0..<4096])) > 0, "nothing came out")
+    }
+
+    @Test("Resonance is what makes it squelch")
+    func resonanceRings() {
+        // A high Q leaves a ringing peak at the cutoff, which shows up as
+        // more energy for the same input.
+        let calm = rms(render(note(q: 1, octaves: 3), frames: Int(rate / 2)))
+        let squelchy = rms(render(note(q: 15, octaves: 3), frames: Int(rate / 2)))
+        #expect(squelchy > calm * 2, "\(squelchy) against \(calm)")
+    }
+
+    @Test("Even at the edge of self-oscillation it stays finite")
+    func staysFinite() {
+        for q in [4.0, 9, 12, 15] {
+            for octaves in [1.6, 3, 4.6] {
+                let out = render(note(q: q, octaves: octaves), frames: Int(rate))
+                #expect(
+                    out.allSatisfy { $0.isFinite },
+                    "Q \(q) over \(octaves) octaves went non-finite")
+            }
+        }
+    }
+}
+
 @Suite("RHODES")
 struct RhodesTests {
     private func roll(seed: UInt32, velocity: Double = 0.9) -> [ScheduledVoice] {

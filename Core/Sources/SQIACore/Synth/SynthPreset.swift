@@ -37,9 +37,8 @@ public enum SynthPreset: Int, Sendable, CaseIterable {
         }
     }
 
-    /// The presets that have voices behind them. The rest are being written;
-    /// the picker offers what can actually be heard.
-    public static let available: [SynthPreset] = [.reverie, .kalimba, .rhodes, .machine]
+    /// All five have voices now, so the picker offers the web's list whole.
+    public static let available: [SynthPreset] = allCases
 }
 
 /// Where a preset's shared chain sits, and how far it is allowed to wander.
@@ -168,6 +167,17 @@ public struct VoiceRecipe: Sendable, Equatable {
     // none.
     public var tremoloRate: Double = 0
     public var tremoloDepth: Double = 0
+
+    // The 303's filter: steep, resonant, and swept by an envelope of its
+    // own. Zero octaves means the filter stays where it was put.
+    /// Two cascaded sections rather than one — Tone's −24 dB an octave.
+    public var filterCascaded = false
+    /// How far above `filterFrequency` the sweep reaches, in octaves.
+    public var filterOctaves: Double = 0
+    public var filterAttack: Double = 0.005
+    public var filterDecay: Double = 0.2
+    public var filterSustain: Double = 0.1
+    public var filterRelease: Double = 0.2
 
     public init() {}
 

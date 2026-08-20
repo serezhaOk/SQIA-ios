@@ -19,6 +19,10 @@ public enum Waveform: Int, Sendable, CaseIterable {
     case fmTriangle
     case amSine
     case square
+    /// One plain blade. REVERIE only ever asks for the fat sawtooth; the
+    /// 303 wants a single one, so it comes last and disturbs no raw value
+    /// above it.
+    case sawtooth
 
     /// The order the web's OSC_TYPES lists them in.
     public static let reverieChoices: [Waveform] = [
@@ -150,6 +154,11 @@ public struct Oscillator: Sendable {
 
         case .square:
             let value = Self.square(phase, dt)
+            Self.advance(&phase, by: dt)
+            return value
+
+        case .sawtooth:
+            let value = Self.sawtooth(phase, dt)
             Self.advance(&phase, by: dt)
             return value
 

@@ -18,6 +18,13 @@ public struct SynthVoice: Sendable {
     private var amp = ADSR()
     private var pitch = PitchEnvelope(octaves: 0, decay: 0.05)
     private var filter = Biquad(lowpass: 20_000, sampleRate: 48_000)
+    /// The second half of a −24 dB an octave cascade, used only when the
+    /// recipe asks for one.
+    private var filterB = Biquad(lowpass: 20_000, sampleRate: 48_000)
+    /// The 303's sweep. Tone scales it linearly between the base frequency
+    /// and `octaves` above, through a square — so the envelope's own shape
+    /// is what the cutoff traces.
+    private var filterEnvelope = ADSR()
     private var oscillator = Oscillator()
     private var noise = Noise()
     /// Built once per slot, because its delay line is the only thing in a
@@ -47,6 +54,9 @@ public struct SynthVoice: Sendable {
     private var filterRemaining = 0
     private var sinceFilterUpdate = 0
     private static let filterUpdateInterval = 64
+    /// The 303's sweep is retuned four times as often: its attack can be two
+    /// milliseconds, and at sixty-four samples that would be one update.
+    private static let sweepUpdateInterval = 16
 
     // The metal stack, written out rather than held in an array so nothing
     // in the render loop can allocate.
@@ -97,9 +107,19 @@ public struct SynthVoice: Sendable {
             filterRemaining = 0
             filterStep = 0
         }
+        if recipe.filterOctaves > 0 {
+            filterEnvelope = ADSR(
+                attack: recipe.filterAttack,
+                decay: recipe.filterDecay,
+                sustain: recipe.filterSustain,
+                release: recipe.filterRelease)
+            filterEnvelope.trigger(duration: recipe.duration, sampleRate: sampleRate)
+            filterFrequency = recipe.filterFrequency
+        }
         sinceFilterUpdate = 0
         setFilter()
         filter.reset()
+        filterB.reset()
 
         switch recipe.source {
         case .oscillator:
@@ -167,14 +187,22 @@ public struct SynthVoice: Sendable {
         return UInt32(truncatingIfNeeded: mix)
     }
 
-    /// Point the biquad at wherever the sweep has reached.
+    /// Point the biquad — or both of them — at wherever the sweep has
+    /// reached. Tone gives every section of a cascade the same Q, which is
+    /// why a resonant 303 filter is as loud as it is.
     private mutating func setFilter() {
+        // Coefficients only — the setters leave the filter's memory alone,
+        // which is what lets a cutoff move without clicking.
         switch recipe.filter {
         case .none:
-            break
+            return
         case .lowpass:
             filter.setLowpass(
                 frequency: filterFrequency, q: recipe.filterQ, sampleRate: sampleRate)
+            if recipe.filterCascaded {
+                filterB.setLowpass(
+                    frequency: filterFrequency, q: recipe.filterQ, sampleRate: sampleRate)
+            }
         case .bandpass:
             filter.setBandpass(
                 frequency: filterFrequency, q: recipe.filterQ, sampleRate: sampleRate)
@@ -288,9 +316,21 @@ public struct SynthVoice: Sendable {
         }
 
         if recipe.filter != .none {
-            // A sweeping filter moves a little every sample and is retuned
-            // every sixty-fourth of them.
-            if filterRemaining > 0 {
+            if recipe.filterOctaves > 0 {
+                // The 303's sweep. Tone scales the envelope linearly between
+                // the base and `octaves` above it, through a square — so a
+                // squared envelope, not an exponential one.
+                let shape = filterEnvelope.next()
+                sinceFilterUpdate += 1
+                if sinceFilterUpdate >= Self.sweepUpdateInterval {
+                    sinceFilterUpdate = 0
+                    let reach = pow(2, recipe.filterOctaves) - 1
+                    filterFrequency = recipe.filterFrequency * (1 + reach * shape * shape)
+                    setFilter()
+                }
+            } else if filterRemaining > 0 {
+                // A plain ramp, moving a little every sample and retuned
+                // every sixty-fourth of them.
                 filterFrequency += filterStep
                 filterRemaining -= 1
                 sinceFilterUpdate += 1
@@ -300,6 +340,7 @@ public struct SynthVoice: Sendable {
                 }
             }
             value = filter.process(value)
+            if recipe.filterCascaded { value = filterB.process(value) }
         }
 
         age += 1
