@@ -309,6 +309,18 @@ final class SequencerModel {
         publishVoicing()
     }
 
+    func selectRoot(_ pc: Int) {
+        guard pc != state.rootPc else { return }
+        state.setRoot(pc)
+        publishVoicing()
+    }
+
+    func selectScale(_ index: Int) {
+        guard index != state.scaleIndex else { return }
+        state.setScale(index)
+        publishVoicing()
+    }
+
     func cycleTrack() {
         state.cycleTrack()
     }

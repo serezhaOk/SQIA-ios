@@ -64,6 +64,44 @@ struct SequencerStateTests {
         #expect(state.activeTrack.grid == pattern)
     }
 
+    /// The picker sets the key outright. Cycling to it and choosing it have
+    /// to land in the same place, and nothing out of range may move it.
+    @Test("Choosing a key lands where cycling to it would")
+    func keyCanBeSetOutright() {
+        var chosen = fresh()
+        var cycled = fresh()
+
+        // However far it happens to be from where a fresh session starts.
+        let steps = (7 - chosen.rootPc + 12) % 12
+        chosen.setRoot(7)
+        for _ in 0..<steps { cycled.cycleRoot() }
+        #expect(chosen.rootPc == cycled.rootPc)
+        #expect(chosen.midiTable == cycled.midiTable)
+
+        let scaleSteps = (3 - chosen.scaleIndex + 5) % 5
+        chosen.setScale(3)
+        for _ in 0..<scaleSteps { cycled.cycleScale() }
+        #expect(chosen.scale == cycled.scale)
+
+        // Out of range is ignored rather than clamped: a picker cannot ask
+        // for one, and silently landing somewhere else would be worse.
+        chosen.setRoot(-1)
+        chosen.setRoot(99)
+        chosen.setScale(99)
+        #expect(chosen.rootPc == 7)
+        #expect(chosen.scaleIndex == 3)
+    }
+
+    @Test("A pattern survives the key being chosen")
+    func choosingAKeyKeepsThePattern() {
+        var state = fresh()
+        state.brush(gx: 3.5, gy: 5.5)
+        let pattern = state.activeTrack.grid
+        state.setRoot(9)
+        state.setScale(2)
+        #expect(state.activeTrack.grid == pattern)
+    }
+
     @Test("Drawing only touches the active track")
     func editsGoToTheActiveTrack() {
         var state = fresh()

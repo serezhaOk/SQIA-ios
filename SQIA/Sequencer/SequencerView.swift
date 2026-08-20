@@ -11,6 +11,7 @@ import SwiftUI
 struct SequencerView: View {
     @State private var model = SequencerModel()
     @State private var showingVoices = false
+    @State private var showingKey = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -27,6 +28,14 @@ struct SequencerView: View {
                     model.selectVoice(preset)
                     showingVoices = false
                 }
+            )
+        }
+        .sheet(isPresented: $showingKey) {
+            KeySheet(
+                rootPc: model.state.rootPc,
+                scaleIndex: model.state.scaleIndex,
+                onPickRoot: { model.selectRoot($0) },
+                onPickScale: { model.selectScale($0) }
             )
         }
         .onAppear { model.start() }
@@ -57,9 +66,12 @@ struct SequencerView: View {
             Spacer(minLength: 8)
             trackDots
             Spacer(minLength: 8)
+            // One tap opens the key rather than stepping it: reaching the
+            // twelfth note by tapping eleven times is a web gesture, not a
+            // phone one.
             HStack(spacing: 10) {
-                label(model.state.rootName) { model.cycleRoot() }
-                label(model.state.scale.name.uppercased()) { model.cycleScale() }
+                label(model.state.rootName) { showingKey = true }
+                label(model.state.scale.name.uppercased()) { showingKey = true }
             }
         }
         .padding(.horizontal, 20)

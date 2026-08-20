@@ -1,8 +1,14 @@
-// The sound picker: a list of voices, the current one ticked.
+// The sound picker.
 //
-// The web slides a sheet up over the sequencer, at most three quarters of
-// the screen, with a grip at the top. A system sheet with a detent gets to
-// the same place; the styling is the web's.
+// The web slides a styled panel up over the sequencer. On a phone the thing
+// that belongs here is the sheet iOS already has: a grouped list, a title, a
+// Done button, a checkmark on the row that is set. It reads as part of the
+// system rather than as a web page in a frame, and it gets voice-over,
+// Dynamic Type and the scroll behaviour for free.
+//
+// A deliberate departure from the port's usual rule, at the owner's call:
+// modals and buttons follow the platform, the sequencer itself follows the
+// web.
 
 import SQIACore
 import SwiftUI
@@ -11,60 +17,54 @@ struct VoiceSheet: View {
     let selected: Int
     let onPick: (SynthPreset) -> Void
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text("Sound")
-                .manrope(.semibold, 15)
-                .foregroundStyle(Palette.muted)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 10)
+    @Environment(\.dismiss) private var dismiss
 
-            ScrollView {
-                LazyVStack(spacing: 2) {
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
                     ForEach(VoiceCatalog.offered, id: \.rawValue) { preset in
                         row(preset)
                     }
+                } footer: {
+                    Text("The patch drifts once a bar, and every note is rolled fresh.")
+                }
+            }
+            .navigationTitle("Sound")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.sheet)
-        .presentationDetents([.fraction(0.76)])
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .presentationBackground(Palette.sheet)
     }
 
     private func row(_ preset: SynthPreset) -> some View {
-        let isSelected = preset.rawValue == selected
-        return Button {
+        Button {
             onPick(preset)
         } label: {
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(preset.label)
-                        .manrope(.regular, 16)
-                        .foregroundStyle(Palette.ui)
+                        .font(.body)
                     Text(preset.hint)
-                        .manrope(.regular, 13)
-                        .foregroundStyle(Palette.muted)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Palette.ui)
-                    .opacity(isSelected ? 1 : 0)
+                if preset.rawValue == selected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
             }
-            .padding(.vertical, 15)
-            .padding(.horizontal, 14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? Palette.menuPressed : .clear)
-            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(preset.rawValue == selected ? [.isSelected] : [])
     }
 }
 

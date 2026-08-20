@@ -19,7 +19,7 @@ each part maps onto iOS.
 | M2 — audio foundation | done |
 | M3 — the field on Metal | done |
 | M4 — the sequencer screen | done |
-| M5 — the five synths | REVERIE and MACHINE done; three to go |
+| M5 — the five synths | done |
 | M6–M10 | see [PLAN.md](PLAN.md) |
 
 What runs today: the sequencer. Draw on the field with a finger and it
@@ -27,12 +27,19 @@ sounds; drag the tempo, cycle the key, erase, scatter a pattern, pick a
 sound, step between the two tracks. The dots bloom exactly when their note
 lands.
 
-The sounds are synthesised, not sampled — the sample set is gone. Two of the
-five presets are written: REVERIE, the drifting pad, and MACHINE, the drums
-whose instrument is chosen by the column's register. They are the two the web
-starts its tracks on, so a new session sounds like a new session there.
-KALIMBA, RHODES and ACID are next, and the picker only offers what can
-actually be heard.
+The sounds are synthesised, not sampled — the sample set is gone. All five
+presets are written: REVERIE the drifting pad, KALIMBA a plucked string,
+RHODES an FM electric piano with a stereo tremolo, ACID a 303 whose filter
+an envelope sweeps on every note, and MACHINE the drums whose instrument is
+chosen by the column's register. Every rolled value comes off the random
+stream in the order the web takes it, including the ones Tone asks for and
+never uses.
+
+Modals and buttons are native iOS rather than ports of the web's — system
+sheets for the sound and the key, with the platform's scrolling, Dynamic
+Type and VoiceOver behaviour. The sequencer itself is still the web's,
+gesture for gesture. One consequence worth naming: the key is chosen from a
+list instead of cycled a semitone per tap.
 
 The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
 lives in `SQIACore`, where it can be tested off a device. [PLAN.md](PLAN.md)

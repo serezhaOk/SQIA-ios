@@ -88,6 +88,19 @@ public struct SequencerState: Sendable, Equatable {
         scaleIndex = (scaleIndex + 1) % Music.scales.count
     }
 
+    /// Set the key outright rather than stepping to it — which is what a
+    /// picker does, and what tapping eleven times to reach the twelfth note
+    /// is not.
+    public mutating func setRoot(_ pc: Int) {
+        guard Music.noteNames.indices.contains(pc) else { return }
+        rootPc = pc
+    }
+
+    public mutating func setScale(_ index: Int) {
+        guard Music.scales.indices.contains(index) else { return }
+        scaleIndex = index
+    }
+
     // ------------------------------------------------------------ the track --
 
     public var activeTrack: TrackState {
