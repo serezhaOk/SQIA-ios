@@ -75,12 +75,16 @@ private func measureRender(
 
 @Suite("Render cost")
 struct RenderCostTests {
-    /// Unoptimised Swift is several times slower than what ships, and says
-    /// nothing about it, so the two builds are held to different bars: debug
-    /// only has to avoid being catastrophic, release has to leave room for
-    /// the rest of the phone.
+    /// Release is the bar that means something: the app ships optimised, and
+    /// this is where there has to be room left for the rest of the phone.
+    ///
+    /// The debug number is printed because it is interesting — it is what a
+    /// Run build would have cost before the project was set to optimise the
+    /// core — but it is not held to anything tight. Unoptimised Swift is
+    /// several times slower, by a factor that depends on the machine, and a
+    /// shared CI runner is not the machine anyone ships on.
     #if DEBUG
-        static let ceiling = 0.9
+        static let ceiling = 3.0
     #else
         static let ceiling = 0.25
     #endif
