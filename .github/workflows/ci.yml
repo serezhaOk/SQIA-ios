@@ -28,8 +28,14 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+      # The runner's Xcode is usually newer than a developer's, and newer
+      # compilers accept things older ones reject — a green build here is
+      # only worth something if it is the same toolchain. Printed loudly so
+      # a mismatch is visible when a local build fails and this one did not.
       - name: Show toolchain
-        run: xcodebuild -version
+        run: |
+          xcodebuild -version
+          swift --version
       - name: Build
         run: |
           xcodebuild build \

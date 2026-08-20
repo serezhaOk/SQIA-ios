@@ -69,10 +69,10 @@ final class Sequencer {
 
         queue.async { [weak self] in
             guard let self else { return }
-            let mixer = engine.mixer
-            boundMixer = ObjectIdentifier(mixer)
-            clock.stop()
-            clock.start(now: now(on: mixer))
+            let mixer = self.engine.mixer
+            self.boundMixer = ObjectIdentifier(mixer)
+            self.clock.stop()
+            self.clock.start(now: self.now(on: mixer))
         }
 
         let timer = DispatchSource.makeTimerSource(queue: queue)

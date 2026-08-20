@@ -1,10 +1,15 @@
-// A bench for the audio foundation, and nothing more.
+// A bench for the audio foundation and the field, and nothing more.
 //
 // The sequencer screen does not exist yet, so this stands in for it: one
 // sample, one fixed pattern, and the real engine, transport and renderer
-// underneath. It is what the milestone is judged on — does it hold tempo for
-// ten minutes, does it come back after a phone call, does it survive
-// AirPods — and it goes away when the sequencer arrives.
+// underneath. It is what the milestones are judged on — does it hold tempo
+// for ten minutes, does it come back after a phone call, do the dots bloom
+// exactly when their note lands — and it goes away when the sequencer
+// arrives.
+//
+// Everything here avoids `lazy` and implicit `self`: the Observable macro
+// rewrites stored properties into computed ones, which `lazy` cannot be, and
+// older compilers will not take implicit `self` inside a nested closure.
 
 import Foundation
 import Observation
@@ -15,36 +20,43 @@ import SQIACore
 final class AudioProbe {
     private(set) var isPlaying = false
     private(set) var status = "idle"
-    /// Row currently sounding, for the field to light up.
+    /// Row currently sounding, for the readout.
     private(set) var playhead = -1
     private(set) var stepsPlayed = 0
     private(set) var droppedNotes = 0
+    private(set) var bpm: Double = 120
 
-    var bpm: Double = 120 {
-        didSet { sequencer.bpm = bpm }
-    }
-
-    /// What the field draws. The pattern is fixed, so a drift is a drift
-    /// and not a different pattern.
-    let scene = FieldScene(
+    /// What the field draws. The pattern is fixed, so a drift is a drift and
+    /// not a different pattern.
+    @ObservationIgnored let scene = FieldScene(
         grid: {
             var grid = NoteGrid()
             grid.randomize(using: Mulberry32(seed: 20_260_806))
             return grid
         }())
 
-    var pattern: NoteGrid { scene.grid }
-
-    private let engine = AudioEngine()
-    private lazy var sequencer = Sequencer(engine: engine)
+    @ObservationIgnored private let engine: AudioEngine
+    @ObservationIgnored private let sequencer: Sequencer
 
     /// A sample from the set. The voice list is synths-first and its sample
     /// entries are parked, exactly as in the web app, so the bench names one
     /// directly rather than pretending to pick from a menu.
     private static let benchSample = "bell-kalimbox"
 
+    init() {
+        let engine = AudioEngine()
+        self.engine = engine
+        sequencer = Sequencer(engine: engine)
+    }
+
+    // ------------------------------------------------------------- control --
+
     func toggle() {
-        isPlaying ? stop() : start()
+        if isPlaying {
+            stop()
+        } else {
+            start()
+        }
     }
 
     func start() {
@@ -66,10 +78,10 @@ final class AudioProbe {
         // UI has to follow rather than claim to still be playing.
         engine.onStopped = { [weak self] in
             Task { @MainActor in
-                guard let self, isPlaying else { return }
-                isPlaying = false
-                sequencer.stop()
-                status = "interrupted"
+                guard let self, self.isPlaying else { return }
+                self.isPlaying = false
+                self.sequencer.stop()
+                self.status = "interrupted"
             }
         }
         engine.onRestarted = { [weak self] in
@@ -105,7 +117,9 @@ final class AudioProbe {
             let lit = hits.map { ($0.column, $0.velocity) }
             let delay = max(0, lead)
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                Task { @MainActor in self?.land(step: step, lit: lit, mixer: mixer) }
+                Task { @MainActor in
+                    self?.land(step: step, lit: lit, mixer: mixer)
+                }
             }
         }
 
@@ -124,9 +138,16 @@ final class AudioProbe {
         status = "stopped"
     }
 
-    func bumpTempo() {
-        bpm = Tempo.bump(bpm)
+    func setTempo(_ value: Double) {
+        bpm = Tempo.clamp(value)
+        sequencer.bpm = bpm
     }
+
+    func bumpTempo() {
+        setTempo(Tempo.bump(bpm))
+    }
+
+    // -------------------------------------------------------------- arrival --
 
     private func land(step: Int, lit: [(Int, Double)], mixer: AudioMixer) {
         for (column, velocity) in lit {
