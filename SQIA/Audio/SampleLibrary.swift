@@ -39,6 +39,15 @@ final class SampleLibrary {
         return cache[name] != nil
     }
 
+    /// The decoded sample if it is already in memory, and nothing if it is
+    /// not. Never reads a file, so it is safe to call from anywhere — every
+    /// stroke of a finger goes through here.
+    func cached(_ name: String) -> SampleRef? {
+        lock.lock()
+        defer { lock.unlock() }
+        return cache[name]
+    }
+
     private func decode(_ name: String) -> SampleRef? {
         guard let url = Bundle.main.url(forResource: name, withExtension: "wav") else {
             assertionFailure("sample \(name).wav is missing from the bundle")

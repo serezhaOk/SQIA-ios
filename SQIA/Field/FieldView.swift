@@ -42,7 +42,7 @@ final class FieldScene {
 
 struct FieldView: UIViewRepresentable {
     /// Called once per frame, on the main thread, with the view's bounds.
-    let layers: (CGRect) -> [FieldLayer]
+    let layers: @MainActor (CGRect) -> [FieldLayer]
 
     func makeCoordinator() -> Coordinator {
         Coordinator()

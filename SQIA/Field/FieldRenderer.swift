@@ -44,7 +44,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// Asked for the frame's layers, on the main thread, once per frame.
     /// A closure rather than stored state so the renderer never has to be
     /// told about a change — it simply reads what is current.
-    var layerProvider: (() -> [FieldLayer])?
+    var layerProvider: (@MainActor () -> [FieldLayer])?
 
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
@@ -161,26 +161,33 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
     private func build(dt: Double) {
         instances.removeAll(keepingCapacity: true)
-        guard let layers = layerProvider?() else { return }
 
-        for layer in layers {
-            layer.animator.advance(by: dt)
-            let layout = Field.layout(
-                x: Double(layer.rect.minX),
-                y: Double(layer.rect.minY),
-                width: Double(layer.rect.width),
-                height: Double(layer.rect.height))
+        // MTKView drives its delegate from the main run loop, so this is the
+        // main thread; saying so lets the provider read main-actor state
+        // without a hop the frame cannot afford. The whole build happens
+        // inside, so nothing has to cross the boundary on the way out.
+        MainActor.assumeIsolated {
+            guard let layers = layerProvider?() else { return }
 
-            layer.animator.draws(
-                grid: layer.grid,
-                layout: layout,
-                playhead: layer.playhead,
-                detail: layer.detail,
-                alpha: layer.alpha,
-                into: &draws)
+            for layer in layers {
+                layer.animator.advance(by: dt)
+                let layout = Field.layout(
+                    x: Double(layer.rect.minX),
+                    y: Double(layer.rect.minY),
+                    width: Double(layer.rect.width),
+                    height: Double(layer.rect.height))
 
-            for draw in draws where instances.count < Self.maxInstances {
-                instances.append(instance(for: draw))
+                layer.animator.draws(
+                    grid: layer.grid,
+                    layout: layout,
+                    playhead: layer.playhead,
+                    detail: layer.detail,
+                    alpha: layer.alpha,
+                    into: &draws)
+
+                for draw in draws where instances.count < Self.maxInstances {
+                    instances.append(instance(for: draw))
+                }
             }
         }
     }
