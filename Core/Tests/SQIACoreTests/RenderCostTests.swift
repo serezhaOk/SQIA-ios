@@ -78,13 +78,12 @@ struct RenderCostTests {
     /// Release is the bar that means something: the app ships optimised, and
     /// this is where there has to be room left for the rest of the phone.
     ///
-    /// The debug number is printed because it is interesting — it is what a
-    /// Run build would have cost before the project was set to optimise the
-    /// core — but it is not held to anything tight. Unoptimised Swift is
-    /// several times slower, by a factor that depends on the machine, and a
-    /// shared CI runner is not the machine anyone ships on.
+    /// Debug is now close behind it — the package compiles at `-O` in either
+    /// configuration, because a Run build is what plays on the device — but
+    /// it is held only loosely. A shared CI runner is not the machine anyone
+    /// ships on, and this number should catch a collapse, not drift.
     #if DEBUG
-        static let ceiling = 3.0
+        static let ceiling = 1.0
     #else
         static let ceiling = 0.25
     #endif

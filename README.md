@@ -41,19 +41,24 @@ explains why, and what it costs.
 ## What the render thread costs
 
 A crackle is a missed deadline, so the cost of rendering is measured rather
-than guessed at. `RenderCostTests` reports the realtime factor — seconds of
+than guessed at, in two places.
+
+`RenderCostTests` reports the audio thread's realtime factor — seconds of
 work per second of audio — and holds a release build to 0.25×; two full
-tracks currently come to about 0.08×.
+tracks come to about 0.08×. `FieldCostTests` reports what one frame of the
+field costs the main thread; a saturated field comes to about 0.26 ms
+against a 16.7 ms frame.
 
-Debug builds are several times slower, which is why the project compiles at
-`-O` even in Debug: the app target opts back to `-Onone` so it stays
-debuggable, while `SQIACore`, where every sample is computed, does not. A
-Run build is therefore a fair test of the sound.
+`SQIACore` compiles at `-O` in Debug as well as Release, set in
+`Package.swift` so it does not depend on whether Xcode's project settings
+reach a package target. Unoptimised, the same passage costs five times as
+much, and the audio thread's deadline does not care which configuration is
+being built. A Run build is therefore a fair test of the sound.
 
-On the device, a Debug build shows the same number in the corner of the
-screen, with the count of dropped notes beside it. Under about 0.2× there is
-room to spare; near 1.0× nothing can help. It is `#if DEBUG` only and comes
-out before release.
+On the device, a Debug build floats a meter over the field: the audio load,
+the voices sounding, what a frame costs the main thread, and the frame rate
+actually being delivered, with dropped notes beside them when there are any.
+It is `#if DEBUG` only and comes out before release.
 
 ## Layout
 

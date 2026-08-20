@@ -73,21 +73,28 @@ public final class AudioMixer: @unchecked Sendable {
         Double(bitPattern: SQIAAtomicLoadRelaxed(publishedLoad))
     }
 
-    /// Both render-thread counters in one word — blowups in the high half,
-    /// dropped notes in the low — so the UI can read them without racing the
+    /// Everything the render thread counts, in one word — voices sounding in
+    /// the low sixteen bits, blowups in the next sixteen, dropped notes in
+    /// the high thirty-two — so the UI can read them without racing the
     /// thread that writes them.
     ///
     /// A blowup should never happen: it means the output went non-finite and
     /// the effects had to be cleared out from under it. Dropped notes are
     /// ordinary at density, and the web drops them too.
     private let publishedFaults: UnsafeMutablePointer<SQIAAtomicUInt64>
+    private var liveVoices = 0
+
+    /// Voices sounding as of the last block.
+    public var soundingVoices: Int {
+        Int(SQIAAtomicLoadRelaxed(publishedFaults) & 0xFFFF)
+    }
 
     public var recoveredBlowups: Int {
-        Int(SQIAAtomicLoadRelaxed(publishedFaults) >> 32)
+        Int((SQIAAtomicLoadRelaxed(publishedFaults) >> 16) & 0xFFFF)
     }
 
     public var droppedNoteCount: Int {
-        Int(SQIAAtomicLoadRelaxed(publishedFaults) & 0xFFFF_FFFF)
+        Int(SQIAAtomicLoadRelaxed(publishedFaults) >> 32)
     }
 
     private var nextEvent: AudioEvent?
@@ -136,8 +143,10 @@ public final class AudioMixer: @unchecked Sendable {
     }
 
     private func publishFaults() {
-        let packed = UInt64(UInt32(truncatingIfNeeded: blowups)) << 32
-            | UInt64(UInt32(truncatingIfNeeded: droppedNotes))
+        let packed =
+            UInt64(UInt32(truncatingIfNeeded: droppedNotes)) << 32
+            | UInt64(UInt16(truncatingIfNeeded: blowups)) << 16
+            | UInt64(UInt16(truncatingIfNeeded: liveVoices))
         SQIAAtomicStoreRelease(publishedFaults, packed)
     }
 
@@ -250,6 +259,16 @@ public final class AudioMixer: @unchecked Sendable {
         // Pull the watermark back down so the next block only walks the
         // slots that are still in use.
         while activeHigh > 0 && !voices[activeHigh - 1].isActive { activeHigh -= 1 }
+
+        // Once a block, not once a sample: forty comparisons against a
+        // thousand samples of work is nothing, and the UI wants the number.
+        var live = 0
+        for v in 0..<activeHigh where voices[v].isActive { live += 1 }
+        if live != liveVoices {
+            liveVoices = live
+            publishFaults()
+        }
+
         publishFrame()
         publishLoad(started: started, frameCount: frameCount)
     }
@@ -336,6 +355,7 @@ public final class AudioMixer: @unchecked Sendable {
         droppedNotes = 0
         queueOverflows = 0
         blowups = 0
+        liveVoices = 0
         publishFaults()
         loadPeak = 0
         SQIAAtomicStoreRelease(publishedLoad, 0)

@@ -59,6 +59,24 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
     private var lastFrameTime: CFTimeInterval = 0
 
+    /// Main-thread milliseconds the last frames took to build and encode,
+    /// held at their peak the way the renderer's load is. The audio thread
+    /// shares this core, so a frame that overruns is a frame that can push a
+    /// buffer past its deadline.
+    private(set) var frameCost: Double = 0
+    /// Frames actually delivered per second, which is not what the view was
+    /// asked for when the main thread cannot keep up.
+    private(set) var framesPerSecond: Double = 0
+    private var framesThisSecond = 0
+    private var secondStarted: CFTimeInterval = 0
+
+    #if DEBUG
+        /// The renderer currently on screen, so the debug readout can ask it
+        /// what a frame costs without the model having to own it. Debug
+        /// scaffolding for the crackle hunt; it goes when the readout does.
+        @MainActor static weak var onScreen: FieldRenderer?
+    #endif
+
     init?(device: MTLDevice) {
         guard
             let queue = device.makeCommandQueue(),
@@ -155,6 +173,24 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         commands.addCompletedHandler { [inFlight] _ in inFlight.signal() }
         commands.present(drawable)
         commands.commit()
+
+        measure(frameStarted: now)
+    }
+
+    /// What this frame cost the main thread, and how many are getting
+    /// through. Both decay so a spike stays readable for a moment.
+    private func measure(frameStarted: CFTimeInterval) {
+        let spent = (CACurrentMediaTime() - frameStarted) * 1000
+        frameCost = max(spent, frameCost * 0.97)
+
+        framesThisSecond += 1
+        if secondStarted == 0 { secondStarted = frameStarted }
+        let elapsed = frameStarted - secondStarted
+        if elapsed >= 1 {
+            framesPerSecond = Double(framesThisSecond) / elapsed
+            framesThisSecond = 0
+            secondStarted = frameStarted
+        }
     }
 
     // ------------------------------------------------------------ building --

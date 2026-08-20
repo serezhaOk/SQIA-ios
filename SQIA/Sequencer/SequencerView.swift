@@ -39,18 +39,6 @@ struct SequencerView: View {
                 model.stop()
             }
         }
-        .overlay(alignment: .top) {
-            #if DEBUG
-                // What the audio thread costs, in a Run build only. Under
-                // about 0.2× there is room to spare; approaching 1.0× is a
-                // crackle waiting for the phone to get busy.
-                Text(model.renderLoad)
-                    .font(.system(size: 10, weight: .regular, design: .monospaced))
-                    .foregroundStyle(Palette.ink.opacity(0.35))
-                    .padding(.top, 2)
-                    .allowsHitTesting(false)
-            #endif
-        }
         .overlay(alignment: .bottom) {
             if let failure = model.failure {
                 Text(failure)
@@ -130,6 +118,24 @@ struct SequencerView: View {
                 .frame(width: geometry.size.width, height: geometry.size.height)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .top) { meter }
+    }
+
+    /// Where the time goes, in a Run build only. AUD is the audio thread's
+    /// share of realtime — under 0.2× there is room to spare, near 1.0× and
+    /// nothing can help. UI is what one frame costs the main thread, which
+    /// the audio thread has to share a phone with.
+    @ViewBuilder
+    private var meter: some View {
+        #if DEBUG
+            Text(model.renderLoad)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Palette.background)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .background(Palette.ink.opacity(0.9), in: Capsule())
+                .allowsHitTesting(false)
+        #endif
     }
 
     // -------------------------------------------------------------- footer --

@@ -132,11 +132,19 @@ final class SequencerModel {
                 MainActor.assumeIsolated {
                     guard let self else { return }
                     let mixer = self.engine.mixer
-                    var text = String(format: "%.2f×", mixer.renderLoad)
-                    let blowups = mixer.recoveredBlowups
-                    if blowups > 0 { text += "  ⚠\(blowups)" }
+                    // audio · voices · frame · fps, and the faults only when
+                    // there are any.
+                    var text = String(
+                        format: "AUD %.2f×  ·  %d voi", mixer.renderLoad, mixer.soundingVoices)
+                    if let renderer = FieldRenderer.onScreen {
+                        text += String(
+                            format: "  ·  UI %.1f ms  ·  %.0f fps",
+                            renderer.frameCost, renderer.framesPerSecond)
+                    }
                     let dropped = mixer.droppedNoteCount
-                    if dropped > 0 { text += "  −\(dropped)" }
+                    if dropped > 0 { text += "  ·  \(dropped) cut" }
+                    let blowups = mixer.recoveredBlowups
+                    if blowups > 0 { text += "  ·  \(blowups) NaN" }
                     self.renderLoad = text
                 }
             }

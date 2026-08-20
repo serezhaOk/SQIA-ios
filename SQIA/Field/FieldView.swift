@@ -64,6 +64,9 @@ struct FieldView: UIViewRepresentable {
 
         if let device = view.device, let renderer = FieldRenderer(device: device) {
             context.coordinator.renderer = renderer
+            #if DEBUG
+                FieldRenderer.onScreen = renderer
+            #endif
             renderer.layerProvider = { [weak view] in
                 guard let view else { return [] }
                 return layers(CGRect(origin: .zero, size: view.bounds.size))
