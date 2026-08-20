@@ -50,26 +50,32 @@ public struct PresetSettings: Sendable {
     public var reverbWet: ClosedRange<Double>
     /// Overdrive in the chain, nil for none. The 303 wants some.
     public var drive: Double?
+    /// Where the reverb send is rolled off from below. Low end smeared over
+    /// seven seconds of tail is what turns a kick into mud, so only mids and
+    /// highs are let into the reverb; the dry signal and the delay keep
+    /// their bottom.
+    public var sendHighpass: Double
 
     public static let table: [SynthPreset: PresetSettings] = [
         .reverie: PresetSettings(
             cutoff: 500...5200, chorus: 0.5, delayWet: 0.28, reverbWet: 0.25...0.55,
-            drive: nil),
+            drive: nil, sendHighpass: 200),
         .kalimba: PresetSettings(
             cutoff: 700...3400, chorus: 0.25, delayWet: 0.2, reverbWet: 0.2...0.4,
-            drive: nil),
+            drive: nil, sendHighpass: 220),
         .rhodes: PresetSettings(
             cutoff: 900...6000, chorus: 0.6, delayWet: 0.18, reverbWet: 0.2...0.42,
-            drive: nil),
+            drive: nil, sendHighpass: 220),
         // The chain filter stays out of the way — on acid the sweep belongs
         // to the per-note filter, and the reverb stays dry so the bass keeps
         // its edge.
         .acid: PresetSettings(
             cutoff: 6000...12000, chorus: 0, delayWet: 0.22, reverbWet: 0.04...0.16,
-            drive: 0.08),
+            drive: 0.08, sendHighpass: 320),
+        // Drums get the firmest cut: the kick and the low toms stay bone dry.
         .machine: PresetSettings(
             cutoff: 1200...9000, chorus: 0.1, delayWet: 0.12, reverbWet: 0.06...0.22,
-            drive: nil),
+            drive: nil, sendHighpass: 380),
     ]
 
     public static func of(_ preset: SynthPreset) -> PresetSettings {

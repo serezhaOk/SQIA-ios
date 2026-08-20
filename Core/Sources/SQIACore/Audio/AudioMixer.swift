@@ -215,8 +215,8 @@ public final class AudioMixer: @unchecked Sendable {
                 let out = chains[c].process(left: bus, right: bus)
                 dryLeft += out.left
                 dryRight += out.right
-                sendLeft += out.left * out.send
-                sendRight += out.right * out.send
+                sendLeft += out.sendLeft
+                sendRight += out.sendRight
             }
 
             if sendLeft != 0 || sendRight != 0 {

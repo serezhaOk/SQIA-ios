@@ -337,4 +337,45 @@ struct DriftTests {
             }
         }
     }
+
+    /// What the shared room is allowed to hear.
+    ///
+    /// Low end smeared across seven seconds of tail is what turns a kick
+    /// into mud, so the send is rolled off below — steeply, and from higher
+    /// up on the drums than on the pad.
+    @Test("The reverb send keeps the low end out")
+    func sendRollsOffTheBottom() {
+        /// Send level relative to the chain's own output, at one frequency.
+        func sendRatio(_ preset: SynthPreset, at frequency: Double) -> Double {
+            var chain = PresetChain(preset: preset, sampleRate: rate)
+            var oscillator = Oscillator(waveform: .sine)
+            var dry = 0.0
+            var sent = 0.0
+
+            // Long enough for the filters to settle before anything counts.
+            let frames = Int(rate)
+            for i in 0..<frames {
+                let input = oscillator.render(frequency: frequency, sampleRate: rate) * 0.3
+                let out = chain.process(left: input, right: input)
+                if i > frames / 2 {
+                    dry += out.left * out.left
+                    sent += out.sendLeft * out.sendLeft
+                }
+            }
+            return dry > 0 ? (sent / dry).squareRoot() : 0
+        }
+
+        for preset in SynthPreset.allCases {
+            let corner = PresetSettings.of(preset).sendHighpass
+            let low = sendRatio(preset, at: corner / 4)
+            let high = sendRatio(preset, at: corner * 4)
+
+            // Two octaves below the corner, at −24 dB an octave, is a long
+            // way down — and the same tone two octaves above passes.
+            #expect(
+                low < high / 20,
+                "\(preset.label): \(low) at the bottom against \(high) at the top")
+            #expect(high > 0.01, "\(preset.label) sends nothing at all")
+        }
+    }
 }

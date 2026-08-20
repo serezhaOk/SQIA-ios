@@ -61,6 +61,12 @@ public struct PresetChain: Sendable {
     private var send: Ramp
     private var wet: Ramp
 
+    /// The reverb send's high-pass, one per side. Steep — two cascaded
+    /// sections, which is what −24 dB an octave means — because the point is
+    /// to keep the kick out of a seven-second tail rather than to shade it.
+    private var sendHighpassLeft: (a: Biquad, b: Biquad)
+    private var sendHighpassRight: (a: Biquad, b: Biquad)
+
     /// Which subdivision of the beat the echo is currently on, and what that
     /// came to in seconds.
     private(set) var division = 0
@@ -98,13 +104,26 @@ public struct PresetChain: Sendable {
         feedback = Ramp(PingPongDelay.defaultFeedback)
         send = Ramp((settings.reverbWet.lowerBound + settings.reverbWet.upperBound) / 2)
         wet = Ramp(settings.delayWet)
+
+        let highpass = Biquad(
+            highpass: settings.sendHighpass, q: Self.sendHighpassQ, sampleRate: sampleRate)
+        sendHighpassLeft = (highpass, highpass)
+        sendHighpassRight = (highpass, highpass)
     }
+
+    /// Tone gives every section of a cascaded filter the same Q, and leaves
+    /// this one at its default.
+    private static let sendHighpassQ = 0.7
 
     public mutating func clear() {
         filterLeft.reset()
         filterRight.reset()
         chorus.clear()
         delay.clear()
+        sendHighpassLeft.a.reset()
+        sendHighpassLeft.b.reset()
+        sendHighpassRight.a.reset()
+        sendHighpassRight.b.reset()
         pending = nil
         pendingFrames = 0
     }
@@ -156,13 +175,16 @@ public struct PresetChain: Sendable {
 
     // -------------------------------------------------------------- render --
 
-    /// One frame through the chain, with the reverb send it wants alongside
-    /// the output — reading that separately would copy the whole chain, and
-    /// the chain owns delay buffers.
+    /// One frame through the chain, with what it sends to the shared room
+    /// alongside its own output — reading that separately would copy the
+    /// whole chain, and the chain owns delay buffers.
+    ///
+    /// The send comes out already rolled off below, so the room only ever
+    /// hears what belongs in it.
     public mutating func process(
         left: Double,
         right: Double
-    ) -> (left: Double, right: Double, send: Double) {
+    ) -> (left: Double, right: Double, sendLeft: Double, sendRight: Double) {
         if pendingFrames > 0 {
             pendingFrames -= 1
             if pendingFrames == 0, let drift = pending {
@@ -201,7 +223,12 @@ public struct PresetChain: Sendable {
             ringing -= 1
         }
 
-        return (out.left, out.right, sendGain)
+        let sendLeft = sendHighpassLeft.b.process(
+            sendHighpassLeft.a.process(out.left * sendGain))
+        let sendRight = sendHighpassRight.b.process(
+            sendHighpassRight.a.process(out.right * sendGain))
+
+        return (out.left, out.right, sendLeft, sendRight)
     }
 
     /// A tenth of a second of quiet before a chain is considered spent —
