@@ -39,7 +39,9 @@ public enum SynthVoicing {
             return machine(midi: midi, velocity: velocity, using: random)
         case .kalimba:
             return kalimba(midi: midi, velocity: velocity, using: random)
-        case .rhodes, .acid:
+        case .rhodes:
+            return rhodes(midi: midi, velocity: velocity, using: random)
+        case .acid:
             // Not written yet; `SynthPreset.available` keeps them out of the
             // picker, and silence is better than a stand-in that lies.
             return []
@@ -173,6 +175,72 @@ public enum SynthVoicing {
             ghost.lifetime = 1.6
             voices.append(
                 ScheduledVoice(recipe: ghost, offset: random.value(0.01, 0.05)))
+        }
+        return voices
+    }
+
+    // ------------------------------------------------------------- RHODES --
+    // An FM electric piano: a bell-ish attack over a warm body, with a slow
+    // tremolo so held notes keep moving. The bell is the modulator's own
+    // envelope opening and shutting faster than the note it sits on.
+
+    /// The harmonicities the web draws from. 3.01 is not a typo — a ratio a
+    /// hair off a whole number is what makes a tine beat rather than ring.
+    static let rhodesHarmonicities = [1.0, 2, 3, 3.01, 4]
+
+    private static func rhodes(
+        midi: Int,
+        velocity: Double,
+        using random: RandomSource
+    ) -> [ScheduledVoice] {
+        let frequency = Music.frequency(ofMidi: midi)
+        let duration = random.value(0.12, 0.45)
+        let release = random.value(0.4, 1.8)
+
+        var recipe = VoiceRecipe()
+        recipe.preset = .rhodes
+        recipe.source = .fm
+        recipe.frequency = frequency
+        recipe.duration = duration
+        recipe.gain = VoiceRecipe.gain(db: 0, velocity: velocity)
+
+        recipe.harmonicity = random.pick(rhodesHarmonicities)
+        recipe.modulationIndex = random.value(3, 11)
+        recipe.attack = random.value(0.002, 0.012)
+        recipe.decay = random.value(0.25, 0.9)
+        recipe.sustain = random.value(0.05, 0.28)
+        recipe.release = release
+        recipe.modulatorWaveform = random.pick([Waveform.sine, .triangle])
+        recipe.modulationAttack = random.value(0.002, 0.02)
+        recipe.modulationDecay = random.value(0.1, 0.5)
+        recipe.modulationSustain = random.value(0, 0.2)
+        recipe.modulationRelease = random.value(0.2, 0.8)
+        recipe.detuneCents = random.value(-8, 8)
+
+        recipe.tremoloRate = random.value(2.5, 7)
+        recipe.tremoloDepth = random.value(0.15, 0.55)
+        recipe.lifetime = duration + release + 0.4
+
+        var voices = [ScheduledVoice(recipe: recipe)]
+
+        // Occasional fifth or octave, the way a Rhodes bar rings
+        // sympathetically. No tremolo on this one.
+        if random.chance(0.16) {
+            var ghost = VoiceRecipe()
+            ghost.preset = .rhodes
+            ghost.source = .fm
+            ghost.harmonicity = random.pick([2.0, 3])
+            ghost.modulationIndex = random.value(2, 6)
+            ghost.attack = 0.005
+            ghost.decay = 0.4
+            ghost.sustain = 0.05
+            ghost.release = 0.9
+            ghost.frequency = frequency * random.pick([1.5, 2.0])
+            ghost.duration = duration * 0.7
+            ghost.gain = VoiceRecipe.gain(db: -12, velocity: velocity * 0.4)
+            ghost.lifetime = duration + 1.4
+            voices.append(
+                ScheduledVoice(recipe: ghost, offset: random.value(0.01, 0.06)))
         }
         return voices
     }

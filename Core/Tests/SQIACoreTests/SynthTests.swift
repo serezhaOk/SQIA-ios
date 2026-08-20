@@ -14,10 +14,35 @@ import Testing
 
 private let rate = 48_000.0
 
+/// A voice's own output, summed to mono — which is what it is, unless it
+/// carries a tremolo.
 private func render(_ recipe: VoiceRecipe, frames: Int) -> [Double] {
     var voice = SynthVoice()
+    voice.prepare(sampleRate: rate)
     voice.start(recipe, sampleRate: rate)
-    return (0..<frames).map { _ in voice.render() }
+    return (0..<frames).map { _ in
+        let out = voice.render()
+        return (out.left + out.right) / 2
+    }
+}
+
+/// Both sides, for the one voice that has two.
+private func renderStereo(
+    _ recipe: VoiceRecipe, frames: Int
+) -> (left: [Double], right: [Double]) {
+    var voice = SynthVoice()
+    voice.prepare(sampleRate: rate)
+    voice.start(recipe, sampleRate: rate)
+    var left = [Double]()
+    var right = [Double]()
+    left.reserveCapacity(frames)
+    right.reserveCapacity(frames)
+    for _ in 0..<frames {
+        let out = voice.render()
+        left.append(out.left)
+        right.append(out.right)
+    }
+    return (left, right)
 }
 
 private func rms(_ samples: [Double]) -> Double {
@@ -246,6 +271,244 @@ struct KalimbaTests {
         let out = render(recipe, frames: Int(rate))
         #expect(out.allSatisfy { $0.isFinite })
         #expect(rms(Array(out[0..<2048])) > 0, "nothing came out")
+    }
+}
+
+@Suite("RHODES")
+struct RhodesTests {
+    private func roll(seed: UInt32, velocity: Double = 0.9) -> [ScheduledVoice] {
+        SynthVoicing.notes(
+            preset: .rhodes, midi: 60, velocity: velocity, using: Mulberry32(seed: seed))
+    }
+
+    /// How much of a signal sits in its fast-moving part — a stand-in for
+    /// brightness that needs no transform.
+    private func edge(_ samples: [Double]) -> Double {
+        var difference = 0.0
+        var total = 0.0
+        for i in 1..<samples.count {
+            let d = samples[i] - samples[i - 1]
+            difference += d * d
+            total += samples[i] * samples[i]
+        }
+        return total > 0 ? difference / total : 0
+    }
+
+    @Test("Every rolled value lands inside the web's range")
+    func ranges() {
+        let random = Mulberry32(seed: 31)
+        for _ in 0..<400 {
+            let voices = SynthVoicing.notes(
+                preset: .rhodes, midi: 60, velocity: 1, using: random)
+            let lead = voices[0].recipe
+            #expect(lead.preset == .rhodes)
+            #expect(lead.source == .fm)
+            #expect(SynthVoicing.rhodesHarmonicities.contains(lead.harmonicity))
+            #expect(lead.modulationIndex >= 3 && lead.modulationIndex <= 11)
+            #expect(lead.duration >= 0.12 && lead.duration <= 0.45)
+            #expect(lead.attack >= 0.002 && lead.attack <= 0.012)
+            #expect(lead.decay >= 0.25 && lead.decay <= 0.9)
+            #expect(lead.sustain >= 0.05 && lead.sustain <= 0.28)
+            #expect(lead.release >= 0.4 && lead.release <= 1.8)
+            #expect(lead.modulatorWaveform == .sine || lead.modulatorWaveform == .triangle)
+            #expect(lead.modulationAttack >= 0.002 && lead.modulationAttack <= 0.02)
+            #expect(lead.modulationDecay >= 0.1 && lead.modulationDecay <= 0.5)
+            #expect(lead.modulationSustain >= 0 && lead.modulationSustain <= 0.2)
+            #expect(lead.modulationRelease >= 0.2 && lead.modulationRelease <= 0.8)
+            #expect(abs(lead.detuneCents) <= 8)
+            #expect(lead.tremoloRate >= 2.5 && lead.tremoloRate <= 7)
+            #expect(lead.tremoloDepth >= 0.15 && lead.tremoloDepth <= 0.55)
+
+            if voices.count > 1 {
+                let ghost = voices[1].recipe
+                #expect(ghost.harmonicity == 2 || ghost.harmonicity == 3)
+                #expect(ghost.modulationIndex >= 2 && ghost.modulationIndex <= 6)
+                // A fifth or an octave above, and no tremolo of its own.
+                let ratio = ghost.frequency / lead.frequency
+                #expect(abs(ratio - 1.5) < 1e-9 || abs(ratio - 2) < 1e-9)
+                #expect(ghost.tremoloRate == 0)
+                #expect(voices[1].offset >= 0.01 && voices[1].offset <= 0.06)
+            }
+        }
+    }
+
+    @Test("Values come off the stream in the web's order")
+    func drawOrder() {
+        let expected = Mulberry32(seed: 12)
+        let duration = expected.value(0.12, 0.45)
+        let release = expected.value(0.4, 1.8)
+        let harmonicity = expected.pick(SynthVoicing.rhodesHarmonicities)
+        let index = expected.value(3, 11)
+        let attack = expected.value(0.002, 0.012)
+        let decay = expected.value(0.25, 0.9)
+        let sustain = expected.value(0.05, 0.28)
+        let modulator = expected.pick([Waveform.sine, .triangle])
+        let modAttack = expected.value(0.002, 0.02)
+        let modDecay = expected.value(0.1, 0.5)
+        let modSustain = expected.value(0, 0.2)
+        let modRelease = expected.value(0.2, 0.8)
+        let detune = expected.value(-8, 8)
+        let tremoloRate = expected.value(2.5, 7)
+        let tremoloDepth = expected.value(0.15, 0.55)
+        let ghosted = expected.chance(0.16)
+
+        let voices = roll(seed: 12)
+        let lead = voices[0].recipe
+        #expect(lead.duration == duration)
+        #expect(lead.release == release)
+        #expect(lead.harmonicity == harmonicity)
+        #expect(lead.modulationIndex == index)
+        #expect(lead.attack == attack)
+        #expect(lead.decay == decay)
+        #expect(lead.sustain == sustain)
+        #expect(lead.modulatorWaveform == modulator)
+        #expect(lead.modulationAttack == modAttack)
+        #expect(lead.modulationDecay == modDecay)
+        #expect(lead.modulationSustain == modSustain)
+        #expect(lead.modulationRelease == modRelease)
+        #expect(lead.detuneCents == detune)
+        #expect(lead.tremoloRate == tremoloRate)
+        #expect(lead.tremoloDepth == tremoloDepth)
+        #expect((voices.count > 1) == ghosted)
+
+        if ghosted {
+            let ghost = voices[1].recipe
+            #expect(ghost.harmonicity == expected.pick([2.0, 3]))
+            #expect(ghost.modulationIndex == expected.value(2, 6))
+            #expect(ghost.frequency == lead.frequency * expected.pick([1.5, 2.0]))
+            #expect(voices[1].offset == expected.value(0.01, 0.06))
+        }
+    }
+
+    @Test("The sympathetic ring turns up about a sixth of the time")
+    func ghostRate() {
+        let random = Mulberry32(seed: 8)
+        var ghosts = 0
+        let runs = 4000
+        for _ in 0..<runs {
+            if SynthVoicing.notes(
+                preset: .rhodes, midi: 60, velocity: 1, using: random
+            ).count > 1 {
+                ghosts += 1
+            }
+        }
+        let rate = Double(ghosts) / Double(runs)
+        #expect(abs(rate - 0.16) < 0.02, "rang \(rate) of the time")
+    }
+
+    // ------------------------------------------------------------- sound --
+
+    private func note(index: Double, tremolo: Double = 0) -> VoiceRecipe {
+        var recipe = VoiceRecipe()
+        recipe.preset = .rhodes
+        recipe.source = .fm
+        recipe.frequency = 220
+        recipe.gain = 1
+        recipe.harmonicity = 3
+        recipe.modulationIndex = index
+        recipe.attack = 0.005
+        recipe.decay = 0.5
+        recipe.sustain = 0.2
+        recipe.release = 0.8
+        recipe.duration = 0.4
+        recipe.modulationAttack = 0.005
+        recipe.modulationDecay = 0.2
+        recipe.modulationSustain = 0.05
+        recipe.modulationRelease = 0.4
+        recipe.tremoloRate = tremolo
+        recipe.tremoloDepth = tremolo > 0 ? 0.5 : 0
+        return recipe
+    }
+
+    @Test("The modulator puts sidebands around the carrier")
+    func modulationAddsHarmonics() {
+        let plain = render(note(index: 0), frames: 4096)
+        let bell = render(note(index: 10), frames: 4096)
+        #expect(edge(bell) > edge(plain) * 3, "the modulator changed nothing")
+    }
+
+    @Test("The bell fades faster than the note it sits on")
+    func modulationEnvelopeDecays() {
+        let out = render(note(index: 10), frames: Int(rate / 2))
+        let early = edge(Array(out[256..<2304]))
+        let late = edge(Array(out[16384..<18432]))
+        #expect(early > late * 1.5, "attack \(early) against body \(late)")
+        #expect(rms(Array(out[16384..<18432])) > 0, "the note stopped early")
+    }
+
+    @Test("A carrier driven below zero runs backwards instead of piling up")
+    func deepModulationStaysInTune() {
+        // With an index of ten the instantaneous frequency is negative for
+        // most of every modulator cycle. Held at zero instead of allowed to
+        // run backwards, the carrier creeps forward and the note drifts
+        // sharp — so what is checked is that it does not.
+        let deep = render(note(index: 10), frames: Int(rate / 4))
+        let shallow = render(note(index: 0), frames: Int(rate / 4))
+
+        func crossings(_ samples: [Double]) -> Int {
+            var count = 0
+            for i in 1..<samples.count where samples[i - 1] < 0 && samples[i] >= 0 {
+                count += 1
+            }
+            return count
+        }
+        // A sine at 220 Hz crosses zero upward 55 times in a quarter second.
+        // Deep FM crosses far more often — that is the sidebands — but the
+        // point is that it stays finite and centred.
+        #expect(crossings(shallow) >= 54 && crossings(shallow) <= 56)
+        #expect(deep.allSatisfy { $0.isFinite && abs($0) <= 1.001 })
+        let mean = deep.reduce(0, +) / Double(deep.count)
+        #expect(abs(mean) < 0.05, "the carrier drifted off centre by \(mean)")
+    }
+
+    @Test("The tremolo pulls the two sides against each other")
+    func tremoloIsStereo() {
+        // A note held wide open for the whole second, so the wobble can be
+        // counted without the note fading out from under it.
+        var held = note(index: 6, tremolo: 5)
+        held.duration = 1.5
+        held.sustain = 0.8
+        held.decay = 0.05
+
+        let (left, right) = renderStereo(held, frames: Int(rate))
+
+        // Tone spreads it half a cycle, so what one side gives the other
+        // takes: the sum is the voice with no tremolo on it at all.
+        var sum = [Double]()
+        var difference = [Double]()
+        for i in left.indices {
+            sum.append(left[i] + right[i])
+            difference.append(left[i] - right[i])
+        }
+        #expect(rms(difference) > 0.01, "both sides are the same")
+
+        // The difference still carries the note, so counting its zero
+        // crossings would count the note. Dividing it out leaves the wobble
+        // alone: (L − R) / (L + R) is twice the LFO and nothing else.
+        var wobble: [Double] = []
+        for i in sum.indices where abs(sum[i]) > 0.02 {
+            wobble.append(difference[i] / sum[i])
+        }
+        #expect(wobble.count > Int(rate) / 4, "too little signal to read the wobble")
+
+        var crossings = 0
+        for i in 1..<wobble.count where wobble[i - 1] < 0 && wobble[i] >= 0 {
+            crossings += 1
+        }
+        // Five cycles in the second it was rendered for.
+        #expect(abs(Double(crossings) - 5) <= 1, "wobbled \(crossings) times a second")
+        // Depth 0.5 swings the ratio across ±0.5.
+        #expect((wobble.max() ?? 0) > 0.4 && (wobble.min() ?? 0) < -0.4)
+
+        // The level Tone leaves behind: an LFO between one and zero sits at
+        // a half, so a tremolo halves what passes through it. `render` sums
+        // the two sides and halves them, so a voice with no tremolo comes
+        // back at full level and this one at half.
+        var plainRecipe = held
+        plainRecipe.tremoloRate = 0
+        plainRecipe.tremoloDepth = 0
+        let plain = render(plainRecipe, frames: Int(rate))
+        #expect(abs(rms(sum) / rms(plain) - 1) < 0.02, "the level moved")
     }
 }
 

@@ -39,7 +39,7 @@ public enum SynthPreset: Int, Sendable, CaseIterable {
 
     /// The presets that have voices behind them. The rest are being written;
     /// the picker offers what can actually be heard.
-    public static let available: [SynthPreset] = [.reverie, .kalimba, .machine]
+    public static let available: [SynthPreset] = [.reverie, .kalimba, .rhodes, .machine]
 }
 
 /// Where a preset's shared chain sits, and how far it is allowed to wander.
@@ -93,6 +93,9 @@ public struct VoiceRecipe: Sendable, Equatable {
         case metal
         /// A noise burst circulating in a delay line one wavelength long.
         case pluck
+        /// Two operators: a modulator bending a carrier, each with its own
+        /// envelope.
+        case fm
     }
 
     public enum Filter: Int, Sendable {
@@ -150,6 +153,21 @@ public struct VoiceRecipe: Sendable, Equatable {
     /// flat time to live and disposes of it then. Zero means the envelope
     /// decides.
     public var lifetime: Double = 0
+
+    // FM only. The modulator has its own shape, and it is the shape rather
+    // than the depth that makes an electric piano sound struck.
+    public var modulatorWaveform: Waveform = .sine
+    public var modulationAttack: Double = 0.01
+    public var modulationDecay: Double = 0.2
+    public var modulationSustain: Double = 0.1
+    public var modulationRelease: Double = 0.4
+
+    // Tremolo, which is the only thing in a voice that is stereo: Tone
+    // spreads it a hundred and eighty degrees, so the two sides pull against
+    // each other and the note moves rather than just wobbling. Zero rate for
+    // none.
+    public var tremoloRate: Double = 0
+    public var tremoloDepth: Double = 0
 
     public init() {}
 

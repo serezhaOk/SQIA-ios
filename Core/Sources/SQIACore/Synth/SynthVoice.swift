@@ -24,6 +24,21 @@ public struct SynthVoice: Sendable {
     /// voice that allocates and the render thread must never do that.
     private var pluck = Pluck(sampleRate: 48_000)
 
+    /// The FM pair, and the envelope that decides how far the modulator
+    /// bends the carrier. An electric piano's bell is that envelope opening
+    /// and shutting faster than the note it sits on.
+    private var carrier = Oscillator(waveform: .sine)
+    private var modulator = Oscillator(waveform: .sine)
+    private var modulationEnvelope = ADSR()
+
+    /// Tremolo as a rotating unit vector, so the wobble costs two multiplies
+    /// rather than a sine.
+    private var tremoloSine = 0.0
+    private var tremoloCosine = 1.0
+    private var tremoloStepSine = 0.0
+    private var tremoloStepCosine = 1.0
+    private var tremoloTurns = 0
+
     /// The per-note filter sweep: where it is, where it is going, and how
     /// far it moves each sample. Recomputing coefficients every sample would
     /// cost more than the note; every 64 is inaudible.
@@ -109,6 +124,28 @@ public struct SynthVoice: Sendable {
                 resonance: recipe.pluckResonance,
                 attackNoise: recipe.attackNoise,
                 seed: Self.seed(for: recipe))
+
+        case .fm:
+            carrier = Oscillator(waveform: .sine)
+            modulator = Oscillator(waveform: recipe.modulatorWaveform)
+            modulationEnvelope = ADSR(
+                attack: recipe.modulationAttack,
+                decay: recipe.modulationDecay,
+                sustain: recipe.modulationSustain,
+                release: recipe.modulationRelease)
+            modulationEnvelope.trigger(duration: recipe.duration, sampleRate: sampleRate)
+        }
+
+        // Tone's tremolo starts its own LFO at zero and spreads the two
+        // sides half a cycle apart, which is why the note moves across the
+        // stereo field rather than only rising and falling.
+        if recipe.tremoloRate > 0 {
+            let step = 2 * .pi * recipe.tremoloRate / sampleRate
+            tremoloStepSine = sin(step)
+            tremoloStepCosine = cos(step)
+            tremoloSine = 0
+            tremoloCosine = 1
+            tremoloTurns = 0
         }
 
         age = 0
@@ -152,7 +189,45 @@ public struct SynthVoice: Sendable {
         age = 0
     }
 
-    public mutating func render() -> Double {
+    /// One frame, as a stereo pair.
+    ///
+    /// Almost every voice is mono and the width comes from its preset's
+    /// chain — but a tremolo is spread across the two sides in antiphase,
+    /// and summing that to mono would cancel it exactly. So the voice hands
+    /// out both.
+    public mutating func render() -> (left: Double, right: Double) {
+        let value = renderMono()
+        guard recipe.tremoloRate > 0 else { return (value, value) }
+
+        // Tone's LFO runs between one and zero, so the level sits at a half
+        // and the depth swings around it — a tremolo at depth zero still
+        // halves what passes through it.
+        let wobble = recipe.tremoloDepth * tremoloSine / 2
+        advanceTremolo()
+        return (value * (0.5 - wobble), value * (0.5 + wobble))
+    }
+
+    private mutating func advanceTremolo() {
+        let turnedSine = tremoloSine * tremoloStepCosine + tremoloCosine * tremoloStepSine
+        let turnedCosine = tremoloCosine * tremoloStepCosine - tremoloSine * tremoloStepSine
+        tremoloSine = turnedSine
+        tremoloCosine = turnedCosine
+
+        // Rounding would let the vector drift off the unit circle over a
+        // long note, so it is pulled back now and then.
+        tremoloTurns += 1
+        if tremoloTurns >= 4096 {
+            tremoloTurns = 0
+            let length = (tremoloSine * tremoloSine + tremoloCosine * tremoloCosine)
+                .squareRoot()
+            if length > 0 {
+                tremoloSine /= length
+                tremoloCosine /= length
+            }
+        }
+    }
+
+    private mutating func renderMono() -> Double {
         guard isActive else { return 0 }
         // A pluck carries no amplitude envelope — the comb winding down is
         // the whole of its decay — so only its time to live can end it.
@@ -200,6 +275,16 @@ public struct SynthVoice: Sendable {
 
         case .pluck:
             value = pluck.next()
+
+        case .fm:
+            // Tone's depth is the note's own frequency times the modulation
+            // index, opened and shut by the modulator's envelope — so the
+            // bell rings at the attack and the body is left behind.
+            let depth = tunedFrequency * recipe.modulationIndex * modulationEnvelope.next()
+            let bend = modulator.render(
+                frequency: tunedFrequency * recipe.harmonicity, sampleRate: sampleRate)
+            value = carrier.renderSigned(
+                frequency: tunedFrequency + depth * bend, sampleRate: sampleRate)
         }
 
         if recipe.filter != .none {

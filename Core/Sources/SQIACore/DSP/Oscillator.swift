@@ -108,6 +108,29 @@ public struct Oscillator: Sendable {
 
     // -------------------------------------------------------------- render --
 
+    /// One sample at an instantaneous frequency that is allowed to be
+    /// negative.
+    ///
+    /// Frequency modulation of any depth drives the carrier below zero on
+    /// half of every modulator cycle, and when it does the phase is supposed
+    /// to run backwards. Holding it at zero instead leaves the carrier
+    /// creeping forward a little every cycle, which is a patch that drifts
+    /// sharp. Only the simple shapes are offered, because a modulated
+    /// band-limited sawtooth has no meaningful `dt` to correct with.
+    public mutating func renderSigned(frequency: Double, sampleRate: Double) -> Double {
+        let nyquist = sampleRate / 2
+        let f = min(max(frequency, -nyquist), nyquist)
+        let value: Double
+        switch waveform {
+        case .triangle, .fatTriangle, .fmTriangle:
+            value = Self.triangle(phase)
+        default:
+            value = Self.sine(phase)
+        }
+        Self.advance(&phase, by: f / sampleRate)
+        return value
+    }
+
     /// One sample at `frequency`, which may move from call to call — a drum's
     /// pitch envelope does exactly that.
     public mutating func render(frequency: Double, sampleRate: Double) -> Double {

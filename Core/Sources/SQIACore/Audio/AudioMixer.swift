@@ -31,8 +31,11 @@ public final class AudioMixer: @unchecked Sendable {
     private var voices: [SynthVoice]
     /// One per preset, indexed by its raw value.
     private var chains: [PresetChain]
-    /// Where each preset's voices sum before their chain sees them.
-    private var buses: [Double]
+    /// Where each preset's voices sum before their chain sees them. Stereo,
+    /// because a tremolo is spread across the two sides and summing it to
+    /// mono would cancel it exactly.
+    private var busesLeft: [Double]
+    private var busesRight: [Double]
     private var reverb: Reverb
     private var limiter: Limiter
 
@@ -123,7 +126,8 @@ public final class AudioMixer: @unchecked Sendable {
         chains = SynthPreset.allCases.map {
             PresetChain(preset: $0, sampleRate: sampleRate)
         }
-        buses = Array(repeating: 0, count: SynthPreset.allCases.count)
+        busesLeft = Array(repeating: 0, count: SynthPreset.allCases.count)
+        busesRight = Array(repeating: 0, count: SynthPreset.allCases.count)
         reverb = Reverb(sampleRate: sampleRate)
         limiter = Limiter(sampleRate: sampleRate)
         events = AudioEventQueue(capacity: queueCapacity)
@@ -199,10 +203,15 @@ public final class AudioMixer: @unchecked Sendable {
                 continue
             }
 
-            // Voices are mono; the stereo comes from the chains.
-            for b in buses.indices { buses[b] = 0 }
+            for b in busesLeft.indices {
+                busesLeft[b] = 0
+                busesRight[b] = 0
+            }
             for v in 0..<activeHigh where voices[v].isActive {
-                buses[voices[v].preset.rawValue] += voices[v].render()
+                let slot = voices[v].preset.rawValue
+                let out = voices[v].render()
+                busesLeft[slot] += out.left
+                busesRight[slot] += out.right
             }
 
             var dryLeft = 0.0
@@ -211,11 +220,12 @@ public final class AudioMixer: @unchecked Sendable {
             var sendRight = 0.0
 
             for c in chains.indices {
-                let bus = buses[c]
+                let busLeft = busesLeft[c]
+                let busRight = busesRight[c]
                 // A preset nobody is playing is not worth a filter, a
                 // chorus and two delay lines every sample.
-                if bus == 0 && !chains[c].isRinging { continue }
-                let out = chains[c].process(left: bus, right: bus)
+                if busLeft == 0 && busRight == 0 && !chains[c].isRinging { continue }
+                let out = chains[c].process(left: busLeft, right: busRight)
                 dryLeft += out.left
                 dryRight += out.right
                 sendLeft += out.sendLeft
