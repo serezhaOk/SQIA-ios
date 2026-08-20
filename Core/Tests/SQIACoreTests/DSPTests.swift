@@ -225,30 +225,30 @@ struct EnvelopeTests {
     @Test("Attack rises, decay falls to sustain, release falls to nothing")
     func shape() {
         var envelope = ADSR(attack: 0.01, decay: 0.05, sustain: 0.4, release: 0.1)
-        envelope.trigger(duration: 0.2)
+        envelope.trigger(duration: 0.2, sampleRate: rate)
 
         // Halfway up the attack.
-        for _ in 0..<Int(0.005 * rate) { _ = envelope.next(sampleRate: rate) }
-        let rising = envelope.next(sampleRate: rate)
+        for _ in 0..<Int(0.005 * rate) { _ = envelope.next() }
+        let rising = envelope.next()
         #expect(rising > 0.4 && rising < 0.6)
 
         // Through the decay, at sustain.
-        for _ in 0..<Int(0.07 * rate) { _ = envelope.next(sampleRate: rate) }
-        #expect(abs(envelope.next(sampleRate: rate) - 0.4) < 0.01)
+        for _ in 0..<Int(0.07 * rate) { _ = envelope.next() }
+        #expect(abs(envelope.next() - 0.4) < 0.01)
 
         // Past the hold, into the release, and gone.
-        for _ in 0..<Int(0.35 * rate) { _ = envelope.next(sampleRate: rate) }
+        for _ in 0..<Int(0.35 * rate) { _ = envelope.next() }
         #expect(envelope.isFinished)
-        #expect(envelope.next(sampleRate: rate) == 0)
+        #expect(envelope.next() == 0)
     }
 
     @Test("A note lets go of itself when its time is up")
     func selfReleasing() {
         var envelope = ADSR(attack: 0.001, decay: 0.01, sustain: 0.8, release: 0.05)
-        envelope.trigger(duration: 0.1)
+        envelope.trigger(duration: 0.1, sampleRate: rate)
         var frames = 0
         while !envelope.isFinished && frames < Int(rate) {
-            _ = envelope.next(sampleRate: rate)
+            _ = envelope.next()
             frames += 1
         }
         let seconds = Double(frames) / rate
@@ -258,23 +258,31 @@ struct EnvelopeTests {
     @Test("A note cut during its attack falls from where it was")
     func releaseFromPartial() {
         var envelope = ADSR(attack: 1, decay: 0.1, sustain: 0.5, release: 0.05)
-        envelope.trigger(duration: 10)
-        for _ in 0..<Int(0.25 * rate) { _ = envelope.next(sampleRate: rate) }
-        let level = envelope.next(sampleRate: rate)
+        envelope.trigger(duration: 10, sampleRate: rate)
+        for _ in 0..<Int(0.25 * rate) { _ = envelope.next() }
+        let level = envelope.next()
         envelope.releaseNow()
-        let first = envelope.next(sampleRate: rate)
+        let first = envelope.next()
         #expect(first <= level)
         #expect(first > level * 0.9)
     }
 
+    /// Tone ramps a membrane's pitch exponentially, which is a constant
+    /// ratio per sample — so this steps rather than evaluating a power.
     @Test("A drum's pitch falls to the note it was given")
     func pitchDrop() {
         var pitch = PitchEnvelope(octaves: 3, decay: 0.05)
-        let start = pitch.next(base: 100, sampleRate: rate)
+        pitch.prepare(sampleRate: rate)
+        let start = pitch.next(base: 100)
         #expect(abs(start - 800) < 1)  // three octaves up
 
-        for _ in 0..<Int(0.05 * rate) { _ = pitch.next(base: 100, sampleRate: rate) }
-        #expect(abs(pitch.next(base: 100, sampleRate: rate) - 100) < 1)
+        // Halfway through, halfway down in octaves: an octave and a half.
+        for _ in 0..<Int(0.025 * rate) { _ = pitch.next(base: 100) }
+        let middle = pitch.next(base: 100)
+        #expect(abs(middle - 100 * pow(2, 1.5)) < 5, "midway at \(middle)")
+
+        for _ in 0..<Int(0.05 * rate) { _ = pitch.next(base: 100) }
+        #expect(abs(pitch.next(base: 100) - 100) < 1)
     }
 }
 

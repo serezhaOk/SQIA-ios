@@ -112,6 +112,12 @@ public struct PresetChain: Sendable {
     /// How much of this chain's output goes to the shared room.
     public var reverbSend: Double { send.value }
 
+    /// Whether anything is still moving through it. A chain whose voices
+    /// have all finished still has a delay and a chorus holding the last of
+    /// them; once those are spent there is nothing to compute.
+    public var isRinging: Bool { ringing > 0 }
+    private var ringing = 0
+
     // --------------------------------------------------------------- drift --
 
     /// Take a bar's drift. The event is scheduled `lead` frames early so the
@@ -150,10 +156,13 @@ public struct PresetChain: Sendable {
 
     // -------------------------------------------------------------- render --
 
+    /// One frame through the chain, with the reverb send it wants alongside
+    /// the output — reading that separately would copy the whole chain, and
+    /// the chain owns delay buffers.
     public mutating func process(
         left: Double,
         right: Double
-    ) -> (left: Double, right: Double) {
+    ) -> (left: Double, right: Double, send: Double) {
         if pendingFrames > 0 {
             pendingFrames -= 1
             if pendingFrames == 0, let drift = pending {
@@ -181,7 +190,21 @@ public struct PresetChain: Sendable {
         let chorused = chorus.process(left: l, right: r)
         delay.feedback = feedback.next()
         delay.wet = wet.next()
-        _ = send.next()
-        return delay.process(left: chorused.left, right: chorused.right)
+        let sendGain = send.next()
+        let out = delay.process(left: chorused.left, right: chorused.right)
+
+        // Anything still moving keeps the chain alive; a run of silence
+        // lets the mixer stop calling it.
+        if abs(left) + abs(right) + abs(out.left) + abs(out.right) > 1e-7 {
+            ringing = Self.ringOutFrames
+        } else if ringing > 0 {
+            ringing -= 1
+        }
+
+        return (out.left, out.right, sendGain)
     }
+
+    /// A tenth of a second of quiet before a chain is considered spent —
+    /// long enough that nothing audible is ever cut off.
+    private static let ringOutFrames = 4_800
 }

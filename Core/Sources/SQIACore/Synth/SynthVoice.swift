@@ -50,9 +50,10 @@ public struct SynthVoice: Sendable {
             decay: recipe.decay,
             sustain: recipe.sustain,
             release: recipe.release)
-        amp.trigger(duration: recipe.duration)
+        amp.trigger(duration: recipe.duration, sampleRate: sampleRate)
 
         pitch = PitchEnvelope(octaves: recipe.pitchOctaves, decay: recipe.pitchDecay)
+        pitch.prepare(sampleRate: sampleRate)
 
         switch recipe.filter {
         case .none:
@@ -109,14 +110,14 @@ public struct SynthVoice: Sendable {
             return 0
         }
 
-        let level = amp.next(sampleRate: sampleRate)
+        let level = amp.next()
         var value: Double
 
         switch recipe.source {
         case .oscillator:
             let frequency =
                 recipe.pitchOctaves > 0
-                ? pitch.next(base: tunedFrequency, sampleRate: sampleRate)
+                ? pitch.next(base: tunedFrequency)
                 : tunedFrequency
             value = oscillator.render(frequency: frequency, sampleRate: sampleRate)
 

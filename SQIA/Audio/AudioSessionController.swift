@@ -42,6 +42,10 @@ final class AudioSessionController {
         // A sequencer is a music app: it plays through the silent switch,
         // and it does not mix with other audio, because it is the audio.
         try session.setCategory(.playback, mode: .default)
+        // A step sequencer schedules everything ahead of time, so it has no
+        // use for low latency — and a longer buffer is a wider margin before
+        // a missed deadline becomes a click. Roughly a thousand frames.
+        try? session.setPreferredIOBufferDuration(0.023)
         try session.setActive(true)
         configuredSampleRate = session.sampleRate
         observe()

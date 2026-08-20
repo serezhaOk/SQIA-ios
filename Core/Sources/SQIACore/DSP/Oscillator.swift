@@ -31,6 +31,10 @@ public struct Oscillator: Sendable {
     /// Tone's fat oscillators default to three voices spread over 20 cents.
     public static let fatVoices = 3
     public static let fatSpreadCents = 20.0
+    /// The outer voices' frequency ratios. Constants, worked out once —
+    /// they were being raised to a power on every sample of every note.
+    private static let fatLow = pow(2, -fatSpreadCents / 2 / 1200)
+    private static let fatHigh = pow(2, fatSpreadCents / 2 / 1200)
     /// Tone's FM and AM oscillators default to these.
     public static let modulationIndex = 2.0
     public static let harmonicity = 1.0
@@ -129,11 +133,8 @@ public struct Oscillator: Sendable {
         case .fatSawtooth, .fatTriangle:
             // Three voices spread across the detune range, summed and
             // levelled — the thickness comes from them drifting apart.
-            let spread = Self.fatSpreadCents / 2
-            let low = pow(2, -spread / 1200)
-            let high = pow(2, spread / 1200)
-            let dtA = dt * low
-            let dtC = dt * high
+            let dtA = dt * Self.fatLow
+            let dtC = dt * Self.fatHigh
 
             let value: Double
             if waveform == .fatSawtooth {

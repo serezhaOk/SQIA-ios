@@ -7,8 +7,7 @@
 // 6 ms lookahead, which is close but not that implementation reproduced.
 //
 // It sits on the master bus, so it colours everything — worth an A/B against
-// the web before release (M9). Everything here is deliberately plain and
-// testable so that comparison has something to move.
+// the web before release (M9).
 
 import Foundation
 
@@ -24,12 +23,26 @@ public struct Limiter: Sendable {
     /// it means the gain is already falling when a transient arrives.
     public static let lookahead = 0.006
 
+    /// The gain computer runs on a block of samples rather than each one.
+    /// Its two logarithms are the most expensive thing on the master bus,
+    /// and at 8 samples the attack still gets eighteen updates before it has
+    /// finished — far more resolution than the ear has.
+    private static let controlInterval = 8
+
+    /// Below the knee nothing is compressed at all, so a quiet passage can
+    /// skip the whole computation.
+    private static let quietPeak = 0.0708  // −23 dBFS, the knee's lower edge
+
     private var lookaheadLeft: DelayLine
     private var lookaheadRight: DelayLine
     private var attackCoefficient: Double
     private var releaseCoefficient: Double
-    /// Current gain reduction in dB, always ≤ 0.
-    private var envelope: Double = 0
+
+    /// Current gain, linear and always ≤ 1.
+    private var gain = 1.0
+    private var targetGain = 1.0
+    private var blockPeak = 0.0
+    private var sinceControl = 0
 
     public init(sampleRate: Double) {
         lookaheadLeft = DelayLine(maximum: 0.05, delay: Self.lookahead, sampleRate: sampleRate)
@@ -46,7 +59,10 @@ public struct Limiter: Sendable {
     public mutating func clear() {
         lookaheadLeft.clear()
         lookaheadRight.clear()
-        envelope = 0
+        gain = 1
+        targetGain = 1
+        blockPeak = 0
+        sinceControl = 0
     }
 
     /// Gain reduction the static curve asks for at an input level, in dB.
@@ -68,14 +84,24 @@ public struct Limiter: Sendable {
     public mutating func process(left: Double, right: Double) -> (left: Double, right: Double) {
         // Detect on the louder channel so the image does not wander.
         let peak = max(abs(left), abs(right))
-        let level = peak > 1e-9 ? 20 * log10(peak) : -160
-        let target = Self.gainReduction(forLevel: level)
+        if peak > blockPeak { blockPeak = peak }
+
+        sinceControl += 1
+        if sinceControl >= Self.controlInterval {
+            sinceControl = 0
+            if blockPeak <= Self.quietPeak {
+                targetGain = 1
+            } else {
+                let level = 20 * log10(blockPeak)
+                targetGain = pow(10, Self.gainReduction(forLevel: level) / 20)
+            }
+            blockPeak = 0
+        }
 
         // Attack when clamping down harder, release when letting go.
-        let coefficient = target < envelope ? attackCoefficient : releaseCoefficient
-        envelope = target + (envelope - target) * coefficient
+        let coefficient = targetGain < gain ? attackCoefficient : releaseCoefficient
+        gain = targetGain + (gain - targetGain) * coefficient
 
-        let gain = pow(10, envelope / 20)
         return (lookaheadLeft.process(left) * gain, lookaheadRight.process(right) * gain)
     }
 }

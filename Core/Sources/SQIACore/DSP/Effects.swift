@@ -25,8 +25,18 @@ public struct Chorus: Sendable {
 
     private var left: DelayLine
     private var right: DelayLine
-    private var phase = 0.0
     private let sampleRate: Double
+
+    /// The modulation, as a unit vector turned a fixed angle each sample
+    /// rather than a sine evaluated at a phase. Two trigonometric calls per
+    /// sample per preset is a great deal of arithmetic for one slow wobble.
+    private var lfoSine = 0.0
+    private var lfoCosine = 1.0
+    private let stepSine: Double
+    private let stepCosine: Double
+    /// The rotation drifts off the unit circle over hours; nudging it back
+    /// now and then costs nothing.
+    private var sinceNormalise = 0
 
     public init(
         frequency: Double = defaultFrequency,
@@ -40,6 +50,9 @@ public struct Chorus: Sendable {
         self.depth = depth
         self.wet = wet
         self.sampleRate = sampleRate
+        let angle = 2 * Double.pi * frequency / sampleRate
+        stepSine = sin(angle)
+        stepCosine = cos(angle)
         // Room for the base delay and all of the modulation around it.
         left = DelayLine(maximum: 0.1, delay: delayTime / 1000, sampleRate: sampleRate)
         right = DelayLine(maximum: 0.1, delay: delayTime / 1000, sampleRate: sampleRate)
@@ -48,7 +61,9 @@ public struct Chorus: Sendable {
     public mutating func clear() {
         left.clear()
         right.clear()
-        phase = 0
+        lfoSine = 0
+        lfoCosine = 1
+        sinceNormalise = 0
     }
 
     public mutating func process(
@@ -58,10 +73,25 @@ public struct Chorus: Sendable {
         let base = delayTime / 1000 * sampleRate
         let swing = base * min(max(depth, 0), 1)
 
-        let lfoLeft = sin(2 * .pi * phase)
-        let lfoRight = sin(2 * .pi * (phase + Self.phaseOffset))
-        phase += frequency / sampleRate
-        if phase >= 1 { phase -= 1 }
+        // Half a cycle apart is simply the opposite sign, so one oscillator
+        // does for both sides.
+        let lfoLeft = lfoSine
+        let lfoRight = -lfoSine
+
+        let turnedSine = lfoSine * stepCosine + lfoCosine * stepSine
+        let turnedCosine = lfoCosine * stepCosine - lfoSine * stepSine
+        lfoSine = turnedSine
+        lfoCosine = turnedCosine
+
+        sinceNormalise += 1
+        if sinceNormalise >= 4096 {
+            sinceNormalise = 0
+            let magnitude = (lfoSine * lfoSine + lfoCosine * lfoCosine).squareRoot()
+            if magnitude > 1e-9 {
+                lfoSine /= magnitude
+                lfoCosine /= magnitude
+            }
+        }
 
         let wetLeft = left.process(input, delaySamples: base + swing * lfoLeft)
         let wetRight = right.process(inputRight, delaySamples: base + swing * lfoRight)

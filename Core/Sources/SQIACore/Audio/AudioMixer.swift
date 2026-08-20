@@ -58,6 +58,17 @@ public final class AudioMixer: @unchecked Sendable {
 
     private var nextEvent: AudioEvent?
 
+    /// One past the highest voice slot that might be sounding. Scanning all
+    /// forty every sample costs more than everything they play.
+    private var activeHigh = 0
+    /// Frames of silence out of the reverb, and out of the master. Both stop
+    /// being computed once they are spent — an idle app should cost nothing.
+    private var reverbRinging = 0
+    private var masterQuiet = 0
+    /// Long enough to cover the limiter's lookahead and any tail worth
+    /// hearing.
+    private static let ringOutFrames = 4_800
+
     public init(
         sampleRate: Double,
         voiceLimit: Int = defaultVoiceLimit,
@@ -120,11 +131,18 @@ public final class AudioMixer: @unchecked Sendable {
                 nextEvent = events.pop()
             }
 
+            // Nothing sounding and nothing left ringing: there is no
+            // arithmetic that would produce anything but zero.
+            if activeHigh == 0 && masterQuiet >= Self.ringOutFrames {
+                left[i] = 0
+                right[i] = 0
+                continue
+            }
+
             // Voices are mono; the stereo comes from the chains.
             for b in buses.indices { buses[b] = 0 }
-            for v in voices.indices where voices[v].isActive {
-                let preset = voices[v].preset.rawValue
-                buses[preset] += voices[v].render()
+            for v in 0..<activeHigh where voices[v].isActive {
+                buses[voices[v].preset.rawValue] += voices[v].render()
             }
 
             var dryLeft = 0.0
@@ -134,24 +152,43 @@ public final class AudioMixer: @unchecked Sendable {
 
             for c in chains.indices {
                 let bus = buses[c]
+                // A preset nobody is playing is not worth a filter, a
+                // chorus and two delay lines every sample.
+                if bus == 0 && !chains[c].isRinging { continue }
                 let out = chains[c].process(left: bus, right: bus)
                 dryLeft += out.left
                 dryRight += out.right
-                let send = chains[c].reverbSend
-                sendLeft += out.left * send
-                sendRight += out.right * send
+                sendLeft += out.left * out.send
+                sendRight += out.right * out.send
             }
 
-            let room = reverb.process(left: sendLeft, right: sendRight)
+            if sendLeft != 0 || sendRight != 0 {
+                reverbRinging = Self.ringOutFrames
+            }
+            if reverbRinging > 0 {
+                reverbRinging -= 1
+                let room = reverb.process(left: sendLeft, right: sendRight)
+                dryLeft += room.left
+                dryRight += room.right
+            }
+
             let out = limiter.process(
-                left: (dryLeft + room.left) * Self.masterGain,
-                right: (dryRight + room.right) * Self.masterGain
-            )
+                left: dryLeft * Self.masterGain, right: dryRight * Self.masterGain)
 
             left[i] = Float(out.left)
             right[i] = Float(out.right)
+
+            if abs(out.left) + abs(out.right) > 1e-7 {
+                masterQuiet = 0
+            } else if masterQuiet < Self.ringOutFrames {
+                masterQuiet += 1
+            }
         }
+
         frame += Int64(frameCount)
+        // Pull the watermark back down so the next block only walks the
+        // slots that are still in use.
+        while activeHigh > 0 && !voices[activeHigh - 1].isActive { activeHigh -= 1 }
         publishFrame()
     }
 
@@ -162,6 +199,9 @@ public final class AudioMixer: @unchecked Sendable {
             for c in chains.indices { chains[c].clear() }
             reverb.clear()
             limiter.clear()
+            activeHigh = 0
+            reverbRinging = 0
+            masterQuiet = Self.ringOutFrames
 
         case .presetDrift:
             let index = event.drift.preset.rawValue
@@ -174,6 +214,8 @@ public final class AudioMixer: @unchecked Sendable {
                 return
             }
             voices[slot].start(event.recipe, sampleRate: sampleRate)
+            if slot >= activeHigh { activeHigh = slot + 1 }
+            masterQuiet = 0
         }
     }
 
@@ -196,6 +238,9 @@ public final class AudioMixer: @unchecked Sendable {
         for c in chains.indices { chains[c].clear() }
         reverb.clear()
         limiter.clear()
+        activeHigh = 0
+        reverbRinging = 0
+        masterQuiet = Self.ringOutFrames
         droppedNotes = 0
         queueOverflows = 0
     }

@@ -22,6 +22,12 @@ jobs:
       - name: Test
         working-directory: Core
         run: swift test
+      # The render-cost bar only means something against optimised code —
+      # unoptimised Swift is several times slower and says nothing about
+      # what ships.
+      - name: Test (release)
+        working-directory: Core
+        run: swift test -c release
 
   app:
     name: Build the app

@@ -3,6 +3,11 @@
 // Tone.js attacks linearly and decays and releases exponentially, so these
 // do the same. A note is triggered for a set duration and releases itself —
 // which is what `triggerAttackRelease` means and what every preset uses.
+//
+// The curves are stepped rather than evaluated: an exponential segment is a
+// constant multiply per sample, a linear one a constant add. Calling `pow`
+// once per sample per voice is what a render thread cannot afford, and the
+// shape is identical either way.
 
 import Foundation
 
@@ -12,10 +17,10 @@ public struct ADSR: Sendable {
     /// toward a floor rather than to zero, because zero has no logarithm.
     public static let floor = 0.001
 
-    public var attack: Double
-    public var decay: Double
-    public var sustain: Double
-    public var release: Double
+    public private(set) var attack: Double
+    public private(set) var decay: Double
+    public private(set) var sustain: Double
+    public private(set) var release: Double
 
     private enum Stage {
         case idle
@@ -26,13 +31,21 @@ public struct ADSR: Sendable {
     }
 
     private var stage: Stage = .idle
-    private var time = 0.0
-    /// Level the release started from, so a note cut during its attack
-    /// falls from where it actually was.
-    private var releaseFrom = 0.0
     private var value = 0.0
-    /// How long the note is held before it releases itself.
-    private var holdFor = 0.0
+
+    // Per-sample steps, worked out once when the note starts.
+    private var attackStep = 1.0
+    private var decayFactor = 0.0
+    private var releaseFactor = 0.0
+    /// The falling part of the decay, from one down toward zero.
+    private var decayLevel = 1.0
+
+    private var age = 0
+    private var holdFrames = 0
+    private var attackFrames = 0
+    private var decayFrames = 0
+    private var releaseFrames = 0
+    private var releaseAge = 0
 
     public init(
         attack: Double = 0.005,
@@ -56,102 +69,103 @@ public struct ADSR: Sendable {
         max(duration, attack) + release
     }
 
-    public mutating func trigger(duration: Double) {
+    public mutating func trigger(duration: Double, sampleRate: Double) {
         stage = .attack
-        time = 0
         value = 0
-        holdFor = max(0, duration)
+        decayLevel = 1
+        age = 0
+        releaseAge = 0
+
+        attackFrames = max(0, Int(attack * sampleRate))
+        decayFrames = max(1, Int(decay * sampleRate))
+        releaseFrames = max(1, Int(release * sampleRate))
+        holdFrames = max(0, Int(max(0, duration) * sampleRate))
+
+        attackStep = attackFrames > 0 ? 1 / Double(attackFrames) : 1
+        decayFactor = pow(Self.floor, 1 / Double(decayFrames))
+        releaseFactor = pow(Self.floor, 1 / Double(releaseFrames))
     }
 
     public mutating func releaseNow() {
         guard stage != .idle, stage != .release else { return }
-        releaseFrom = value
         stage = .release
-        time = 0
+        releaseAge = 0
     }
 
     /// The envelope's level for this frame.
-    public mutating func next(sampleRate: Double) -> Double {
-        let step = 1 / sampleRate
-
+    public mutating func next() -> Double {
         switch stage {
         case .idle:
-            value = 0
+            return 0
 
         case .attack:
-            value = attack <= 0 ? 1 : min(1, time / attack)
-            time += step
-            if time >= attack {
+            value = attackFrames > 0 ? min(1, value + attackStep) : 1
+            age += 1
+            if age >= attackFrames {
                 stage = .decay
-                time = 0
+                decayLevel = 1
             }
 
         case .decay:
-            // Toward the sustain level, approaching it rather than sliding.
-            let x = min(1, time / decay)
-            value = sustain + (1 - sustain) * pow(Self.floor, x)
-            time += step
-            if time >= decay {
+            decayLevel *= decayFactor
+            value = sustain + (1 - sustain) * decayLevel
+            age += 1
+            if age >= attackFrames + decayFrames {
                 stage = .sustain
-                time = 0
                 value = sustain
             }
 
         case .sustain:
             value = sustain
-            time += step
+            age += 1
 
         case .release:
-            let x = min(1, time / release)
-            value = releaseFrom * pow(Self.floor, x)
-            time += step
-            if time >= release {
+            value *= releaseFactor
+            releaseAge += 1
+            if releaseAge >= releaseFrames {
                 stage = .idle
                 value = 0
             }
         }
 
         // The note lets go of itself once it has been held long enough.
-        if stage != .release && stage != .idle && elapsed >= holdFor {
+        if stage != .release && stage != .idle && age >= holdFrames {
             releaseNow()
         }
         return value
-    }
-
-    /// Time since the attack began.
-    private var elapsed: Double {
-        switch stage {
-        case .idle, .release: return .infinity
-        case .attack: return time
-        case .decay: return attack + time
-        case .sustain: return attack + decay + time
-        }
     }
 }
 
 /// A drum's pitch drop: start high, fall to the note over `decay`.
 ///
 /// This is what a membrane synth is — a sine whose frequency collapses,
-/// which the ear hears as a skin being struck.
+/// which the ear hears as a skin being struck. Tone ramps it exponentially,
+/// which is a constant ratio per sample, so that is how it is stepped.
 public struct PitchEnvelope: Sendable {
-    public var octaves: Double
-    public var decay: Double
+    public private(set) var octaves: Double
+    public private(set) var decay: Double
 
-    private var time = 0.0
+    private var multiplier = 1.0
+    private var perSample = 1.0
 
     public init(octaves: Double, decay: Double) {
         self.octaves = octaves
         self.decay = max(1e-4, decay)
     }
 
-    public mutating func reset() {
-        time = 0
+    public mutating func prepare(sampleRate: Double) {
+        multiplier = pow(2, octaves)
+        let frames = max(1, Int(decay * sampleRate))
+        perSample = pow(2, -octaves / Double(frames))
     }
 
-    public mutating func next(base frequency: Double, sampleRate: Double) -> Double {
-        let x = min(1, time / decay)
-        time += 1 / sampleRate
-        // Exponential in pitch, which is linear in octaves.
-        return frequency * pow(2, octaves * pow(ADSR.floor, x))
+    public mutating func reset() {
+        multiplier = pow(2, octaves)
+    }
+
+    public mutating func next(base frequency: Double) -> Double {
+        let value = frequency * multiplier
+        multiplier = max(1, multiplier * perSample)
+        return value
     }
 }
