@@ -308,4 +308,66 @@ struct AudioMixerTests {
         #expect(peak > 0.01, "the mixer went quiet")
         #expect(peak < 1.5, "the limiter let it run away: \(peak)")
     }
+
+    // ------------------------------------------------------------ the floor --
+
+    /// Whatever happens upstream, a sample handed to the hardware is a number
+    /// between −1 and 1. Anything else is the loudest sound the device can
+    /// make, and it is not music.
+    @Test("Nothing leaves the mixer past full scale")
+    func outputStaysInRange() {
+        let mixer = AudioMixer(sampleRate: rate)
+        // Forty of the loudest note there is, all at once.
+        for _ in 0..<AudioMixer.defaultVoiceLimit {
+            var recipe = steadyNote(frequency: 110)
+            recipe.gain = 4
+            mixer.schedule(AudioEvent.note(recipe, at: 0))
+        }
+
+        var peak = 0.0
+        for _ in 0..<40 { peak = max(peak, render(mixer, frames: 512).map(abs).max() ?? 0) }
+
+        #expect(peak > 0.1, "the mixer went quiet")
+        #expect(peak <= 1, "left the rails at \(peak)")
+    }
+
+    /// If some filter ever does go unstable, the renderer notices within a
+    /// sample and empties itself rather than roaring until the app is killed.
+    @Test("A blowup is caught, counted, and recovered from")
+    func survivesABlowup() {
+        let mixer = AudioMixer(sampleRate: rate)
+
+        // An infinite gain is not something the app can produce; it is the
+        // shortest way to prove the guard is real.
+        var poison = steadyNote(frequency: 220)
+        poison.gain = .infinity
+        mixer.schedule(AudioEvent.note(poison, at: 0))
+
+        let during = render(mixer, frames: 512)
+        #expect(during.allSatisfy { $0.isFinite && abs($0) <= 1 })
+        #expect(mixer.recoveredBlowups > 0, "the blowup went unnoticed")
+
+        // And it still plays afterwards.
+        mixer.schedule(AudioEvent.note(steadyNote(frequency: 220), at: mixer.frame))
+        let after = render(mixer, frames: 4_096)
+        #expect(after.allSatisfy { $0.isFinite && abs($0) <= 1 })
+        #expect((after.map(abs).max() ?? 0) > 1e-3, "the mixer never came back")
+    }
+
+    /// The number the UI shows while the sound is being tuned. It has to mean
+    /// something: seconds of work per second of audio.
+    @Test("The renderer reports what it costs")
+    func reportsItsLoad() {
+        let mixer = AudioMixer(sampleRate: rate)
+        #expect(mixer.renderLoad == 0)
+
+        for _ in 0..<8 {
+            mixer.schedule(AudioEvent.note(steadyNote(), at: mixer.frame))
+            _ = render(mixer, frames: 512)
+        }
+
+        let load = mixer.renderLoad
+        #expect(load > 0, "no cost was reported")
+        #expect(load < 1, "a single note took a whole block: \(load)×")
+    }
 }

@@ -88,7 +88,17 @@ final class AudioEngine {
                 buffers.count >= 2,
                 let left = buffers[0].mData?.assumingMemoryBound(to: Float.self),
                 let right = buffers[1].mData?.assumingMemoryBound(to: Float.self)
-            else { return noErr }
+            else {
+                // A buffer we cannot fill is not a buffer to leave alone:
+                // whatever it held before is noise at full volume.
+                for buffer in buffers {
+                    guard let data = buffer.mData else { continue }
+                    UnsafeMutableRawBufferPointer(
+                        start: data, count: Int(buffer.mDataByteSize)
+                    ).initializeMemory(as: UInt8.self, repeating: 0)
+                }
+                return noErr
+            }
 
             mixer.render(frameCount: Int(frameCount), left: left, right: right)
             return noErr

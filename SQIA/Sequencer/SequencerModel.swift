@@ -63,6 +63,15 @@ final class SequencerModel {
     @ObservationIgnored private let voicing = VoicingBox()
     @ObservationIgnored private let random = SystemRandomSource()
 
+    #if DEBUG
+        /// What the render thread is costing, live. A crackle is a deadline
+        /// missed on the device, and nothing on a desk can see that happen —
+        /// so while the sound is being tuned, the number is on screen. Debug
+        /// builds only; it is not part of the app.
+        private(set) var renderLoad = ""
+        @ObservationIgnored private var loadTimer: Timer?
+    #endif
+
     @ObservationIgnored private var tempoDragStart: Double?
     @ObservationIgnored private var tempoDragMoved = false
     /// The layout the last frame was drawn with — what a touch is resolved
@@ -100,6 +109,7 @@ final class SequencerModel {
         sequencer.bpm = state.bpm
         sequencer.start()
         isRunning = true
+        startWatchingLoad()
     }
 
     func stop() {
@@ -107,13 +117,49 @@ final class SequencerModel {
         sequencer.stop()
         engine.stop()
         isRunning = false
+        stopWatchingLoad()
         for scene in scenes { scene.playhead = -1 }
+    }
+
+    // ----------------------------------------------------------- the readout --
+
+    private func startWatchingLoad() {
+        #if DEBUG
+            guard loadTimer == nil else { return }
+            let timer = Timer(timeInterval: 0.5, repeats: true) {
+                [weak self] _ in
+                // Scheduled on the main run loop, so this is the main thread.
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let mixer = self.engine.mixer
+                    var text = String(format: "%.2f×", mixer.renderLoad)
+                    let blowups = mixer.recoveredBlowups
+                    if blowups > 0 { text += "  ⚠\(blowups)" }
+                    let dropped = mixer.droppedNoteCount
+                    if dropped > 0 { text += "  −\(dropped)" }
+                    self.renderLoad = text
+                }
+            }
+            // Common mode, so the number keeps moving while a finger is down
+            // — which is exactly when the load is worth watching.
+            RunLoop.main.add(timer, forMode: .common)
+            loadTimer = timer
+        #endif
+    }
+
+    private func stopWatchingLoad() {
+        #if DEBUG
+            loadTimer?.invalidate()
+            loadTimer = nil
+            renderLoad = ""
+        #endif
     }
 
     private func handleEngineStopped() {
         guard isRunning else { return }
         sequencer.stop()
         isRunning = false
+        stopWatchingLoad()
         for scene in scenes { scene.playhead = -1 }
     }
 

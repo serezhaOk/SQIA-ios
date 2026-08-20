@@ -39,6 +39,18 @@ struct SequencerView: View {
                 model.stop()
             }
         }
+        .overlay(alignment: .top) {
+            #if DEBUG
+                // What the audio thread costs, in a Run build only. Under
+                // about 0.2× there is room to spare; approaching 1.0× is a
+                // crackle waiting for the phone to get busy.
+                Text(model.renderLoad)
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(Palette.ink.opacity(0.35))
+                    .padding(.top, 2)
+                    .allowsHitTesting(false)
+            #endif
+        }
         .overlay(alignment: .bottom) {
             if let failure = model.failure {
                 Text(failure)

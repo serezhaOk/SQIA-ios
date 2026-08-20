@@ -16,6 +16,7 @@
 // Nothing in `render` allocates, locks or touches a reference count.
 
 import CSQIAAtomics
+import Dispatch
 
 public final class AudioMixer: @unchecked Sendable {
     /// The master gain the web app runs at, before the limiter.
@@ -55,6 +56,39 @@ public final class AudioMixer: @unchecked Sendable {
     /// watching on an old device with a full pattern.
     public private(set) var droppedNotes = 0
     public private(set) var queueOverflows = 0
+    private var blowups = 0
+
+    /// What the last blocks cost, as a fraction of the time they had to be
+    /// ready in. Published for the UI, which is not the render thread.
+    ///
+    /// A crackle is a deadline missed, and from a desk there is no way to
+    /// know whether a phone is missing them. This is the number that says so:
+    /// comfortably under 0.2 and the sound is safe, near 1.0 and it cannot
+    /// work. It holds a peak for a second and a half so a spike is still on
+    /// screen by the time anyone looks up.
+    private let publishedLoad: UnsafeMutablePointer<SQIAAtomicUInt64>
+    private var loadPeak = 0.0
+
+    public var renderLoad: Double {
+        Double(bitPattern: SQIAAtomicLoadRelaxed(publishedLoad))
+    }
+
+    /// Both render-thread counters in one word — blowups in the high half,
+    /// dropped notes in the low — so the UI can read them without racing the
+    /// thread that writes them.
+    ///
+    /// A blowup should never happen: it means the output went non-finite and
+    /// the effects had to be cleared out from under it. Dropped notes are
+    /// ordinary at density, and the web drops them too.
+    private let publishedFaults: UnsafeMutablePointer<SQIAAtomicUInt64>
+
+    public var recoveredBlowups: Int {
+        Int(SQIAAtomicLoadRelaxed(publishedFaults) >> 32)
+    }
+
+    public var droppedNoteCount: Int {
+        Int(SQIAAtomicLoadRelaxed(publishedFaults) & 0xFFFF_FFFF)
+    }
 
     private var nextEvent: AudioEvent?
 
@@ -85,14 +119,26 @@ public final class AudioMixer: @unchecked Sendable {
         events = AudioEventQueue(capacity: queueCapacity)
         publishedFrame = .allocate(capacity: 1)
         SQIAAtomicInit(publishedFrame, 0)
+        publishedLoad = .allocate(capacity: 1)
+        SQIAAtomicInit(publishedLoad, 0)
+        publishedFaults = .allocate(capacity: 1)
+        SQIAAtomicInit(publishedFaults, 0)
     }
 
     deinit {
         publishedFrame.deallocate()
+        publishedLoad.deallocate()
+        publishedFaults.deallocate()
     }
 
     private func publishFrame() {
         SQIAAtomicStoreRelease(publishedFrame, UInt64(bitPattern: frame))
+    }
+
+    private func publishFaults() {
+        let packed = UInt64(UInt32(truncatingIfNeeded: blowups)) << 32
+            | UInt64(UInt32(truncatingIfNeeded: droppedNotes))
+        SQIAAtomicStoreRelease(publishedFaults, packed)
     }
 
     public var activeVoiceCount: Int {
@@ -119,6 +165,8 @@ public final class AudioMixer: @unchecked Sendable {
         left: UnsafeMutablePointer<Float>,
         right: UnsafeMutablePointer<Float>
     ) {
+        let started = DispatchTime.now().uptimeNanoseconds
+
         for i in 0..<frameCount {
             let now = frame + Int64(i)
 
@@ -175,8 +223,21 @@ public final class AudioMixer: @unchecked Sendable {
             let out = limiter.process(
                 left: dryLeft * Self.masterGain, right: dryRight * Self.masterGain)
 
-            left[i] = Float(out.left)
-            right[i] = Float(out.right)
+            // One test covers both channels for NaN and for either infinity:
+            // adding them keeps a NaN, and an infinity either survives or
+            // meets its opposite and becomes one.
+            guard (out.left + out.right).isFinite else {
+                left[i] = 0
+                right[i] = 0
+                recoverFromBlowup()
+                continue
+            }
+
+            // The speaker cannot play past full scale, and a sample that asks
+            // to is the loudest crackle there is. The limiter should have
+            // caught it; this is the floor under that.
+            left[i] = Float(min(max(out.left, -1), 1))
+            right[i] = Float(min(max(out.right, -1), 1))
 
             if abs(out.left) + abs(out.right) > 1e-7 {
                 masterQuiet = 0
@@ -190,6 +251,36 @@ public final class AudioMixer: @unchecked Sendable {
         // slots that are still in use.
         while activeHigh > 0 && !voices[activeHigh - 1].isActive { activeHigh -= 1 }
         publishFrame()
+        publishLoad(started: started, frameCount: frameCount)
+    }
+
+    /// A filter has gone unstable and is feeding infinities down the bus.
+    ///
+    /// Everything with memory gets emptied — voices included, since whichever
+    /// one caused it would only do it again — and the count says it happened.
+    /// The alternative is a renderer that roars until the app is killed.
+    private func recoverFromBlowup() {
+        for v in voices.indices { voices[v].stop() }
+        for c in chains.indices { chains[c].clear() }
+        reverb.clear()
+        limiter.clear()
+        activeHigh = 0
+        reverbRinging = 0
+        masterQuiet = Self.ringOutFrames
+        blowups += 1
+        publishFaults()
+    }
+
+    /// Seconds of work per second of audio, held at its peak for a moment.
+    private func publishLoad(started: UInt64, frameCount: Int) {
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds &- started) / 1_000_000_000
+        let block = Double(frameCount) / sampleRate
+        guard block > 0 else { return }
+
+        // Decays to nothing over a second and a half, so a spike is still
+        // readable but a stale one does not linger.
+        loadPeak = max(elapsed / block, loadPeak * max(0, 1 - block / 1.5))
+        SQIAAtomicStoreRelease(publishedLoad, loadPeak.bitPattern)
     }
 
     private func apply(_ event: AudioEvent) {
@@ -211,6 +302,7 @@ public final class AudioMixer: @unchecked Sendable {
         case .synthNote:
             guard let slot = voices.firstIndex(where: { !$0.isActive }) else {
                 droppedNotes += 1
+                publishFaults()
                 return
             }
             voices[slot].start(event.recipe, sampleRate: sampleRate)
@@ -243,5 +335,9 @@ public final class AudioMixer: @unchecked Sendable {
         masterQuiet = Self.ringOutFrames
         droppedNotes = 0
         queueOverflows = 0
+        blowups = 0
+        publishFaults()
+        loadPeak = 0
+        SQIAAtomicStoreRelease(publishedLoad, 0)
     }
 }

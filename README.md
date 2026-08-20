@@ -38,6 +38,23 @@ The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
 lives in `SQIACore`, where it can be tested off a device. [PLAN.md](PLAN.md)
 explains why, and what it costs.
 
+## What the render thread costs
+
+A crackle is a missed deadline, so the cost of rendering is measured rather
+than guessed at. `RenderCostTests` reports the realtime factor — seconds of
+work per second of audio — and holds a release build to 0.25×; two full
+tracks currently come to about 0.08×.
+
+Debug builds are several times slower, which is why the project compiles at
+`-O` even in Debug: the app target opts back to `-Onone` so it stays
+debuggable, while `SQIACore`, where every sample is computed, does not. A
+Run build is therefore a fair test of the sound.
+
+On the device, a Debug build shows the same number in the corner of the
+screen, with the count of dropped notes beside it. Under about 0.2× there is
+room to spare; near 1.0× nothing can help. It is `#if DEBUG` only and comes
+out before release.
+
 ## Layout
 
 ```
