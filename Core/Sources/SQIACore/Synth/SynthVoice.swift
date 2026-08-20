@@ -20,6 +20,18 @@ public struct SynthVoice: Sendable {
     private var filter = Biquad(lowpass: 20_000, sampleRate: 48_000)
     private var oscillator = Oscillator()
     private var noise = Noise()
+    /// Built once per slot, because its delay line is the only thing in a
+    /// voice that allocates and the render thread must never do that.
+    private var pluck = Pluck(sampleRate: 48_000)
+
+    /// The per-note filter sweep: where it is, where it is going, and how
+    /// far it moves each sample. Recomputing coefficients every sample would
+    /// cost more than the note; every 64 is inaudible.
+    private var filterFrequency = 20_000.0
+    private var filterStep = 0.0
+    private var filterRemaining = 0
+    private var sinceFilterUpdate = 0
+    private static let filterUpdateInterval = 64
 
     // The metal stack, written out rather than held in an array so nothing
     // in the render loop can allocate.
@@ -38,6 +50,13 @@ public struct SynthVoice: Sendable {
 
     public init() {}
 
+    /// Give the slot its buffers at the rate it will run at. Called once,
+    /// before any audio, so that starting a note later costs nothing.
+    public mutating func prepare(sampleRate: Double) {
+        self.sampleRate = sampleRate
+        pluck = Pluck(sampleRate: sampleRate)
+    }
+
     public mutating func start(_ recipe: VoiceRecipe, sampleRate: Double) {
         self.recipe = recipe
         self.sampleRate = sampleRate
@@ -55,22 +74,16 @@ public struct SynthVoice: Sendable {
         pitch = PitchEnvelope(octaves: recipe.pitchOctaves, decay: recipe.pitchDecay)
         pitch.prepare(sampleRate: sampleRate)
 
-        switch recipe.filter {
-        case .none:
-            break
-        case .lowpass:
-            filter.setLowpass(
-                frequency: recipe.filterFrequency, q: recipe.filterQ,
-                sampleRate: sampleRate)
-        case .bandpass:
-            filter.setBandpass(
-                frequency: recipe.filterFrequency, q: recipe.filterQ,
-                sampleRate: sampleRate)
-        case .highpass:
-            filter.setHighpass(
-                frequency: recipe.filterFrequency, q: recipe.filterQ,
-                sampleRate: sampleRate)
+        filterFrequency = recipe.filterFrequency
+        if recipe.filterTarget > 0 && recipe.filterRamp > 0 {
+            filterRemaining = max(1, Int(recipe.filterRamp * sampleRate))
+            filterStep = (recipe.filterTarget - filterFrequency) / Double(filterRemaining)
+        } else {
+            filterRemaining = 0
+            filterStep = 0
         }
+        sinceFilterUpdate = 0
+        setFilter()
         filter.reset()
 
         switch recipe.source {
@@ -79,10 +92,7 @@ public struct SynthVoice: Sendable {
         case .noise:
             // Seeded from the note's own rolled numbers, so two claps in
             // the same bar are not the same clap.
-            let mix =
-                Int(recipe.frequency * 97) &+ Int(recipe.filterFrequency * 13)
-                &+ Int(recipe.duration * 100_003)
-            noise = Noise(colour: recipe.noiseColour, seed: UInt32(truncatingIfNeeded: mix))
+            noise = Noise(colour: recipe.noiseColour, seed: Self.seed(for: recipe))
         case .metal:
             metal0.reset()
             metal1.reset()
@@ -91,11 +101,50 @@ public struct SynthVoice: Sendable {
             metal4.reset()
             metal5.reset()
             metalModulator.reset()
+
+        case .pluck:
+            pluck.start(
+                frequency: tunedFrequency,
+                dampening: recipe.pluckDampening,
+                resonance: recipe.pluckResonance,
+                attackNoise: recipe.attackNoise,
+                seed: Self.seed(for: recipe))
         }
 
         age = 0
-        lifetime = Int(amp.lifetime(duration: recipe.duration) * sampleRate) + 1
+        // A pluck has no amplitude envelope — the comb running down is the
+        // whole decay — so the web gives it a flat time to live instead.
+        lifetime =
+            recipe.lifetime > 0
+            ? Int(recipe.lifetime * sampleRate) + 1
+            : Int(amp.lifetime(duration: recipe.duration) * sampleRate) + 1
         isActive = true
+    }
+
+    /// Something to seed a noise generator with that differs between two
+    /// notes in the same bar but is the same for a given recipe.
+    private static func seed(for recipe: VoiceRecipe) -> UInt32 {
+        let mix =
+            Int(recipe.frequency * 97) &+ Int(recipe.filterFrequency * 13)
+            &+ Int(recipe.duration * 100_003) &+ Int(recipe.pluckResonance * 65_537)
+        return UInt32(truncatingIfNeeded: mix)
+    }
+
+    /// Point the biquad at wherever the sweep has reached.
+    private mutating func setFilter() {
+        switch recipe.filter {
+        case .none:
+            break
+        case .lowpass:
+            filter.setLowpass(
+                frequency: filterFrequency, q: recipe.filterQ, sampleRate: sampleRate)
+        case .bandpass:
+            filter.setBandpass(
+                frequency: filterFrequency, q: recipe.filterQ, sampleRate: sampleRate)
+        case .highpass:
+            filter.setHighpass(
+                frequency: filterFrequency, q: recipe.filterQ, sampleRate: sampleRate)
+        }
     }
 
     public mutating func stop() {
@@ -105,12 +154,15 @@ public struct SynthVoice: Sendable {
 
     public mutating func render() -> Double {
         guard isActive else { return 0 }
-        if age >= lifetime || amp.isFinished {
+        // A pluck carries no amplitude envelope — the comb winding down is
+        // the whole of its decay — so only its time to live can end it.
+        let plucking = recipe.source == .pluck
+        if age >= lifetime || (!plucking && amp.isFinished) {
             stop()
             return 0
         }
 
-        let level = amp.next()
+        let level = plucking ? 1 : amp.next()
         var value: Double
 
         switch recipe.source {
@@ -145,9 +197,23 @@ public struct SynthVoice: Sendable {
                 + metal5.render(
                     frequency: base * Self.metalRatios[5], sampleRate: sampleRate)
             value /= Double(Self.metalRatios.count)
+
+        case .pluck:
+            value = pluck.next()
         }
 
         if recipe.filter != .none {
+            // A sweeping filter moves a little every sample and is retuned
+            // every sixty-fourth of them.
+            if filterRemaining > 0 {
+                filterFrequency += filterStep
+                filterRemaining -= 1
+                sinceFilterUpdate += 1
+                if sinceFilterUpdate >= Self.filterUpdateInterval || filterRemaining == 0 {
+                    sinceFilterUpdate = 0
+                    setFilter()
+                }
+            }
             value = filter.process(value)
         }
 

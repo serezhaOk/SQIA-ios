@@ -61,6 +61,194 @@ struct PresetTests {
     }
 }
 
+@Suite("KALIMBA")
+struct KalimbaTests {
+    private func roll(seed: UInt32, velocity: Double = 0.9) -> [ScheduledVoice] {
+        SynthVoicing.notes(
+            preset: .kalimba, midi: 60, velocity: velocity, using: Mulberry32(seed: seed))
+    }
+
+    @Test("Every rolled value lands inside the web's range")
+    func ranges() {
+        let random = Mulberry32(seed: 77)
+        for _ in 0..<400 {
+            let voices = SynthVoicing.notes(
+                preset: .kalimba, midi: 55, velocity: 1, using: random)
+            let lead = voices[0].recipe
+            #expect(lead.preset == .kalimba)
+            #expect(lead.source == .pluck)
+            #expect(lead.pluckResonance >= 0.55 && lead.pluckResonance <= 0.94)
+            #expect(lead.pluckDampening >= 900 && lead.pluckDampening <= 4500)
+            #expect(lead.attackNoise >= 0.4 && lead.attackNoise <= 1.8)
+            #expect(lead.filterFrequency >= 1200 && lead.filterFrequency <= 5200)
+            #expect(lead.filterQ >= 0.3 && lead.filterQ <= 2.2)
+            #expect(lead.filterTarget >= 500 && lead.filterTarget <= 1600)
+            #expect(lead.filterRamp >= 0.3 && lead.filterRamp <= 1.1)
+            #expect(lead.lifetime == 2.2)
+
+            if voices.count > 1 {
+                let ghost = voices[1].recipe
+                // An octave up, quieter, damped harder and ringing shorter —
+                // and with no lowpass of its own.
+                #expect(abs(ghost.frequency - lead.frequency * 2) < 1e-9)
+                #expect(abs(ghost.pluckDampening - lead.pluckDampening * 1.4) < 1e-9)
+                #expect(abs(ghost.pluckResonance - lead.pluckResonance * 0.8) < 1e-9)
+                #expect(ghost.attackNoise == 0.6)
+                #expect(ghost.filter == .none)
+                #expect(ghost.lifetime == 1.6)
+                #expect(voices[1].offset >= 0.01 && voices[1].offset <= 0.05)
+            }
+        }
+    }
+
+    /// The order matters more than the ranges: a seeded run can only be
+    /// compared with the web if every value comes off the stream in the same
+    /// place. This walks a second generator through the web's sequence and
+    /// checks the note was built from exactly those draws.
+    @Test("Values come off the stream in the web's order")
+    func drawOrder() {
+        let expected = Mulberry32(seed: 9)
+        let resonance = expected.value(0.55, 0.94)
+        let dampening = expected.value(900, 4500)
+        let attackNoise = expected.value(0.4, 1.8)
+        _ = expected.value(0.1, 0.9)  // the release Tone takes and never uses
+        let cutoff = expected.value(1200, 5200)
+        let q = expected.value(0.3, 2.2)
+        let target = expected.value(500, 1600)
+        let ramp = expected.value(0.3, 1.1)
+        let ghosted = expected.chance(0.18)
+        let offset = ghosted ? expected.value(0.01, 0.05) : 0
+
+        let voices = roll(seed: 9)
+        let lead = voices[0].recipe
+        #expect(lead.pluckResonance == resonance)
+        #expect(lead.pluckDampening == dampening)
+        #expect(lead.attackNoise == attackNoise)
+        #expect(lead.filterFrequency == cutoff)
+        #expect(lead.filterQ == q)
+        #expect(lead.filterTarget == target)
+        #expect(lead.filterRamp == ramp)
+        #expect((voices.count > 1) == ghosted)
+        if ghosted { #expect(voices[1].offset == offset) }
+    }
+
+    @Test("The ghost turns up about a fifth of the time")
+    func ghostRate() {
+        let random = Mulberry32(seed: 5)
+        var ghosts = 0
+        let runs = 4000
+        for _ in 0..<runs {
+            let voices = SynthVoicing.notes(
+                preset: .kalimba, midi: 60, velocity: 1, using: random)
+            if voices.count > 1 { ghosts += 1 }
+        }
+        let rate = Double(ghosts) / Double(runs)
+        #expect(abs(rate - 0.18) < 0.02, "ghosted \(rate) of the time")
+    }
+
+    @Test("Velocity lives in the level, with a floor under it")
+    func velocityInTheGain() {
+        let loud = roll(seed: 3, velocity: 1)[0].recipe.gain
+        let soft = roll(seed: 3, velocity: 0.3)[0].recipe.gain
+        let silent = roll(seed: 3, velocity: 0)[0].recipe.gain
+        #expect(loud > soft)
+        // Tone's floor: below 0.02 the level stops falling, so a soft cell
+        // is quiet rather than absent.
+        #expect(silent > 0)
+        #expect(abs(silent - roll(seed: 3, velocity: 0.01)[0].recipe.gain) < 1e-12)
+    }
+
+    // ------------------------------------------------------------- sound --
+
+    @Test("A pluck rings at the note it was given")
+    func ringsInTune() {
+        var recipe = VoiceRecipe()
+        recipe.preset = .kalimba
+        recipe.source = .pluck
+        recipe.frequency = 220
+        recipe.gain = 1
+        recipe.pluckResonance = 0.94
+        recipe.pluckDampening = 4000
+        recipe.attackNoise = 1
+        recipe.lifetime = 2.2
+
+        let out = render(recipe, frames: Int(rate / 2))
+        // Past the burst, one period apart, the waveform repeats itself.
+        let period = Int((rate / 220).rounded())
+        let window = Array(out[(period * 8)..<(period * 40)])
+        var same = 0.0
+        var energy = 0.0
+        for i in period..<window.count {
+            same += window[i] * window[i - period]
+            energy += window[i] * window[i]
+        }
+        #expect(energy > 0, "the pluck made no sound")
+        #expect(same / energy > 0.7, "no periodicity at 220 Hz: \(same / energy)")
+    }
+
+    @Test("Resonance decides how long the tine rings")
+    func resonanceSetsTheTail() {
+        func tail(_ resonance: Double) -> Double {
+            var recipe = VoiceRecipe()
+            recipe.preset = .kalimba
+            recipe.source = .pluck
+            recipe.frequency = 330
+            recipe.gain = 1
+            recipe.pluckResonance = resonance
+            recipe.pluckDampening = 3000
+            recipe.attackNoise = 1
+            recipe.lifetime = 2.2
+            let out = render(recipe, frames: Int(rate))
+            return rms(Array(out[Int(rate / 2)...]))
+        }
+        #expect(tail(0.94) > tail(0.55) * 10, "the short one is not short enough")
+    }
+
+    @Test("Dampening decides how bright it arrives")
+    func dampeningSetsTheTone() {
+        func brightness(_ dampening: Double) -> Double {
+            var recipe = VoiceRecipe()
+            recipe.preset = .kalimba
+            recipe.source = .pluck
+            recipe.frequency = 220
+            recipe.gain = 1
+            recipe.pluckResonance = 0.8
+            recipe.pluckDampening = dampening
+            recipe.attackNoise = 1
+            recipe.lifetime = 2.2
+            let out = render(recipe, frames: 4096)
+            // How much of the signal is in the fast-moving part of it.
+            var difference = 0.0
+            for i in 1..<out.count { difference += (out[i] - out[i - 1]) * (out[i] - out[i - 1]) }
+            let total = out.reduce(0) { $0 + $1 * $1 }
+            return total > 0 ? difference / total : 0
+        }
+        #expect(brightness(4500) > brightness(900), "the dark one is not darker")
+    }
+
+    @Test("The lowpass sweeps down across the note")
+    func filterSweeps() {
+        var recipe = VoiceRecipe()
+        recipe.preset = .kalimba
+        recipe.source = .pluck
+        recipe.frequency = 220
+        recipe.gain = 1
+        recipe.pluckResonance = 0.94
+        recipe.pluckDampening = 4500
+        recipe.attackNoise = 1
+        recipe.lifetime = 2.2
+        recipe.filter = .lowpass
+        recipe.filterFrequency = 5200
+        recipe.filterQ = 1
+        recipe.filterTarget = 500
+        recipe.filterRamp = 0.5
+
+        let out = render(recipe, frames: Int(rate))
+        #expect(out.allSatisfy { $0.isFinite })
+        #expect(rms(Array(out[0..<2048])) > 0, "nothing came out")
+    }
+}
+
 @Suite("REVERIE")
 struct ReverieTests {
     private func roll(seed: UInt32) -> [ScheduledVoice] {

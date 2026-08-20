@@ -30,13 +30,27 @@ public struct DelayLine: Sendable {
 
     /// Push one sample in and take the delayed one out.
     public mutating func process(_ x: Double) -> Double {
+        let y = peek()
+        push(x)
+        return y
+    }
+
+    /// The sample due now, without writing anything.
+    ///
+    /// A feedback comb has to read before it knows what to write — what goes
+    /// in is the input plus what just came out — so the two halves are
+    /// separate as well as joined.
+    public func peek() -> Double {
         var readIndex = writeIndex - delaySamples
         if readIndex < 0 { readIndex += buffer.count }
-        let y = buffer[readIndex]
+        return buffer[readIndex]
+    }
+
+    /// Write one sample and move on.
+    public mutating func push(_ x: Double) {
         buffer[writeIndex] = x
         writeIndex += 1
         if writeIndex == buffer.count { writeIndex = 0 }
-        return y
     }
 
     /// The same, but reading from a delay that can sit between samples and

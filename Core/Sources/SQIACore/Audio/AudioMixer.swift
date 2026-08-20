@@ -117,6 +117,9 @@ public final class AudioMixer: @unchecked Sendable {
     ) {
         self.sampleRate = sampleRate
         voices = Array(repeating: SynthVoice(), count: max(1, voiceLimit))
+        // Every slot gets its buffers now, at the rate it will run at, so
+        // that starting a note on the render thread never allocates.
+        for v in voices.indices { voices[v].prepare(sampleRate: sampleRate) }
         chains = SynthPreset.allCases.map {
             PresetChain(preset: $0, sampleRate: sampleRate)
         }

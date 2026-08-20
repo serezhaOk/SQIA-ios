@@ -39,7 +39,7 @@ public enum SynthPreset: Int, Sendable, CaseIterable {
 
     /// The presets that have voices behind them. The rest are being written;
     /// the picker offers what can actually be heard.
-    public static let available: [SynthPreset] = [.reverie, .machine]
+    public static let available: [SynthPreset] = [.reverie, .kalimba, .machine]
 }
 
 /// Where a preset's shared chain sits, and how far it is allowed to wander.
@@ -91,6 +91,8 @@ public struct VoiceRecipe: Sendable, Equatable {
         case noise
         /// Six inharmonic partials — a cymbal.
         case metal
+        /// A noise burst circulating in a delay line one wavelength long.
+        case pluck
     }
 
     public enum Filter: Int, Sendable {
@@ -125,11 +127,29 @@ public struct VoiceRecipe: Sendable, Equatable {
     public var filter: Filter = .none
     public var filterFrequency: Double = 20_000
     public var filterQ: Double = 1
+    /// Where the filter is heading, and how long it takes to get there.
+    /// Zero for a filter that stays put.
+    public var filterTarget: Double = 0
+    public var filterRamp: Double = 0
 
     // Metal only.
     public var harmonicity: Double = 5
     public var modulationIndex: Double = 20
     public var resonance: Double = 4000
+
+    // Pluck only.
+    /// Where the burst is rolled off, which is how bright the pluck arrives.
+    public var pluckDampening: Double = 2000
+    /// How much of each lap survives, which is how long the tine rings.
+    public var pluckResonance: Double = 0.7
+    /// Length of the noise burst, in wavelengths.
+    public var attackNoise: Double = 1
+
+    /// How long the voice lives when nothing else decides — a pluck has no
+    /// amplitude envelope, only the comb running down, so the web gives it a
+    /// flat time to live and disposes of it then. Zero means the envelope
+    /// decides.
+    public var lifetime: Double = 0
 
     public init() {}
 

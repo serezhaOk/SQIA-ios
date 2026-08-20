@@ -37,11 +37,22 @@ public enum SynthVoicing {
             return reverie(midi: midi, velocity: velocity, using: random)
         case .machine:
             return machine(midi: midi, velocity: velocity, using: random)
-        case .kalimba, .rhodes, .acid:
+        case .kalimba:
+            return kalimba(midi: midi, velocity: velocity, using: random)
+        case .rhodes, .acid:
             // Not written yet; `SynthPreset.available` keeps them out of the
             // picker, and silence is better than a stand-in that lies.
             return []
         }
+    }
+
+    /// Velocity as Tone's PluckSynth has to take it.
+    ///
+    /// A PluckSynth has no velocity argument — it is excited by noise, not
+    /// by an envelope — so the web puts the dynamics in the voice's level
+    /// instead, with a floor so a soft cell never disappears entirely.
+    private static func pluckDecibels(_ velocity: Double) -> Double {
+        max(-40, 20 * log10(max(0.02, velocity)))
     }
 
     // ------------------------------------------------------------ REVERIE --
@@ -107,6 +118,61 @@ public enum SynthVoicing {
                     recipe: reverieNote(
                         frequency: frequency / 2, duration: duration,
                         velocity: velocity * 0.5, release: release, using: random)))
+        }
+        return voices
+    }
+
+    // ------------------------------------------------------------ KALIMBA --
+    // A muted wooden thumb-piano. How long the tine rings and how bright it
+    // arrives are rolled per note, and a lowpass over the top sweeps down as
+    // it decays, which is what keeps it wooden rather than harp-like.
+
+    private static func kalimba(
+        midi: Int,
+        velocity: Double,
+        using random: RandomSource
+    ) -> [ScheduledVoice] {
+        let frequency = Music.frequency(ofMidi: midi)
+
+        let resonance = random.value(0.55, 0.94)  // how long the tine rings
+        let dampening = random.value(900, 4500)  // the pluck's cutoff
+
+        var recipe = VoiceRecipe()
+        recipe.preset = .kalimba
+        recipe.source = .pluck
+        recipe.frequency = frequency
+        recipe.gain = VoiceRecipe.gain(db: 5 + pluckDecibels(velocity))
+        recipe.pluckResonance = resonance
+        recipe.pluckDampening = dampening
+        recipe.attackNoise = random.value(0.4, 1.8)
+        // Tone's PluckSynth takes a release, and the web never triggers one
+        // — but the value still comes off the stream, so it comes off this
+        // one too.
+        _ = random.value(0.1, 0.9)
+        recipe.lifetime = 2.2
+
+        recipe.filter = .lowpass
+        recipe.filterFrequency = random.value(1200, 5200)
+        recipe.filterQ = random.value(0.3, 2.2)
+        recipe.filterTarget = random.value(500, 1600)
+        recipe.filterRamp = random.value(0.3, 1.1)
+
+        var voices = [ScheduledVoice(recipe: recipe)]
+
+        // Soft octave ghost, like a thumb catching the neighbouring tine.
+        // It goes straight to the chain, with no lowpass of its own.
+        if random.chance(0.18) {
+            var ghost = VoiceRecipe()
+            ghost.preset = .kalimba
+            ghost.source = .pluck
+            ghost.frequency = frequency * 2
+            ghost.gain = VoiceRecipe.gain(db: -3 + pluckDecibels(velocity * 0.5))
+            ghost.attackNoise = 0.6
+            ghost.pluckDampening = dampening * 1.4
+            ghost.pluckResonance = resonance * 0.8
+            ghost.lifetime = 1.6
+            voices.append(
+                ScheduledVoice(recipe: ghost, offset: random.value(0.01, 0.05)))
         }
         return voices
     }

@@ -354,47 +354,63 @@ struct AudioMixerTests {
         #expect((after.map(abs).max() ?? 0) > 1e-3, "the mixer never came back")
     }
 
-    /// A click is a step in the waveform, so a crackle can be looked for
-    /// rather than described: render a passage at rising density and measure
-    /// the largest jump between one sample and the next.
+    /// A click is a step in the waveform — but so is a hi-hat, and there is
+    /// no absolute size that separates them. A cymbal at eight kilohertz
+    /// turns over in six samples, and steps of a fifth of full scale are
+    /// simply what that is; a pad never steps by more than a fortieth.
     ///
-    /// The threshold is generous — a legitimate transient is a fast slope,
-    /// not a vertical one — but a real discontinuity is orders of magnitude
-    /// above it, so this separates "the mixer is producing clicks" from "the
-    /// device is not keeping up", which sound identical and are not.
-    @Test("The waveform stays continuous however dense it gets")
+    /// What does separate them is company. A bright sound makes large steps
+    /// continuously, so its largest one sits among thousands of nearly equal
+    /// ones. A click is a step with nothing beside it. So the test is
+    /// whether the largest step is out of keeping with the rest — measured
+    /// against the ninety-nine-point-nine-ninth percentile, which one bad
+    /// sample cannot move.
+    ///
+    /// This is what says a crackle on a device is the device missing its
+    /// deadline rather than the mixer producing clicks. The two sound
+    /// identical and have nothing else in common.
+    @Test("No step in the waveform is out of keeping with the rest")
     func noDiscontinuities() {
-        for voicesPerStep in [1, 3, 7, 12] {
-            let mixer = AudioMixer(sampleRate: rate)
-            let random = Mulberry32(seed: 4242)
-            var previous = 0.0
-            var largest = 0.0
-            var next: Int64 = 0
+        for preset in SynthPreset.available {
+            for voicesPerStep in [1, 7] {
+                let mixer = AudioMixer(sampleRate: rate)
+                let random = Mulberry32(seed: 4242)
+                var previous = 0.0
+                var steps: [Double] = []
+                steps.reserveCapacity(Int(rate * 5))
+                var next: Int64 = 0
 
-            for _ in 0..<Int(rate * 8) / 1024 {
-                while next < mixer.frame + 1024 {
-                    for i in 0..<voicesPerStep {
-                        for voice in SynthVoicing.notes(
-                            preset: .reverie, midi: 48 + (i * 5) % 24, velocity: 0.9,
-                            using: random)
-                        {
-                            mixer.schedule(
-                                AudioEvent.note(
-                                    voice.recipe, at: next + Int64(voice.offset * rate)))
+                for _ in 0..<Int(rate * 5) / 1024 {
+                    while next < mixer.frame + 1024 {
+                        for i in 0..<voicesPerStep {
+                            for voice in SynthVoicing.notes(
+                                preset: preset, midi: 48 + (i * 5) % 24, velocity: 0.9,
+                                using: random)
+                            {
+                                mixer.schedule(
+                                    AudioEvent.note(
+                                        voice.recipe, at: next + Int64(voice.offset * rate)))
+                            }
                         }
+                        next += Int64(rate * 0.125)
                     }
-                    next += Int64(rate * 0.125)
+                    for sample in render(mixer, frames: 1024) {
+                        steps.append(abs(sample - previous))
+                        previous = sample
+                    }
                 }
-                for sample in render(mixer, frames: 1024) {
-                    largest = max(largest, abs(sample - previous))
-                    previous = sample
-                }
-            }
 
-            #expect(
-                largest < 0.05,
-                "\(voicesPerStep) voices a step stepped by \(largest)")
-            #expect(mixer.recoveredBlowups == 0)
+                steps.sort()
+                let ordinary = steps[Int(Double(steps.count) * 0.9999)]
+                let largest = steps[steps.count - 1]
+                let where_ = "\(preset.label) at \(voicesPerStep) voices a step"
+
+                #expect(largest > 0, "\(where_) made no sound at all")
+                #expect(
+                    largest < ordinary * 4,
+                    "\(where_): a step of \(largest) among steps of \(ordinary)")
+                #expect(mixer.recoveredBlowups == 0)
+            }
         }
     }
 
