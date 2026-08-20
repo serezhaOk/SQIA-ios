@@ -70,6 +70,20 @@ final class SequencerModel {
         /// builds only; it is not part of the app.
         private(set) var renderLoad = ""
         @ObservationIgnored private var loadTimer: Timer?
+
+        /// When the binary now running was built. A stale build and a build
+        /// that did not fix anything look exactly alike from across a room,
+        /// and this is the difference.
+        private static let builtAt: String = {
+            guard
+                let path = Bundle.main.executablePath,
+                let date = try? FileManager.default.attributesOfItem(atPath: path)[
+                    .modificationDate] as? Date
+            else { return "?" }
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        }()
     #endif
 
     @ObservationIgnored private var tempoDragStart: Double?
@@ -126,6 +140,9 @@ final class SequencerModel {
     private func startWatchingLoad() {
         #if DEBUG
             guard loadTimer == nil else { return }
+            // Something on screen straight away, so an empty meter reads as
+            // "not measured yet" rather than "this build has no meter".
+            renderLoad = "\(Self.builtAt)  ·  AUD —"
             let timer = Timer(timeInterval: 0.5, repeats: true) {
                 [weak self] _ in
                 // Scheduled on the main run loop, so this is the main thread.
@@ -135,7 +152,8 @@ final class SequencerModel {
                     // audio · voices · frame · fps, and the faults only when
                     // there are any.
                     var text = String(
-                        format: "AUD %.2f×  ·  %d voi", mixer.renderLoad, mixer.soundingVoices)
+                        format: "%@  ·  AUD %.2f×  ·  %d voi",
+                        Self.builtAt, mixer.renderLoad, mixer.soundingVoices)
                     if let renderer = FieldRenderer.onScreen {
                         text += String(
                             format: "  ·  UI %.1f ms  ·  %.0f fps",

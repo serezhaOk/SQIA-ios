@@ -130,10 +130,13 @@ struct SequencerView: View {
         #if DEBUG
             Text(model.renderLoad)
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
                 .foregroundStyle(Palette.background)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
                 .background(Palette.ink.opacity(0.9), in: Capsule())
+                .padding(.horizontal, 8)
                 .allowsHitTesting(false)
         #endif
     }
