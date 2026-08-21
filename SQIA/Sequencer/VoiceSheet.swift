@@ -86,6 +86,7 @@ struct VoiceSheet: View {
 #Preview {
     Color.black
         .sheet(isPresented: .constant(true)) {
-            VoiceSheet(model: SequencerModel(), onPick: { _ in })
+            VoiceSheet(
+                model: SequencerModel(store: InMemoryProjectStore()), onPick: { _ in })
         }
 }
