@@ -121,7 +121,6 @@ final class SequencerModel {
     @ObservationIgnored private let store: any ProjectStore
     @ObservationIgnored private let autosave = Autosave()
     @ObservationIgnored private var projectId: String?
-    private(set) var projectName = ""
 
     @ObservationIgnored private var tempoDragStart: Double?
     @ObservationIgnored private var tempoDragMoved = false
@@ -154,7 +153,6 @@ final class SequencerModel {
     /// Load a saved project over whatever is on screen.
     func open(_ project: Project) {
         projectId = project.id
-        projectName = project.name
         state.apply(project.snapshot)
         sequencer.bpm = state.bpm
         syncScenes()
@@ -165,7 +163,6 @@ final class SequencerModel {
     /// the library has written it.
     func startFresh() {
         projectId = nil
-        projectName = ""
         state = SequencerState.fresh(voices: VoiceCatalog.defaultVoices)
         sequencer.bpm = state.bpm
         syncScenes()
@@ -174,7 +171,6 @@ final class SequencerModel {
 
     func adopt(_ project: Project) {
         projectId = project.id
-        projectName = project.name
     }
 
     /// Leaving: stop, then write what is owed before the library redraws,
