@@ -1,7 +1,12 @@
 <!doctype html>
 <!--
-  The bridge, for sqia.serezhaok.com/ios — copy this into funny-steps/public
-  and it ships with the site.
+  The bridge, for sqia.serezhaok.com/ios. Copy the whole folder into
+  funny-steps/public/ios/ and it ships with the site.
+
+  A directory with an index rather than ios.html, so that the bare path
+  /ios resolves on any host. Some serve /ios as /ios.html and some do not,
+  and the address is baked into what the server mails out — a link that
+  404s is not something you get to fix after the fact.
 
   Mail clients will not follow sqia://, so a sign-in link cannot point at the
   app directly. It points here instead, and this hands whatever it was given
