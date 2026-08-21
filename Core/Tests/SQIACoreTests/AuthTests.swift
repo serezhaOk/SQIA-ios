@@ -231,7 +231,8 @@ struct AuthClientTests {
     @Test("The mailed link goes to the bridge page, because mail will not follow a scheme")
     func magicLink() async throws {
         let recorder = Recorder(body: "{}")
-        try await client(recorder).sendMagicLink(to: "a@b.co")
+        let pkce = PKCE(verifier: "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk")
+        try await client(recorder).sendMagicLink(to: "a@b.co", pkce: pkce)
 
         let request = try #require(await recorder.last)
         let url = try #require(request.url?.absoluteString)
@@ -242,6 +243,13 @@ struct AuthClientTests {
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["email"] as? String == "a@b.co")
         #expect(json["create_user"] as? Bool == true)
+        // With a challenge, so the link comes back as a code this app can
+        // spend. Without one the server would hand over a whole session in
+        // a fragment instead, and which of the two arrives is not something
+        // to leave to how the project happens to be configured.
+        #expect(json["code_challenge"] as? String == pkce.challenge)
+        #expect(json["code_challenge_method"] as? String == "s256")
+        #expect(json["code_verifier"] == nil, "the verifier must never leave the device")
     }
 
     @Test("A refused refresh carries the server's own words")
@@ -431,10 +439,11 @@ struct SessionKeeperTests {
     @Test("Signing in keeps the session and clears the last complaint")
     func signInClearsTheNote() async throws {
         let storage = InMemorySessionStorage(
-            issue: AuthIssue(reason: "Already Used", at: epoch.timeIntervalSince1970))
+            issue: AuthIssue(reason: "Already Used", at: epoch.timeIntervalSince1970),
+            verifier: "v")
         let subject = keeper(storage, transport: reply(200, sessionJSON))
 
-        try await subject.signIn(code: "abc", verifier: "v")
+        try await subject.signIn(code: "abc")
         let signedIn = await subject.isSignedIn
         #expect(signedIn)
         let saved = await storage.load()
@@ -538,5 +547,51 @@ struct TokenAndAddressTests {
         #expect(!EmailAddress.looksValid("a@b."))
         #expect(!EmailAddress.looksValid("two@at@b.co"))
         #expect(!EmailAddress.looksValid("has space@b.co"))
+    }
+}
+
+@Suite("The half-finished sign-in")
+struct PendingSignInTests {
+    @Test("The verifier outlives the process that asked for the link")
+    func verifierIsStored() async throws {
+        // A link from Mail arrives at an app iOS has very likely killed, so
+        // a verifier held in memory would be gone exactly when it is needed.
+        let storage = InMemorySessionStorage()
+        let started = keeper(storage, transport: reply(200, sessionJSON))
+        await started.expect(PKCE(verifier: "the-verifier"))
+
+        // A fresh keeper over the same storage is what the relaunch is.
+        let relaunched = keeper(storage, transport: reply(200, sessionJSON))
+        try await relaunched.signIn(code: "abc")
+        let signedIn = await relaunched.isSignedIn
+        #expect(signedIn)
+    }
+
+    @Test("The verifier is spent once and not kept")
+    func verifierIsCleared() async throws {
+        let storage = InMemorySessionStorage(verifier: "the-verifier")
+        let subject = keeper(storage, transport: reply(200, sessionJSON))
+        try await subject.signIn(code: "abc")
+
+        let left = await storage.loadVerifier()
+        #expect(left == nil, "a spent verifier was kept")
+    }
+
+    @Test("A code with no sign-in behind it says which device to use")
+    func codeWithoutVerifier() async throws {
+        let storage = InMemorySessionStorage()
+        let subject = keeper(storage, transport: reply(200, sessionJSON))
+        await #expect(throws: AuthError.rejected("Open the link on the device you asked from.")) {
+            try await subject.signIn(code: "abc")
+        }
+    }
+
+    @Test("Signing out drops a sign-in that was only half made")
+    func signOutClearsTheVerifier() async throws {
+        let storage = InMemorySessionStorage(verifier: "the-verifier")
+        let subject = keeper(storage, transport: reply(200, sessionJSON))
+        await subject.signOut()
+        let left = await storage.loadVerifier()
+        #expect(left == nil)
     }
 }

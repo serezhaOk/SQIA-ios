@@ -19,6 +19,7 @@ import Security
 struct KeychainSessionStorage: SessionStorage {
     private let service = "com.serezhaok.sqia"
     private let account = "supabase-session"
+    private let verifierAccount = "supabase-pkce-verifier"
     private let issueKey = "sqia.auth.issue"
     /// Read fresh each time rather than held: `UserDefaults` is not
     /// Sendable, and this type has to be.
@@ -27,7 +28,7 @@ struct KeychainSessionStorage: SessionStorage {
     // ------------------------------------------------------------ session --
 
     func load() async -> AuthSession? {
-        var query = baseQuery()
+        var query = baseQuery(account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -40,12 +41,46 @@ struct KeychainSessionStorage: SessionStorage {
 
     func save(_ session: AuthSession) async {
         guard let data = try? JSONEncoder().encode(session) else { return }
-        let query = baseQuery()
+        write(data, to: account)
+    }
+
+    func clear() async {
+        _ = SecItemDelete(baseQuery(account) as CFDictionary)
+    }
+
+    // ----------------------------------------------------------- verifier --
+
+    /// In the Keychain rather than UserDefaults: it is the secret half of a
+    /// sign-in in progress, and whoever holds it plus the code that comes
+    /// back holds the account.
+    func loadVerifier() async -> String? {
+        var query = baseQuery(verifierAccount)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+            let data = item as? Data
+        else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func save(verifier: String) async {
+        write(Data(verifier.utf8), to: verifierAccount)
+    }
+
+    func clearVerifier() async {
+        _ = SecItemDelete(baseQuery(verifierAccount) as CFDictionary)
+    }
+
+    // ----------------------------------------------------------- plumbing --
+
+    private func write(_ data: Data, to account: String) {
+        let query = baseQuery(account)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
-
         let updated = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
         if updated == errSecItemNotFound {
             var insert = query
@@ -54,11 +89,7 @@ struct KeychainSessionStorage: SessionStorage {
         }
     }
 
-    func clear() async {
-        _ = SecItemDelete(baseQuery() as CFDictionary)
-    }
-
-    private func baseQuery() -> [String: Any] {
+    private func baseQuery(_ account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

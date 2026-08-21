@@ -38,8 +38,6 @@ final class AuthController: NSObject {
     @ObservationIgnored let keeper: SessionKeeper
     @ObservationIgnored private let client: AuthClient
     @ObservationIgnored private let random = SystemRandomSource()
-    /// Held between opening the browser and the code coming back.
-    @ObservationIgnored private var pending: PKCE?
     /// Apple signs the token against the hash of this.
     @ObservationIgnored private var appleNonce: String?
     @ObservationIgnored private var webSession: ASWebAuthenticationSession?
@@ -92,7 +90,6 @@ final class AuthController: NSObject {
 
     func signInWithGoogle() {
         let pkce = PKCE(using: random)
-        pending = pkce
         guard let url = client.authorizeURL(provider: "google", pkce: pkce) else {
             message = Message(text: "Could not start sign-in", isError: true)
             return
@@ -100,6 +97,7 @@ final class AuthController: NSObject {
 
         isWorking = true
         message = nil
+        Task { await keeper.expect(pkce) }
         // Named for what it is: `session` here would shadow the sign-in.
         let browser = ASWebAuthenticationSession(
             url: url, callbackURLScheme: "sqia"
@@ -171,9 +169,13 @@ final class AuthController: NSObject {
         }
         isWorking = true
         message = Message(text: "Sending a sign-in link…", isError: false)
+        let pkce = PKCE(using: random)
         Task {
+            // Stored before the mail is asked for: the link may well arrive
+            // at a process that did not exist when it was sent.
+            await keeper.expect(pkce)
             do {
-                try await client.sendMagicLink(to: address)
+                try await client.sendMagicLink(to: address, pkce: pkce)
                 message = Message(text: "Check \(address) for your sign-in link.", isError: false)
             } catch {
                 report(error)
@@ -188,15 +190,9 @@ final class AuthController: NSObject {
     func handle(_ url: URL) async {
         switch AuthCallback.read(url) {
         case .code(let code):
-            guard let verifier = pending?.verifier else {
-                // A link opened on a device that did not start this sign-in.
-                message = Message(
-                    text: "Open the link on the device you started from.", isError: true)
-                return
-            }
             isWorking = true
             do {
-                try await keeper.signIn(code: code, verifier: verifier)
+                try await keeper.signIn(code: code)
                 await settle()
             } catch {
                 report(error)
@@ -226,7 +222,6 @@ final class AuthController: NSObject {
         session = nil
         isSignedIn = false
         message = nil
-        pending = nil
     }
 
     func deleteAccount() async -> Bool {
@@ -249,7 +244,6 @@ final class AuthController: NSObject {
         session = await keeper.current
         isSignedIn = await keeper.isSignedIn
         message = nil
-        pending = nil
     }
 
     private func report(_ error: Error) {

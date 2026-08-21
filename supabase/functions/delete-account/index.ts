@@ -41,18 +41,18 @@ Deno.serve(async (req) => {
   const url = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-  // Who the caller is, according to the server rather than the request.
-  const asCaller = createClient(url, Deno.env.get('SUPABASE_ANON_KEY')!, {
-    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  const admin = createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
   });
-  const { data: who, error: whoFailed } = await asCaller.auth.getUser();
+
+  // Who the caller is, according to the server rather than the request.
+  // `getUser(jwt)` asks GoTrue to validate that token — which is the whole
+  // check, and the reason nothing here reads a request body.
+  const { data: who, error: whoFailed } = await admin.auth.getUser(jwt);
   if (whoFailed || !who.user) {
     return reply(401, { message: whoFailed?.message ?? 'Not signed in' });
   }
 
-  const admin = createClient(url, serviceKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
   const { error } = await admin.auth.admin.deleteUser(who.user.id);
   if (error) return reply(500, { message: error.message });
 

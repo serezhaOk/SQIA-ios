@@ -26,6 +26,13 @@ public protocol SessionStorage: Sendable {
     func loadIssue() async -> AuthIssue?
     func save(issue: AuthIssue) async
     func clearIssue() async
+
+    /// The PKCE verifier for a sign-in that has been started but not
+    /// finished. It has to outlive the process: a link opened from Mail
+    /// arrives at an app iOS has very likely killed in the meantime.
+    func loadVerifier() async -> String?
+    func save(verifier: String) async
+    func clearVerifier() async
 }
 
 /// A note about a sign-in that ended without the user asking.
@@ -147,8 +154,20 @@ public actor SessionKeeper {
         await storage.clearIssue()
     }
 
-    public func signIn(code: String, verifier: String) async throws {
-        await adopt(try await client.exchange(code: code, verifier: verifier))
+    /// Remember a sign-in that has been started, so the code that comes
+    /// back — possibly to a freshly launched app — can still be spent.
+    public func expect(_ pkce: PKCE) async {
+        await storage.save(verifier: pkce.verifier)
+    }
+
+    /// Spend a code against whichever sign-in this device started.
+    public func signIn(code: String) async throws {
+        guard let verifier = await storage.loadVerifier() else {
+            throw AuthError.rejected("Open the link on the device you asked from.")
+        }
+        let session = try await client.exchange(code: code, verifier: verifier)
+        await storage.clearVerifier()
+        await adopt(session)
     }
 
     public func signIn(appleIdentityToken: String, nonce: String?) async throws {
@@ -163,6 +182,7 @@ public actor SessionKeeper {
         session = nil
         await storage.clear()
         await storage.clearIssue()
+        await storage.clearVerifier()
         signingOut = false
     }
 
@@ -233,10 +253,14 @@ public actor SessionKeeper {
 public actor InMemorySessionStorage: SessionStorage {
     private var stored: AuthSession?
     private var issue: AuthIssue?
+    private var verifier: String?
 
-    public init(session: AuthSession? = nil, issue: AuthIssue? = nil) {
+    public init(
+        session: AuthSession? = nil, issue: AuthIssue? = nil, verifier: String? = nil
+    ) {
         self.stored = session
         self.issue = issue
+        self.verifier = verifier
     }
 
     public func load() async -> AuthSession? { stored }
@@ -245,4 +269,7 @@ public actor InMemorySessionStorage: SessionStorage {
     public func loadIssue() async -> AuthIssue? { issue }
     public func save(issue: AuthIssue) async { self.issue = issue }
     public func clearIssue() async { issue = nil }
+    public func loadVerifier() async -> String? { verifier }
+    public func save(verifier: String) async { self.verifier = verifier }
+    public func clearVerifier() async { verifier = nil }
 }

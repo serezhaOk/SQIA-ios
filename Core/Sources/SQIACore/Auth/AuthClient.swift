@@ -106,12 +106,22 @@ public actor AuthClient {
     // -------------------------------------------------------------- email --
 
     /// Passwordless: the server mails a link back to the bridge page.
-    public func sendMagicLink(to email: String) async throws {
+    ///
+    /// With a challenge, because that is what decides the shape of what
+    /// comes back. Send one and the link returns `?code=`, to be spent with
+    /// the verifier; send none and it returns a whole session in the
+    /// fragment. The web's client defaults to PKCE, so a project set up for
+    /// it would hand this app a code it had no verifier for — and the
+    /// verifier has to outlive the app, because opening a link from Mail is
+    /// exactly the moment iOS is most likely to have killed it.
+    public func sendMagicLink(to email: String, pkce: PKCE) async throws {
         var request = post(
             "auth/v1/otp",
             query: [URLQueryItem(name: "redirect_to", value: Self.emailBridge)])
         request.httpBody = try JSONEncoder().encode(
-            MagicLink(email: email, createUser: true))
+            MagicLink(
+                email: email, createUser: true,
+                codeChallenge: pkce.challenge, codeChallengeMethod: PKCE.method))
         _ = try await send(request)
     }
 
@@ -202,10 +212,14 @@ public actor AuthClient {
     private struct MagicLink: Encodable {
         let email: String
         let createUser: Bool
+        let codeChallenge: String
+        let codeChallengeMethod: String
 
         enum CodingKeys: String, CodingKey {
             case email
             case createUser = "create_user"
+            case codeChallenge = "code_challenge"
+            case codeChallengeMethod = "code_challenge_method"
         }
     }
 
