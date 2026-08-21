@@ -12,6 +12,10 @@ using namespace metal;
 constant uint kindDot = 0;
 constant uint kindGlow = 1;
 constant uint kindStreak = 2;
+constant uint kindOutline = 3;
+
+/// A slot outline is a hairline, the way the web strokes one.
+constant float kOutlineWidth = 1.0;
 
 struct FieldInstance {
     float4 color;
@@ -85,6 +89,13 @@ fragment float4 fieldFragment(VertexOut in [[stage_in]]) {
         alpha *= 1.0 - smoothstep(1.0 - feather, 1.0, d);
     } else if (in.kind == kindGlow) {
         alpha *= haloAlpha(length(in.uv));
+    } else if (in.kind == kindOutline) {
+        // Keep the ring one point wide inside the quad's edge, and nothing
+        // else — the same pixels `strokeRect` would light.
+        const float2 fromEdge = (float2(1.0) - abs(in.uv)) * in.halfSize;
+        const float d = min(fromEdge.x, fromEdge.y);
+        const float feather = fwidth(d);
+        alpha *= 1.0 - smoothstep(kOutlineWidth - feather, kOutlineWidth + feather, d);
     } else {
         // A round-capped line: distance to the segment running along local
         // x, and a linear fade from the dot to the tip.

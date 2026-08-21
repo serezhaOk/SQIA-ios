@@ -95,11 +95,12 @@ struct SequencerView: View {
             .accessibilityValue("\(Int(model.state.bpm)) beats per minute")
     }
 
-    /// One dot per track, the active one bright. In the web this opens the
-    /// mixer; until that exists it steps between the tracks.
+    /// One dot per track, the active one bright. Tapping opens the mixer,
+    /// as in the web — and the control goes away while it is open, because
+    /// there is nothing left for it to do.
     private var trackDots: some View {
         Button {
-            model.cycleTrack()
+            model.openMixer()
         } label: {
             HStack(spacing: 7) {
                 ForEach(0..<SequencerState.trackCount, id: \.self) { index in
@@ -113,24 +114,93 @@ struct SequencerView: View {
         }
         .buttonStyle(PressFade())
         .accessibilityLabel("Tracks")
+        .opacity(model.showingMixer ? 0 : 1)
+        .disabled(model.showingMixer)
+        .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
     }
 
     // --------------------------------------------------------------- stage --
 
     private var stage: some View {
         GeometryReader { geometry in
-            FieldView { rect in model.layers(in: rect) }
+            FieldView { rect, dt in model.frame(in: rect, dt: dt) }
                 .contentShape(Rectangle())
                 .gesture(
                     // No minimum distance, so a tap paints as surely as a
-                    // drag does.
+                    // drag does. With the mixer open the same gesture picks
+                    // a panel instead of painting.
                     DragGesture(minimumDistance: 0)
                         .onChanged { model.touch(at: $0.location) }
+                        .onEnded { _ in model.endTouch() }
                 )
                 .frame(width: geometry.size.width, height: geometry.size.height)
+                .overlay(alignment: .topLeading) { chips }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .top) { meter }
+    }
+
+    // --------------------------------------------------------------- mixer --
+
+    /// The name and mute chips, one pair per panel, pinned inside the panel
+    /// over its last rows of dots.
+    ///
+    /// They fade on their own 0.18-second curve rather than travelling with
+    /// the panels, which is what the web's CSS transition does — the field
+    /// flies, the controls simply arrive.
+    private var chips: some View {
+        ZStack(alignment: .topLeading) {
+            ForEach(0..<SequencerState.trackCount, id: \.self) { index in
+                // The strip is worked out from the stage's size, which is
+                // not known until the first frame has been drawn.
+                let strip = model.chipStrip(index)
+                if model.hasPart(index) && strip.width > 0 {
+                    chipRow(index, height: strip.height)
+                        .frame(width: strip.width, height: strip.height, alignment: .leading)
+                        .offset(x: strip.minX, y: strip.minY)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .opacity(model.showingMixer ? 1 : 0)
+        .allowsHitTesting(model.showingMixer)
+        .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
+    }
+
+    private func chipRow(_ index: Int, height: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Button {
+                model.openTrack(index)
+            } label: {
+                Text(model.voiceLabel(index))
+                    // The chip sets its tracking to zero, unlike the labels.
+                    .manrope(.regular, 16, tracking: 0)
+                    .foregroundStyle(Palette.background)
+                    .lineLimit(1)
+                    .padding(.horizontal, 10)
+                    .frame(height: height)
+                    .background(Palette.ui)
+            }
+            .buttonStyle(PressFade())
+            .accessibilityLabel("Open \(model.voiceLabel(index))")
+
+            Spacer(minLength: 4)
+
+            Button {
+                model.toggleMute(index)
+            } label: {
+                Image(systemName: "speaker.slash.fill")
+                    .font(.system(size: 15))
+                    .foregroundStyle(model.isMuted(index) ? Palette.background : Palette.ui)
+                    .frame(width: height, height: height)
+                    .background(
+                        model.isMuted(index) ? Palette.ui : Palette.ui.opacity(0.1)
+                    )
+            }
+            .buttonStyle(PressFade())
+            .accessibilityLabel(model.isMuted(index) ? "Unmute" : "Mute")
+            .accessibilityAddTraits(model.isMuted(index) ? [.isSelected] : [])
+        }
     }
 
     /// Where the time goes, in a Run build only. AUD is the audio thread's
@@ -155,7 +225,39 @@ struct SequencerView: View {
 
     // -------------------------------------------------------------- footer --
 
+    /// The tools belong to a track, so they go while the mixer is open —
+    /// and the tile that leaves the mixer takes their place, across the same
+    /// band, as the mockup has it.
     private var footer: some View {
+        toolbar
+            .opacity(model.showingMixer ? 0 : 1)
+            .disabled(model.showingMixer)
+            .overlay { backTile }
+            .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
+    }
+
+    private var backTile: some View {
+        Button {
+            // At M7 this flushes the autosave and returns to the library.
+            // Until there is a library, leaving the mixer is the whole of
+            // what it can honestly do.
+            model.openTrack(model.state.activeTrackIndex)
+        } label: {
+            Text("Back to projects")
+                // 0.15px at 15px, which is a hundredth of an em.
+                .manrope(.semibold, 15, tracking: 0.01)
+                .foregroundStyle(Palette.ui)
+                .frame(maxWidth: 335)
+                .frame(height: 126)
+                .background(Palette.ui.opacity(0.2), in: RoundedRectangle(cornerRadius: 32))
+        }
+        .buttonStyle(PressFade())
+        .opacity(model.showingMixer ? 1 : 0)
+        .disabled(!model.showingMixer)
+        .allowsHitTesting(model.showingMixer)
+    }
+
+    private var toolbar: some View {
         HStack(spacing: 0) {
             label("ERASE", active: model.eraseMode) { model.toggleErase() }
             Spacer(minLength: 8)

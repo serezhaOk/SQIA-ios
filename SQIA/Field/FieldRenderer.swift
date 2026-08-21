@@ -22,6 +22,21 @@ struct FieldLayer {
     var alpha: Double = 1
 }
 
+/// A slot's hairline border, which fades in as the mixer opens. It stays put
+/// while the active track flies into it.
+struct FieldOutline {
+    var rect: CGRect
+    var alpha: Double
+}
+
+/// Everything one frame draws. The outlines are not part of any layer: they
+/// belong to the slots, and the track on its way into a slot is somewhere
+/// else while it travels.
+struct FieldFrame {
+    var layers: [FieldLayer] = []
+    var outlines: [FieldOutline] = []
+}
+
 /// Matches `FieldInstance` in FieldShaders.metal. The colour comes first so
 /// its sixteen-byte alignment sets the layout for both sides.
 private struct FieldInstance {
@@ -41,10 +56,13 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// enough that neither waits, few enough that input stays close.
     private static let maxFramesInFlight = 3
 
-    /// Asked for the frame's layers, on the main thread, once per frame.
-    /// A closure rather than stored state so the renderer never has to be
-    /// told about a change — it simply reads what is current.
-    var layerProvider: (@MainActor () -> [FieldLayer])?
+    /// Asked for the frame, on the main thread, once per frame, with how
+    /// long since the last one. A closure rather than stored state so the
+    /// renderer never has to be told about a change — it simply reads what
+    /// is current. The frame time goes with it because the view transition
+    /// has to advance on the same clock the field does, or the two drift
+    /// apart over the third of a second they share.
+    var frameProvider: (@MainActor (Double) -> FieldFrame)?
 
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
@@ -204,9 +222,15 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         // without a hop the frame cannot afford. The whole build happens
         // inside, so nothing has to cross the boundary on the way out.
         MainActor.assumeIsolated {
-            guard let layers = layerProvider?() else { return }
+            guard let frame = frameProvider?(dt) else { return }
 
-            for layer in layers {
+            // Outlines first, so a panel's border sits under its dots the
+            // way a stroke drawn before them does.
+            for outline in frame.outlines where outline.alpha > 0.004 {
+                instances.append(instance(for: outline))
+            }
+
+            for layer in frame.layers {
                 layer.animator.advance(by: dt)
                 let layout = Field.layout(
                     x: Double(layer.rect.minX),
@@ -227,6 +251,15 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                 }
             }
         }
+    }
+
+    private func instance(for outline: FieldOutline) -> FieldInstance {
+        FieldInstance(
+            color: SIMD4(1, 1, 1, Float(outline.alpha)),
+            center: SIMD2(Float(outline.rect.midX), Float(outline.rect.midY)),
+            halfSize: SIMD2(Float(outline.rect.width / 2), Float(outline.rect.height / 2)),
+            axis: SIMD2(1, 0),
+            kind: 3)
     }
 
     private func instance(for draw: FieldDraw) -> FieldInstance {

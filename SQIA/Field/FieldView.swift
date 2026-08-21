@@ -41,8 +41,9 @@ final class FieldScene {
 }
 
 struct FieldView: UIViewRepresentable {
-    /// Called once per frame, on the main thread, with the view's bounds.
-    let layers: @MainActor (CGRect) -> [FieldLayer]
+    /// Called once per frame, on the main thread, with the view's bounds and
+    /// how long since the last one.
+    let frame: @MainActor (CGRect, Double) -> FieldFrame
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -67,9 +68,9 @@ struct FieldView: UIViewRepresentable {
             #if DEBUG
                 FieldRenderer.onScreen = renderer
             #endif
-            renderer.layerProvider = { [weak view] in
-                guard let view else { return [] }
-                return layers(CGRect(origin: .zero, size: view.bounds.size))
+            renderer.frameProvider = { [weak view] dt in
+                guard let view else { return FieldFrame() }
+                return frame(CGRect(origin: .zero, size: view.bounds.size), dt)
             }
             view.delegate = renderer
         }

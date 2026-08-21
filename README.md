@@ -20,12 +20,14 @@ each part maps onto iOS.
 | M3 — the field on Metal | done |
 | M4 — the sequencer screen | done |
 | M5 — the five synths | done |
-| M6–M10 | see [PLAN.md](PLAN.md) |
+| M6 — the mixer | done |
+| M7–M10 | see [PLAN.md](PLAN.md) |
 
-What runs today: the sequencer. Draw on the field with a finger and it
-sounds; drag the tempo, cycle the key, erase, scatter a pattern, pick a
-sound, step between the two tracks. The dots bloom exactly when their note
-lands.
+What runs today: the sequencer and the mixer. Draw on the field with a
+finger and it sounds; drag the tempo, choose the key, erase, scatter a
+pattern, pick a sound. The dots bloom exactly when their note lands. Tapping
+the track dots opens the mixer — the track being played flies into its panel
+while the other fades up beside it, each with a name and a mute button.
 
 The sounds are synthesised, not sampled — the sample set is gone. All five
 presets are written: REVERIE the drifting pad, KALIMBA a plucked string,

@@ -54,6 +54,17 @@ final class SequencerModel {
     private(set) var isRunning = false
     private(set) var failure: String?
 
+    /// Whether the mixer is open. The travel between the two views is a
+    /// separate number, because it is still on its way for a third of a
+    /// second after this changes.
+    private(set) var showingMixer = false
+    @ObservationIgnored private var mixerTravel = 0.0
+    /// The stage's size as of the last frame — what a touch is resolved
+    /// against when the mixer is open.
+    @ObservationIgnored private var stageSize = CGSize.zero
+    /// Whether the touch now in progress has already done its one thing.
+    @ObservationIgnored private var touchSpent = false
+
     /// One per track: each keeps its own blooms and ripples, so a track that
     /// is not on screen still has somewhere to put them.
     @ObservationIgnored let scenes: [FieldScene]
@@ -260,17 +271,138 @@ final class SequencerModel {
 
     // ---------------------------------------------------------- the drawing --
 
-    /// The layers the renderer draws. Full screen, active track only, until
-    /// the mixer arrives.
-    func layers(in rect: CGRect) -> [FieldLayer] {
+    /// What the renderer draws this frame.
+    ///
+    /// Full screen and one track while the mixer is shut; on the way open,
+    /// the active track flies into its slot while the others fade up in
+    /// theirs. The travel is advanced here rather than by a SwiftUI
+    /// animation so that it runs on the display link the field already runs
+    /// on — two clocks over a third of a second would visibly disagree.
+    func frame(in rect: CGRect, dt: Double) -> FieldFrame {
         layout = Field.layout(
             x: Double(rect.minX), y: Double(rect.minY),
             width: Double(rect.width), height: Double(rect.height))
-        return [scenes[state.activeTrackIndex].layer(in: rect)]
+        stageSize = rect.size
+
+        mixerTravel = MixerLayout.advance(
+            mixerTravel, toward: showingMixer ? 1 : 0, dt: dt)
+        let t = MixerLayout.ease(mixerTravel)
+        let width = Double(rect.width)
+        let height = Double(rect.height)
+
+        // Shut, and nothing to animate: the sequencer as it was.
+        if t <= 0.0001 {
+            return FieldFrame(layers: [scenes[state.activeTrackIndex].layer(in: rect)])
+        }
+
+        var frame = FieldFrame()
+        for index in state.tracks.indices where scenes.indices.contains(index) {
+            let isActive = index == state.activeTrackIndex
+            let alpha = MixerLayout.alpha(
+                active: isActive, eased: t, muted: state.tracks[index].muted)
+            if alpha <= 0.01 { continue }
+
+            let panel = MixerLayout.rect(
+                forTrack: index, active: state.activeTrackIndex,
+                count: state.tracks.count, width: width, height: height, eased: t)
+
+            var layer = scenes[index].layer(
+                in: CGRect(x: panel.x, y: panel.y, width: panel.width, height: panel.height))
+            layer.alpha = alpha
+            layer.detail = MixerLayout.detail(active: isActive, eased: t)
+            frame.layers.append(layer)
+        }
+
+        let outline = MixerLayout.outlineAlpha(eased: t)
+        for index in state.tracks.indices {
+            let slot = MixerLayout.panel(
+                index, of: state.tracks.count, width: width, height: height)
+            frame.outlines.append(
+                FieldOutline(
+                    rect: CGRect(
+                        x: slot.x, y: slot.y, width: slot.width, height: slot.height),
+                    alpha: outline))
+        }
+        return frame
     }
 
-    /// A finger on the field: paint, or erase where the eraser is on.
+    /// Where the panels are, for the chips that sit inside them. Read by the
+    /// view, which needs points rather than a draw list.
+    func panel(_ index: Int) -> CGRect {
+        guard let slot = slot(index) else { return .zero }
+        return CGRect(x: slot.x, y: slot.y, width: slot.width, height: slot.height)
+    }
+
+    /// Where a panel's name and mute chips go — the arithmetic is the core's,
+    /// so the view only has to place what it is handed.
+    func chipStrip(_ index: Int) -> CGRect {
+        guard let slot = slot(index) else { return .zero }
+        let strip = MixerLayout.chips(in: slot)
+        return CGRect(x: strip.x, y: strip.y, width: strip.width, height: strip.height)
+    }
+
+    private func slot(_ index: Int) -> Panel? {
+        guard stageSize.width > 0, stageSize.height > 0 else { return nil }
+        return MixerLayout.panel(
+            index, of: state.tracks.count,
+            width: Double(stageSize.width), height: Double(stageSize.height))
+    }
+
+    // -------------------------------------------------------------- mixer --
+
+    func openMixer() {
+        showingMixer = true
+    }
+
+    /// Pick a track and go back to it full screen — which is what tapping a
+    /// panel does, and what the name chip on one does too.
+    func openTrack(_ index: Int) {
+        state.selectTrack(index)
+        showingMixer = false
+    }
+
+    func toggleMute(_ index: Int) {
+        guard state.tracks.indices.contains(index) else { return }
+        state.tracks[index].muted.toggle()
+        syncScenes()
+        publishVoicing()
+    }
+
+    /// Only a track that holds a part gets a name and a mute button, as in
+    /// the web — an empty panel is left clean.
+    func hasPart(_ index: Int) -> Bool {
+        state.tracks.indices.contains(index) && state.tracks[index].grid.hasNotes
+    }
+
+    func voiceLabel(_ index: Int) -> String {
+        guard state.tracks.indices.contains(index) else { return "" }
+        return VoiceCatalog.label(at: state.tracks[index].voiceIndex)
+    }
+
+    func isMuted(_ index: Int) -> Bool {
+        state.tracks.indices.contains(index) && state.tracks[index].muted
+    }
+
+    /// A finger on the field: paint, or erase where the eraser is on. While
+    /// the mixer is open it picks a track instead.
+    ///
+    /// A drag reports continuously, and picking a track shuts the mixer —
+    /// so without a latch the same touch would choose a panel and then
+    /// paint a dot on the track it had just opened.
     func touch(at point: CGPoint) {
+        if showingMixer {
+            guard !touchSpent else { return }
+            touchSpent = true
+            if let index = MixerLayout.hit(
+                x: Double(point.x), y: Double(point.y),
+                count: state.tracks.count,
+                width: Double(stageSize.width), height: Double(stageSize.height))
+            {
+                openTrack(index)
+            }
+            return
+        }
+        guard !touchSpent else { return }
         guard let layout else { return }
         if eraseMode {
             guard let cell = Field.hit(x: Double(point.x), y: Double(point.y), in: layout)
@@ -285,6 +417,11 @@ final class SequencerModel {
         }
         syncScenes()
         publishVoicing()
+    }
+
+    /// The finger came up. Whatever this touch was for, it is over.
+    func endTouch() {
+        touchSpent = false
     }
 
     func toggleErase() {
@@ -319,10 +456,6 @@ final class SequencerModel {
         guard index != state.scaleIndex else { return }
         state.setScale(index)
         publishVoicing()
-    }
-
-    func cycleTrack() {
-        state.cycleTrack()
     }
 
     // ------------------------------------------------------------ the tempo --
