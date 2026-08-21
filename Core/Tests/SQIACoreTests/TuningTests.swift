@@ -156,18 +156,52 @@ struct TuningTests {
 
     @Test("Only what moved is reported as moved")
     func changesAreTheDifference() {
-        var tuning = Tuning.web
-        #expect(tuning.isWeb)
+        var tuning = Tuning.tuned
+        #expect(tuning.isDefault)
         #expect(tuning.changes().isEmpty)
 
+        let before = Tuning.tuned[.rhodesTremoloDepth]
         tuning[.rhodesTremoloDepth] = TunableRange(0, 0.9)
         let changes = tuning.changes()
         #expect(changes.count == 1)
         #expect(changes[0].spec.knob == .rhodesTremoloDepth)
-        #expect(changes[0].from == TunableRange(0.15, 0.55))
+        #expect(changes[0].from == before)
         #expect(changes[0].to == TunableRange(0, 0.9))
 
         tuning.reset(.rhodesTremoloDepth)
+        #expect(tuning.isDefault)
+
+        // And the web is still reachable as its own reference.
+        tuning.resetToWeb()
         #expect(tuning.isWeb)
+        #expect(!tuning.isDefault)
+    }
+
+    /// What the app opens on, once the owner had listened to it. These are
+    /// held down because they are decisions, not accidents — if one moves,
+    /// somebody moved it.
+    @Test("The shipped tuning is the one that was listened to")
+    func tunedIsWhatWasChosen() {
+        let tuned = Tuning.tuned
+        #expect(!tuned.isWeb)
+
+        // RHODES stopped being digital: much less modulation, a slower bell.
+        #expect(tuned[.rhodesModulationIndex] == TunableRange(0, 8.02))
+        #expect(tuned[.rhodesModulationDecay] == TunableRange(0.757, 1.709))
+        // MACHINE's kick starts lower and sits louder.
+        #expect(tuned[.machineKickPitchStart] == TunableRange(2.44, 4.78))
+        #expect(tuned[.machineKickLevel] == TunableRange(1.05))
+        // ACID squelches rarely rather than always.
+        #expect(tuned[.acidResonance] == TunableRange(0, 14.49))
+        // The room is less than half as long, and brighter.
+        #expect(tuned[.reverbDecay] == TunableRange(2.92))
+        #expect(tuned[.reverbDamping] == TunableRange(6870))
+
+        // What nobody touched is still the web's, to the digit.
+        for knob in [
+            TuningKnob.reverieRelease, .reverieLevel, .kalimbaLevel, .machineSnareBandpass,
+        ] {
+            #expect(tuned[knob] == Tuning.web[knob], "\(knob.rawValue) drifted")
+        }
     }
 }

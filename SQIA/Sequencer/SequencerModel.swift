@@ -26,7 +26,7 @@ private final class VoicingBox: @unchecked Sendable {
     private let lock = NSLock()
     private var tracks: [Track] = []
     private var storedBPM = SequencerState.defaultBPM
-    private var storedTuning = Tuning.web
+    private var storedTuning = Tuning.tuned
 
     /// Which subdivision each preset's echo currently sits on. Only the
     /// transport thread touches it, and only once a bar.
@@ -110,7 +110,7 @@ final class SequencerModel {
     /// It outlives the app, because tuning by ear takes more than one
     /// sitting and losing an afternoon of it to a relaunch would be its own
     /// kind of bug.
-    private(set) var tuning = Tuning.web
+    private(set) var tuning = Tuning.tuned
     private static let tuningKey = "sqia.tuning"
 
     @ObservationIgnored private var tempoDragStart: Double?
@@ -468,8 +468,15 @@ final class SequencerModel {
     }
 
     func resetAllTuning() {
-        guard !tuning.isWeb else { return }
+        guard !tuning.isDefault else { return }
         tuning.resetAll()
+        publishTuning(.reverbDecay)
+    }
+
+    /// Back to the web's own numbers, for hearing what was moved away from.
+    func resetToWeb() {
+        guard !tuning.isWeb else { return }
+        tuning.resetToWeb()
         publishTuning(.reverbDecay)
     }
 
@@ -484,7 +491,7 @@ final class SequencerModel {
     /// event. Everything else is read fresh when the next note is rolled.
     private func publishTuning(_ knob: TuningKnob) {
         voicing.write(tuning: tuning)
-        if tuning.isWeb {
+        if tuning.isDefault {
             UserDefaults.standard.removeObject(forKey: Self.tuningKey)
         } else {
             UserDefaults.standard.set(tuning.json(), forKey: Self.tuningKey)

@@ -40,9 +40,9 @@ struct VoiceSheet: View {
                     }
                 } footer: {
                     Text(
-                        model.tuning.isWeb
-                            ? "Every voice opens on the web's numbers."
-                            : "Moved from the web's numbers.")
+                        model.tuning.isDefault
+                            ? "Every voice is where it was tuned to."
+                            : "Moved from the tuning this build ships with.")
                 }
             }
             .navigationTitle("Sound")

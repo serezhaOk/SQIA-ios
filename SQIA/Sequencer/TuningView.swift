@@ -41,11 +41,11 @@ struct TuningView: View {
             } footer: {
                 Text(
                     """
-                    The shared reverb. Two of these are not the web's: it \
-                    convolves against seven seconds of white noise under an \
-                    envelope, so its tail is longer and stays bright, while \
-                    this one is a feedback network that darkens as it fades. \
-                    Raise decay and damping to move towards it.
+                    The shared reverb. Its decay and damping are not the \
+                    web's: that one convolves against seven seconds of white \
+                    noise under an envelope, so its tail runs longer and \
+                    stays bright, while this is a feedback network that \
+                    darkens as it fades. Raise both to move towards it.
                     """)
             }
         }
@@ -53,12 +53,20 @@ struct TuningView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Reset") { model.resetAllTuning() }
-                    .disabled(model.tuning.isWeb)
+                Menu {
+                    Button("Back to defaults") { model.resetAllTuning() }
+                        .disabled(model.tuning.isDefault)
+                    // The web is kept reachable as the reference it is: the
+                    // way to hear what was moved away from is to hear it.
+                    Button("Hear the web's numbers") { model.resetToWeb() }
+                        .disabled(model.tuning.isWeb)
+                } label: {
+                    Text("Reset")
+                }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(copied ? "Copied" : "Copy") { copy() }
-                    .disabled(model.tuning.isWeb)
+                    .disabled(model.tuning.isDefault)
             }
         }
     }
@@ -75,7 +83,7 @@ struct TuningView: View {
     @ViewBuilder
     private func row(_ spec: TuningSpec) -> some View {
         let frame = model.tuning[spec.knob]
-        let moved = frame != Tuning.web[spec.knob]
+        let moved = frame != Tuning.tuned[spec.knob]
 
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline) {

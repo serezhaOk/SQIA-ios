@@ -71,6 +71,16 @@ public struct SynthVoice: Sendable {
     private var sampleRate = 48_000.0
     private var age = 0
     private var lifetime = 0
+    /// The last few milliseconds of a voice's life, let down rather than cut.
+    ///
+    /// A voice with a flat time to live is retired whether or not it has
+    /// finished sounding, and the web does the same — it disposes of the
+    /// node. That is only safe while nothing is still ringing at the moment
+    /// it happens, which is true of the web's numbers and stops being true
+    /// the moment a resonance is dialled past them: a pluck at 0.995 is
+    /// twelve decibels below its peak when its two and a fifth seconds are
+    /// up, and cutting that is a click. So the end of a life is a ramp.
+    private var fadeFrames = 1
     private var tunedFrequency = 440.0
 
     public init() {}
@@ -169,6 +179,7 @@ public struct SynthVoice: Sendable {
         }
 
         age = 0
+        fadeFrames = max(1, Int(Self.fadeOut * sampleRate))
         // A pluck has no amplitude envelope — the comb running down is the
         // whole decay — so the web gives it a flat time to live instead.
         lifetime =
@@ -349,6 +360,17 @@ public struct SynthVoice: Sendable {
         }
 
         age += 1
+
+        // Let the last few milliseconds down rather than cutting them.
+        let remaining = lifetime - age
+        if remaining < fadeFrames {
+            return value * level * recipe.gain * Double(max(0, remaining))
+                / Double(fadeFrames)
+        }
         return value * level * recipe.gain
     }
+
+    /// Five milliseconds: long enough that nothing steps, short enough that
+    /// nothing audible is lost off the end of a note.
+    private static let fadeOut = 0.005
 }

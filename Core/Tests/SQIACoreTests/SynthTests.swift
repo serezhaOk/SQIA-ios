@@ -211,6 +211,38 @@ struct KalimbaTests {
         #expect(same / energy > 0.7, "no periodicity at 220 Hz: \(same / energy)")
     }
 
+    /// A voice with a flat time to live is retired whether or not it has
+    /// stopped sounding. At the web's numbers nothing is ever still ringing
+    /// when that happens; past them it is, and cutting a ringing tone is a
+    /// click. So the last few milliseconds are a ramp, whatever the setting.
+    @Test("A voice still ringing when its time is up is let down, not cut")
+    func lifetimeEndsInAFade() {
+        for resonance in [0.94, 0.98, 0.995] {
+            var recipe = VoiceRecipe()
+            recipe.preset = .kalimba
+            recipe.source = .pluck
+            recipe.frequency = Music.frequency(ofMidi: 48)
+            recipe.gain = 1
+            recipe.pluckResonance = resonance
+            recipe.pluckDampening = 5114
+            recipe.attackNoise = 1.5
+            recipe.lifetime = 2.2
+
+            let out = render(recipe, frames: Int(rate * 2.25))
+            let peak = out.map(abs).max() ?? 0
+            #expect(peak > 0.01, "nothing sounded at \(resonance)")
+
+            // The last sample before the slot is retired is nothing much,
+            // however loudly the comb was still going a moment earlier.
+            let end = Int(rate * 2.2)
+            let atCut = abs(out[end - 1])
+            #expect(
+                atCut < peak * 0.01,
+                "resonance \(resonance) was cut at \(atCut) against a peak of \(peak)")
+            #expect(out[end...].allSatisfy { $0 == 0 })
+        }
+    }
+
     @Test("Resonance decides how long the tine rings")
     func resonanceSetsTheTail() {
         func tail(_ resonance: Double) -> Double {

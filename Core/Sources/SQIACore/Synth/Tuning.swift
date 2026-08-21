@@ -5,10 +5,12 @@
 // frame itself: a low end and a high end. Narrow one and the preset becomes
 // consistent; slide both and its character moves.
 //
-// The defaults are the web's, to the digit. `Tuning.web` is what the app
-// runs unless somebody moves something, and a test holds every default
-// against the literal it replaced, so making the sound adjustable cannot
-// quietly have changed it.
+// There are two named sets. `Tuning.web` is the web's numbers to the digit,
+// held down by tests against the literals they replaced — it is the
+// reference, and the panel can always return to it. `Tuning.tuned` is what
+// the app opens on: the same frame, moved where the owner's ear took it
+// after listening. Every departure is one somebody made on purpose, and the
+// two being separate is what keeps that legible.
 
 import Foundation
 
@@ -138,13 +140,20 @@ public struct Tuning: Codable, Sendable, Equatable {
     }
 
     public var isWeb: Bool { self == .web }
+    /// Whether anything has been moved from what the app opens on.
+    public var isDefault: Bool { self == .tuned }
 
     public mutating func reset(_ knob: TuningKnob) {
-        values[knob] = Self.defaults[knob]
+        self[knob] = Self.tuned[knob]
     }
 
     public mutating func resetAll() {
-        values = Self.defaults
+        self = .tuned
+    }
+
+    /// Back to the web's own numbers, for hearing what was moved away from.
+    public mutating func resetToWeb() {
+        self = .web
     }
 
     // ------------------------------------------------------------ rolling --
@@ -165,7 +174,57 @@ public struct Tuning: Codable, Sendable, Equatable {
 
     // ----------------------------------------------------------- defaults --
 
+    /// The web's numbers, kept as the reference they are: the parity tests
+    /// measure against these, and the panel can always return to them.
     public static let web = Tuning(defaults)
+
+    /// What the app opens on — the web's frame, moved where the owner's ear
+    /// took it. Everything not listed here is still the web's.
+    ///
+    /// The shape of the decisions is worth keeping legible. RHODES lost most
+    /// of its modulation and gained a slower bell, which is what took it
+    /// from digital back towards struck. MACHINE's kick starts lower and
+    /// sits louder, so it reads as weight rather than as a pitch. ACID's
+    /// resonance was pulled open at the bottom and pushed up at the top, so
+    /// the squelch became something that happens rather than something that
+    /// is always on. And the room is less than half as long and brighter,
+    /// which is this reverb being asked to sound less like a hall.
+    public static let tuned: Tuning = {
+        var tuning = Tuning(defaults)
+
+        tuning[.reverieSlowAttackChance] = TunableRange(0.575)
+        tuning[.reverieSlowAttack] = TunableRange(0.005, 0.35)
+        tuning[.reverieDetune] = TunableRange(7.8)
+
+        tuning[.kalimbaResonance] = TunableRange(0.715, 0.995)
+        tuning[.kalimbaDampening] = TunableRange(200, 5114)
+        tuning[.kalimbaAttackNoise] = TunableRange(0.05, 1.5)
+        tuning[.kalimbaLowpass] = TunableRange(1945, 8090)
+
+        tuning[.rhodesModulationIndex] = TunableRange(0, 8.02)
+        tuning[.rhodesModulationDecay] = TunableRange(0.757, 1.709)
+        tuning[.rhodesModulationSustain] = TunableRange(0, 0.322)
+        tuning[.rhodesTremoloDepth] = TunableRange(0, 0.432)
+        tuning[.rhodesLevel] = TunableRange(-0.69)
+
+        tuning[.acidResonance] = TunableRange(0, 14.49)
+        tuning[.acidAccentResonance] = TunableRange(5.08, 11.82)
+        tuning[.acidBaseCutoff] = TunableRange(90.54, 275.68)
+        tuning[.acidOctaves] = TunableRange(1.82, 2.865)
+        tuning[.acidSweep] = TunableRange(0.345, 1.174)
+        tuning[.acidLevel] = TunableRange(-16)
+
+        tuning[.machineKickPitchStart] = TunableRange(2.44, 4.78)
+        tuning[.machineKickPitchDecay] = TunableRange(0.02, 0.064)
+        tuning[.machineKickLevel] = TunableRange(1.05)
+        tuning[.machineMetalLevel] = TunableRange(-13.75)
+
+        tuning[.reverbDecay] = TunableRange(2.92)
+        tuning[.reverbPreDelay] = TunableRange(0.0296)
+        tuning[.reverbDamping] = TunableRange(6870)
+
+        return tuning
+    }()
 
     static let defaults: [TuningKnob: TunableRange] = [
         // REVERIE. The release is the pad: the web rolls 10–90% of 3.2 s.
@@ -361,10 +420,12 @@ public struct Tuning: Codable, Sendable, Equatable {
 
     /// Only what was moved, in the order the panel shows it — which is what
     /// is worth reading out loud.
-    public func changes() -> [(spec: TuningSpec, from: TunableRange, to: TunableRange)] {
+    public func changes(from reference: Tuning = .tuned)
+        -> [(spec: TuningSpec, from: TunableRange, to: TunableRange)]
+    {
         Self.specs.compactMap { spec in
             let now = self[spec.knob]
-            let was = Tuning.web[spec.knob]
+            let was = reference[spec.knob]
             return now == was ? nil : (spec, was, now)
         }
     }
