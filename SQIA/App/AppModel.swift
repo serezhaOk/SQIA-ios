@@ -36,7 +36,10 @@ final class AppModel {
     /// just the starting state.
     @ObservationIgnored private var wasSignedIn = false
 
-    init(auth: AuthController = AuthController()) {
+    /// Built here rather than as a default argument: a default is evaluated
+    /// outside the main actor, and `AuthController` lives on it.
+    init(auth: AuthController? = nil) {
+        let auth = auth ?? AuthController()
         self.auth = auth
         let keeper = auth.keeper
         store = SupabaseProjectStore(session: { await keeper.supabaseSession() })

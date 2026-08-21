@@ -20,7 +20,9 @@ struct KeychainSessionStorage: SessionStorage {
     private let service = "com.serezhaok.sqia"
     private let account = "supabase-session"
     private let issueKey = "sqia.auth.issue"
-    private let defaults = UserDefaults.standard
+    /// Read fresh each time rather than held: `UserDefaults` is not
+    /// Sendable, and this type has to be.
+    private var defaults: UserDefaults { .standard }
 
     // ------------------------------------------------------------ session --
 
