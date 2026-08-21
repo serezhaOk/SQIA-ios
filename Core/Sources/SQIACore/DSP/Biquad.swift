@@ -44,8 +44,24 @@ public struct Biquad: Sendable {
         return (cos(w0), sin(w0) / (2 * max(q, 1e-4)))
     }
 
+    /// The same, but with Q read the way Web Audio reads it for a lowpass or
+    /// a highpass — in decibels.
+    ///
+    /// This is a real trap and not a small one. The spec uses `alphaQ` for
+    /// bandpass, notch and allpass, where Q is the quality factor as anyone
+    /// would expect, but `alphaQdB = sin(w0) / (2 · 10^(Q/20))` for lowpass
+    /// and highpass, where the number is the height of the resonant peak in
+    /// decibels. So a lowpass the web sets to Q = 15 has a quality factor of
+    /// 5.6, not 15 — and two of them cascaded is thirty decibels of
+    /// resonance rather than forty-seven.
+    private static func termsFromDecibels(
+        _ frequency: Double, _ q: Double, _ sampleRate: Double
+    ) -> (cosW0: Double, alpha: Double) {
+        terms(frequency, pow(10, q / 20), sampleRate)
+    }
+
     public mutating func setLowpass(frequency: Double, q: Double, sampleRate: Double) {
-        let (cosW0, alpha) = Self.terms(frequency, q, sampleRate)
+        let (cosW0, alpha) = Self.termsFromDecibels(frequency, q, sampleRate)
         let a0 = 1 + alpha
         b0 = ((1 - cosW0) / 2) / a0
         b1 = (1 - cosW0) / a0
@@ -55,7 +71,7 @@ public struct Biquad: Sendable {
     }
 
     public mutating func setHighpass(frequency: Double, q: Double, sampleRate: Double) {
-        let (cosW0, alpha) = Self.terms(frequency, q, sampleRate)
+        let (cosW0, alpha) = Self.termsFromDecibels(frequency, q, sampleRate)
         let a0 = 1 + alpha
         b0 = ((1 + cosW0) / 2) / a0
         b1 = -(1 + cosW0) / a0

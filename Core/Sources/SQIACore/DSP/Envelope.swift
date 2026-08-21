@@ -153,14 +153,23 @@ public struct PitchEnvelope: Sendable {
         self.decay = max(1e-4, decay)
     }
 
+    /// Where the sweep starts, as a multiple of the note.
+    ///
+    /// Tone calls the parameter `octaves` and then does not use it as one:
+    /// `maxNote = freq * this.octaves`, a plain multiply. So a kick rolled
+    /// at eight starts eight times above its fundamental, not two hundred
+    /// and fifty-six — which is the difference between a struck skin and a
+    /// descending zap.
+    private var start: Double { max(1, octaves) }
+
     public mutating func prepare(sampleRate: Double) {
-        multiplier = pow(2, octaves)
+        multiplier = start
         let frames = max(1, Int(decay * sampleRate))
-        perSample = pow(2, -octaves / Double(frames))
+        perSample = pow(start, -1 / Double(frames))
     }
 
     public mutating func reset() {
-        multiplier = pow(2, octaves)
+        multiplier = start
     }
 
     public mutating func next(base frequency: Double) -> Double {

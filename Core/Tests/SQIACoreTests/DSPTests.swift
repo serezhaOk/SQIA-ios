@@ -37,6 +37,36 @@ struct BiquadTests {
         #expect(filter.magnitude(at: 19_200, sampleRate: rate) > 0.9)
     }
 
+    /// Web Audio reads Q in decibels for a lowpass and a highpass, and as
+    /// the quality factor for everything else. It is an easy thing to miss
+    /// and an expensive one: the 303's filter is rolled up to fifteen, and
+    /// read the wrong way that is a quality factor of fifteen — twenty-three
+    /// decibels of resonance where the web has fifteen, doubled again by the
+    /// cascade. The bass disappears underneath it.
+    @Test("Q is decibels on a lowpass, and a quality factor on a bandpass")
+    func resonanceIsInDecibels() {
+        for decibels in [1.0, 4, 9, 15] {
+            let low = Biquad(lowpass: 2000, q: decibels, sampleRate: rate)
+            let peak = low.magnitude(at: 2000, sampleRate: rate)
+            #expect(
+                abs(20 * log10(peak) - decibels) < 0.6,
+                "lowpass at Q \(decibels) peaked at \(20 * log10(peak)) dB")
+
+            let high = Biquad(highpass: 2000, q: decibels, sampleRate: rate)
+            let highPeak = high.magnitude(at: 2000, sampleRate: rate)
+            #expect(abs(20 * log10(highPeak) - decibels) < 0.6)
+        }
+
+        // A bandpass is unchanged: its Q is the quality factor, so its
+        // bandwidth narrows with it while the peak stays at unity.
+        let narrow = Biquad(bandpass: 2000, q: 8, sampleRate: rate)
+        let wide = Biquad(bandpass: 2000, q: 2, sampleRate: rate)
+        #expect(abs(narrow.magnitude(at: 2000, sampleRate: rate) - 1) < 0.05)
+        #expect(
+            narrow.magnitude(at: 2600, sampleRate: rate)
+                < wide.magnitude(at: 2600, sampleRate: rate))
+    }
+
     @Test("A bandpass peaks where it is tuned and falls away either side")
     func bandpassResponse() {
         let filter = Biquad(bandpass: 2000, q: 4, sampleRate: rate)
@@ -269,17 +299,24 @@ struct EnvelopeTests {
 
     /// Tone ramps a membrane's pitch exponentially, which is a constant
     /// ratio per sample — so this steps rather than evaluating a power.
+    ///
+    /// And it starts at `freq * octaves`, a plain multiply, however much the
+    /// parameter's name suggests otherwise: `maxNote = freq * this.octaves`
+    /// in MembraneSynth. Read as a power instead, a kick rolled at eight
+    /// starts two hundred and fifty-six times above its fundamental rather
+    /// than eight, which is a descending zap and not a struck skin.
     @Test("A drum's pitch falls to the note it was given")
     func pitchDrop() {
         var pitch = PitchEnvelope(octaves: 3, decay: 0.05)
         pitch.prepare(sampleRate: rate)
         let start = pitch.next(base: 100)
-        #expect(abs(start - 800) < 1)  // three octaves up
+        #expect(abs(start - 300) < 1, "started at \(start)")
 
-        // Halfway through, halfway down in octaves: an octave and a half.
+        // A constant ratio per sample: halfway through the decay it has
+        // covered half the ratio, which is its square root.
         for _ in 0..<Int(0.025 * rate) { _ = pitch.next(base: 100) }
         let middle = pitch.next(base: 100)
-        #expect(abs(middle - 100 * pow(2, 1.5)) < 5, "midway at \(middle)")
+        #expect(abs(middle - 100 * 3.0.squareRoot()) < 5, "midway at \(middle)")
 
         for _ in 0..<Int(0.05 * rate) { _ = pitch.next(base: 100) }
         #expect(abs(pitch.next(base: 100) - 100) < 1)
