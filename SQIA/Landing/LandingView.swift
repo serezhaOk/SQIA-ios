@@ -169,21 +169,22 @@ struct LandingView: View {
 
     private static let about = URL(
         string: "https://www.instagram.com/reel/Dbh7eVJAed7/?igsh=MTJ2MzQxaGZtNm81dw==")!
-    private static let termsURL = URL(string: "https://sqia.serezhaok.com/terms.html")!
-    private static let privacyURL = URL(string: "https://sqia.serezhaok.com/privacy.html")!
 
     private var terms: some View {
         // One run of text with two links inside it, which is what the web
-        // has — not three views pretending to be a sentence.
-        (Text("By continuing, you agree to our ")
-            + Text("[Terms](\(Self.termsURL))")
-            + Text(" and ")
-            + Text("[Privacy Policy](\(Self.privacyURL))")
-            + Text("."))
-            .manrope(.regular, TextStyle.termsSize)
-            .foregroundStyle(Palette.muted)
-            .tint(Palette.link)
-            .multilineTextAlignment(.center)
+        // has — not three views pretending to be a sentence. The markdown
+        // is a literal because an interpolated one is not parsed.
+        Text(
+            """
+            By continuing, you agree to our \
+            [Terms](https://sqia.serezhaok.com/terms.html) and \
+            [Privacy Policy](https://sqia.serezhaok.com/privacy.html).
+            """
+        )
+        .manrope(.regular, TextStyle.termsSize)
+        .foregroundStyle(Palette.muted)
+        .tint(Palette.link)
+        .multilineTextAlignment(.center)
     }
 
     private func banner(_ message: AuthController.Message) -> some View {

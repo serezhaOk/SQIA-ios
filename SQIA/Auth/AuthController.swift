@@ -16,6 +16,7 @@ import Foundation
 import Network
 import SQIACore
 import SwiftUI
+import UIKit
 
 @MainActor
 @Observable
@@ -296,15 +297,11 @@ final class AuthController: NSObject {
 }
 
 extension AuthController: ASWebAuthenticationPresentationContextProviding {
-    nonisolated func presentationAnchor(
-        for session: ASWebAuthenticationSession
-    ) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            let scenes = UIApplication.shared.connectedScenes
-            let window = scenes.compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first { $0.isKeyWindow }
-            return window ?? ASPresentationAnchor()
-        }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }
+        return window ?? ASPresentationAnchor()
     }
 }
