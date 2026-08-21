@@ -331,6 +331,14 @@ public final class AudioMixer: @unchecked Sendable {
                 decay: event.room.decay, preDelay: event.room.preDelay,
                 damping: event.room.damping)
 
+        case .chain:
+            let index = event.chain.preset.rawValue
+            guard chains.indices.contains(index) else { return }
+            chains[index].setSendHighpass(event.chain.sendHighpass)
+            if event.chain.delayWet >= 0 {
+                chains[index].setDelayWet(event.chain.delayWet)
+            }
+
         case .presetDrift:
             let index = event.drift.preset.rawValue
             guard chains.indices.contains(index) else { return }

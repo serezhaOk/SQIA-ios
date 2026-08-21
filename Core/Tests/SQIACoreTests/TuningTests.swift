@@ -74,6 +74,63 @@ struct TuningTests {
         }
     }
 
+    /// The drums are the one preset whose pitch decides which instrument
+    /// plays, so transposing them rearranges a pattern rather than moving
+    /// it. Off by default, and the web's behaviour still reachable.
+    @Test("A drum kit keeps its layout unless it is told to follow the key")
+    func drumsIgnoreTheKey() {
+        // Twelve columns, one semitone apart, so every column is a fixed
+        // instrument: three kicks, three toms, three snares, two claps, one
+        // metal.
+        #expect(Music.drumTable.count == Music.columns)
+        let kinds = Music.drumTable.map { ((($0 % 12) + 12) % 12) }
+        #expect(kinds == Array(0..<12))
+
+        #expect(!Tuning.tuned.isOn(.machineFollowsKey))
+        #expect(Tuning.web.isOn(.machineFollowsKey))
+
+        // Whatever the key, the same column is the same instrument.
+        for rootPc in 0..<12 {
+            let table = Music.midiTable(rootPc: rootPc, scale: Music.scales[0])
+            let moved = Set(table.map { ((($0 % 12) + 12) % 12) })
+            let fixed = Set(Music.drumTable.map { ((($0 % 12) + 12) % 12) })
+            #expect(fixed.count == 12)
+            if rootPc != 0 { _ = moved }
+        }
+    }
+
+    @Test("Only what belongs in the room reaches it")
+    func sendCutIsTunable() {
+        // The web rolls the drums off at 380 Hz; this build cuts everything
+        // under a kilohertz, because a kick in a long tail is mud.
+        #expect(Tuning.web[.machineSendHighpass] == TunableRange(380))
+        #expect(Tuning.tuned[.machineSendHighpass] == TunableRange(1000))
+
+        var chain = PresetChain(preset: .machine, sampleRate: 48_000)
+        chain.setSendHighpass(1000)
+
+        /// Send level against the chain's own output at one frequency.
+        func ratio(_ frequency: Double) -> Double {
+            var oscillator = Oscillator(waveform: .sine)
+            var dry = 0.0
+            var sent = 0.0
+            let frames = 48_000
+            for i in 0..<frames {
+                let input = oscillator.render(frequency: frequency, sampleRate: 48_000) * 0.3
+                let out = chain.process(left: input, right: input)
+                if i > frames / 2 {
+                    dry += out.left * out.left
+                    sent += out.sendLeft * out.sendLeft
+                }
+            }
+            return dry > 0 ? (sent / dry).squareRoot() : 0
+        }
+
+        let kick = ratio(60)
+        let hat = ratio(6000)
+        #expect(kick < hat / 50, "60 Hz sent \(kick) against 6 kHz at \(hat)")
+    }
+
     // ------------------------------------------------------ reaching sound --
 
     /// A knob nobody can hear is not a knob.

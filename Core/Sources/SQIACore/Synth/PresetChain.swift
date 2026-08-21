@@ -45,7 +45,7 @@ struct Ramp: Sendable {
 
 public struct PresetChain: Sendable {
     public let preset: SynthPreset
-    private let settings: PresetSettings
+    private var settings: PresetSettings
     private let sampleRate: Double
 
     /// One filter per side: sharing a biquad's state between channels would
@@ -114,6 +114,29 @@ public struct PresetChain: Sendable {
     /// Tone gives every section of a cascaded filter the same Q, and leaves
     /// this one at its default.
     private static let sendHighpassQ = 0.7
+
+    /// Move where the send is rolled off, while it is running. Coefficients
+    /// only — the filters keep their memory, so the corner can travel
+    /// without the tail clicking.
+    public mutating func setSendHighpass(_ frequency: Double) {
+        let corner = min(max(frequency, 20), sampleRate * 0.45)
+        sendHighpassLeft.a.setHighpass(
+            frequency: corner, q: Self.sendHighpassQ, sampleRate: sampleRate)
+        sendHighpassLeft.b.setHighpass(
+            frequency: corner, q: Self.sendHighpassQ, sampleRate: sampleRate)
+        sendHighpassRight.a.setHighpass(
+            frequency: corner, q: Self.sendHighpassQ, sampleRate: sampleRate)
+        sendHighpassRight.b.setHighpass(
+            frequency: corner, q: Self.sendHighpassQ, sampleRate: sampleRate)
+    }
+
+    /// How much of the chain the echo repeats. The bar's drift ramps this
+    /// back to the preset's own figure, so moving it here moves that too.
+    public mutating func setDelayWet(_ amount: Double) {
+        let level = min(max(amount, 0), 1)
+        settings.delayWet = level
+        wet.set(level)
+    }
 
     public mutating func clear() {
         filterLeft.reset()

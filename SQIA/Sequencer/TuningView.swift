@@ -105,7 +105,16 @@ struct TuningView: View {
                 }
             }
 
-            if spec.isSingle {
+            if spec.unit == .flag {
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { frame.lower >= 0.5 },
+                        set: { model.setTuning(spec.knob, to: TunableRange($0 ? 1 : 0)) })
+                )
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else if spec.isSingle {
                 handle(spec, frame.low) { model.setTuning(spec.knob, to: TunableRange($0)) }
             } else {
                 // Neither handle may pass the other, or the reading would

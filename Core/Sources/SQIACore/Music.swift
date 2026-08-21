@@ -79,4 +79,17 @@ public enum Music {
     public static func midiTable(rootPc: Int, scale: Scale) -> [Int] {
         (0..<columns).map { columnMidi($0, rootPc: rootPc, scale: scale) }
     }
+
+    /// The columns a drum kit is laid out on, which is not a key at all.
+    ///
+    /// MACHINE picks its instrument from `midi % 12` — low columns are kicks
+    /// and toms, the middle is snare and clap, the top is metal. Run that
+    /// through a key and the whole kit slides: change the root by three and
+    /// the kicks you drew become toms. The pattern is still there and it is
+    /// no longer the pattern.
+    ///
+    /// So a drum track can be given a chromatic run instead, where a column
+    /// is always the same instrument. It is a departure from the web, which
+    /// transposes everything alike, and it is one worth making.
+    public static let drumTable: [Int] = (0..<columns).map { rootBase + $0 }
 }

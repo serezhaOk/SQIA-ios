@@ -155,11 +155,13 @@ final class SequencerModel {
             Task { @MainActor in
                 self?.failure = nil
                 self?.publishRoom()
+                self?.publishChain(.machine)
             }
         }
         // A restored tuning, or a mixer rebuilt after a route change, both
-        // start with a room set to its defaults. Tell it where it should be.
+        // start with everything at its defaults. Tell them where they are.
         publishRoom()
+        publishChain(.machine)
         sequencer.bpm = state.bpm
         sequencer.start()
         isRunning = true
@@ -499,9 +501,24 @@ final class SequencerModel {
         switch knob {
         case .reverbDecay, .reverbPreDelay, .reverbDamping:
             publishRoom()
+        case .machineSendHighpass, .machineDelayWet:
+            publishChain(.machine)
+        case .machineFollowsKey:
+            // The kit's layout is decided when a step is voiced, so this one
+            // only has to reach the transport.
+            publishVoicing()
         default:
             break
         }
+    }
+
+    private func publishChain(_ preset: SynthPreset) {
+        engine.mixer.schedule(
+            AudioEvent.chain(
+                ChainSettings(
+                    preset: preset,
+                    sendHighpass: tuning[.machineSendHighpass].lower,
+                    delayWet: tuning[.machineDelayWet].lower)))
     }
 
     private func publishRoom() {
@@ -593,13 +610,20 @@ final class SequencerModel {
 
     private func publishVoicing() {
         let midi = state.midiTable
+        // A drum kit is not in a key. MACHINE picks its instrument from the
+        // note's pitch class, so transposing it slides the whole kit between
+        // columns — the kicks somebody drew become toms. Unless the panel
+        // says to follow the key, drums get a chromatic run instead, where a
+        // column is always the same instrument.
+        let drums = tuning.isOn(.machineFollowsKey) ? midi : Music.drumTable
         voicing.write(
             tracks: state.tracks.map { track in
-                VoicingBox.Track(
+                let preset = VoiceCatalog.preset(at: track.voiceIndex)
+                return VoicingBox.Track(
                     grid: track.grid,
                     muted: track.muted,
-                    preset: VoiceCatalog.preset(at: track.voiceIndex),
-                    midi: midi
+                    preset: preset,
+                    midi: preset == .machine ? drums : midi
                 )
             },
             bpm: state.bpm)

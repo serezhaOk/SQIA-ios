@@ -75,6 +75,9 @@ public enum TuningKnob: String, CaseIterable, Codable, Sendable {
     case machineKickLevel
     case machineSnareBandpass
     case machineMetalLevel
+    case machineFollowsKey
+    case machineSendHighpass
+    case machineDelayWet
 
     // The shared room.
     case reverbDecay
@@ -84,13 +87,15 @@ public enum TuningKnob: String, CaseIterable, Codable, Sendable {
 
 /// What a knob means, for the panel to lay out and label.
 public struct TuningSpec: Sendable {
-    public enum Unit: Sendable {
+    public enum Unit: Sendable, Equatable {
         case seconds
         case hertz
         case decibels
         case cents
         case ratio
         case chance
+        /// On or off. The panel draws a switch for it.
+        case flag
 
         public func format(_ value: Double) -> String {
             switch self {
@@ -106,6 +111,7 @@ public struct TuningSpec: Sendable {
             case .cents: return String(format: "±%.0f ¢", value)
             case .ratio: return String(format: "%.2f", value)
             case .chance: return String(format: "%.0f%%", value * 100)
+            case .flag: return value >= 0.5 ? "On" : "Off"
             }
         }
     }
@@ -172,6 +178,9 @@ public struct Tuning: Codable, Sendable, Equatable {
         random.chance(self[knob].lower)
     }
 
+    /// A knob that is a switch rather than a frame.
+    public func isOn(_ knob: TuningKnob) -> Bool { self[knob].lower >= 0.5 }
+
     // ----------------------------------------------------------- defaults --
 
     /// The web's numbers, kept as the reference they are: the parity tests
@@ -218,6 +227,11 @@ public struct Tuning: Codable, Sendable, Equatable {
         tuning[.machineKickPitchDecay] = TunableRange(0.02, 0.064)
         tuning[.machineKickLevel] = TunableRange(1.05)
         tuning[.machineMetalLevel] = TunableRange(-13.75)
+        // A drum kit is not in a key, and a seven-second room under a kick
+        // is mud however short the send is — so the drums keep their layout
+        // whatever the root is, and only their top half reaches the room.
+        tuning[.machineFollowsKey] = TunableRange(0)
+        tuning[.machineSendHighpass] = TunableRange(1000)
 
         tuning[.reverbDecay] = TunableRange(2.92)
         tuning[.reverbPreDelay] = TunableRange(0.0296)
@@ -262,6 +276,11 @@ public struct Tuning: Codable, Sendable, Equatable {
         .machineKickLevel: TunableRange(-3),
         .machineSnareBandpass: TunableRange(1200, 3600),
         .machineMetalLevel: TunableRange(-21),
+        // The web transposes the drums with everything else, and rolls the
+        // reverb send off at 380 Hz.
+        .machineFollowsKey: TunableRange(1),
+        .machineSendHighpass: TunableRange(380),
+        .machineDelayWet: TunableRange(0.12),
 
         // The room. Decay and damping are the two that are not the web's —
         // see `Reverb` — so they are the two most worth moving.
@@ -381,6 +400,21 @@ public struct Tuning: Codable, Sendable, Equatable {
             knob: .machineMetalLevel, preset: .machine, label: "Metal level",
             detail: "Hats and cymbals only.",
             bounds: -40...0, unit: .decibels),
+
+        TuningSpec(
+            knob: .machineFollowsKey, preset: .machine, label: "Follow the key",
+            detail:
+                "The web transposes drums too, which slides the whole kit "
+                + "between columns when the root moves. Off keeps the layout.",
+            bounds: 0...1, unit: .flag),
+        TuningSpec(
+            knob: .machineSendHighpass, preset: .machine, label: "Reverb cut",
+            detail: "Only what sits above this reaches the room.",
+            bounds: 60...4000, unit: .hertz),
+        TuningSpec(
+            knob: .machineDelayWet, preset: .machine, label: "Echo",
+            detail: "How much of the kit the ping-pong delay repeats.",
+            bounds: 0...0.6, unit: .ratio),
 
         TuningSpec(
             knob: .reverbDecay, preset: nil, label: "Decay",

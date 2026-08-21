@@ -14,6 +14,8 @@ public struct AudioEvent: Sendable {
         case silence
         /// The shared room, moved while it is sounding.
         case room
+        /// One preset's chain, likewise.
+        case chain
     }
 
     public var kind: Kind
@@ -22,19 +24,22 @@ public struct AudioEvent: Sendable {
     public var recipe: VoiceRecipe
     public var drift: PresetDrift
     public var room: RoomSettings
+    public var chain: ChainSettings
 
     public init(
         kind: Kind,
         frame: Int64,
         recipe: VoiceRecipe = VoiceRecipe(),
         drift: PresetDrift = PresetDrift(),
-        room: RoomSettings = RoomSettings()
+        room: RoomSettings = RoomSettings(),
+        chain: ChainSettings = ChainSettings()
     ) {
         self.kind = kind
         self.frame = frame
         self.recipe = recipe
         self.drift = drift
         self.room = room
+        self.chain = chain
     }
 
     public static func note(_ recipe: VoiceRecipe, at frame: Int64) -> AudioEvent {
@@ -47,6 +52,10 @@ public struct AudioEvent: Sendable {
 
     public static func room(_ room: RoomSettings) -> AudioEvent {
         AudioEvent(kind: .room, frame: 0, room: room)
+    }
+
+    public static func chain(_ chain: ChainSettings) -> AudioEvent {
+        AudioEvent(kind: .chain, frame: 0, chain: chain)
     }
 }
 
@@ -72,5 +81,24 @@ public struct RoomSettings: Sendable, Equatable {
             decay: tuning[.reverbDecay].lower,
             preDelay: tuning[.reverbPreDelay].lower,
             damping: tuning[.reverbDamping].lower)
+    }
+}
+
+/// What a preset's chain can be told while it is running.
+public struct ChainSettings: Sendable, Equatable {
+    public var preset: SynthPreset
+    /// Where the reverb send is rolled off from below.
+    public var sendHighpass: Double
+    /// How much of the chain the echo repeats. Negative leaves it alone.
+    public var delayWet: Double
+
+    public init(
+        preset: SynthPreset = .reverie,
+        sendHighpass: Double = 200,
+        delayWet: Double = -1
+    ) {
+        self.preset = preset
+        self.sendHighpass = sendHighpass
+        self.delayWet = delayWet
     }
 }
