@@ -113,13 +113,24 @@ final class SequencerModel {
     private(set) var tuning = Tuning.tuned
     private static let tuningKey = "sqia.tuning"
 
+    // ------------------------------------------------------------ the row --
+    /// The project being played, and the thing that writes it. Every edit
+    /// goes through `publishVoicing`, which is also where the save is asked
+    /// for — the same funnel the web uses, where `updateRates()` and
+    /// `touch()` come as a pair.
+    @ObservationIgnored private let store: any ProjectStore
+    @ObservationIgnored private let autosave = Autosave()
+    @ObservationIgnored private var projectId: String?
+    private(set) var projectName = ""
+
     @ObservationIgnored private var tempoDragStart: Double?
     @ObservationIgnored private var tempoDragMoved = false
     /// The layout the last frame was drawn with — what a touch is resolved
     /// against.
     @ObservationIgnored private var layout: FieldLayout?
 
-    init() {
+    init(store: any ProjectStore) {
+        self.store = store
         let engine = AudioEngine()
         self.engine = engine
         sequencer = Sequencer(engine: engine)
@@ -133,10 +144,64 @@ final class SequencerModel {
         }
 
         syncScenes()
-        publishVoicing()
+        publishVoicing(saving: false)
         wireTransport()
         voicing.write(tuning: tuning)
     }
+
+    // ---------------------------------------------------------- the project --
+
+    /// Load a saved project over whatever is on screen.
+    func open(_ project: Project) {
+        projectId = project.id
+        projectName = project.name
+        state.apply(project.snapshot)
+        sequencer.bpm = state.bpm
+        syncScenes()
+        publishVoicing(saving: false)
+    }
+
+    /// A blank field, with no row behind it yet. `adopt` gives it one once
+    /// the library has written it.
+    func startFresh() {
+        projectId = nil
+        projectName = ""
+        state = SequencerState.fresh(voices: VoiceCatalog.defaultVoices)
+        sequencer.bpm = state.bpm
+        syncScenes()
+        publishVoicing(saving: false)
+    }
+
+    func adopt(_ project: Project) {
+        projectId = project.id
+        projectName = project.name
+    }
+
+    /// Leaving: stop, then write what is owed before the library redraws,
+    /// so it does not show yesterday's card.
+    func leave() async {
+        stop()
+        await autosave.flush()
+    }
+
+    /// Called for every edit. Building the snapshot is left to the moment
+    /// the write actually happens — the web does the same, and it is the
+    /// difference between copying five hundred cells once a second and
+    /// copying them on every frame of a drag.
+    private func noteEdit() {
+        guard let id = projectId else { return }
+        let store = store
+        let autosave = autosave
+        Task {
+            await autosave.schedule { [weak self] in
+                guard let self else { return }
+                let snapshot = await self.snapshot
+                try await store.save(id: id, snapshot: snapshot)
+            }
+        }
+    }
+
+    var snapshot: ProjectSnapshot { state.snapshot() }
 
     // ------------------------------------------------------------- running --
 
@@ -505,8 +570,8 @@ final class SequencerModel {
             publishChain(.machine)
         case .machineFollowsKey:
             // The kit's layout is decided when a step is voiced, so this one
-            // only has to reach the transport.
-            publishVoicing()
+            // only has to reach the transport. It is not part of the project.
+            publishVoicing(saving: false)
         default:
             break
         }
@@ -608,7 +673,14 @@ final class SequencerModel {
         }
     }
 
-    private func publishVoicing() {
+    /// Hand the transport the patterns, and ask for a save.
+    ///
+    /// These two travel together because every edit needs both — the same
+    /// `updateRates(); touch();` pair the web writes at each call site. The
+    /// tuning panel is the one caller that changes how a note sounds without
+    /// changing the project, so it passes `saving: false`.
+    private func publishVoicing(saving: Bool = true) {
+        if saving { noteEdit() }
         let midi = state.midiTable
         // A drum kit is not in a key. MACHINE picks its instrument from the
         // note's pitch class, so transposing it slides the whole kit between

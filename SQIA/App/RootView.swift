@@ -1,14 +1,37 @@
 // The app's root.
 //
-// The sequencer is the whole app for now. The sign-in screen and the project
-// library come with M7 and M8, and this is where the routing between them
-// will live.
+// Two screens: the library and the sequencer. The sign-in screen in front of
+// both of them comes with M8.
 
+import SQIACore
 import SwiftUI
 
 struct RootView: View {
+    @State private var app = AppModel()
+
     var body: some View {
-        SequencerView()
+        ZStack {
+            switch app.screen {
+            case .library:
+                LibraryView(
+                    model: app.library,
+                    accountEmail: app.accountEmail,
+                    onOpen: { app.open($0) },
+                    onCreate: { app.createNew() },
+                    onSignOut: { app.signOut() }
+                )
+                .transition(.opacity)
+            case .sequencer:
+                if let sequencer = app.sequencer {
+                    SequencerView(
+                        model: sequencer,
+                        onLeave: { await app.backToLibrary() }
+                    )
+                    .transition(.opacity)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: app.screen)
     }
 }
 

@@ -9,7 +9,10 @@ import SQIACore
 import SwiftUI
 
 struct SequencerView: View {
-    @State private var model = SequencerModel()
+    let model: SequencerModel
+    /// Flush what is owed and go back to the library.
+    var onLeave: @MainActor () async -> Void
+
     @State private var showingVoices = false
     @State private var showingKey = false
     @State private var showingTuning = false
@@ -242,10 +245,8 @@ struct SequencerView: View {
 
     private var backTile: some View {
         Button {
-            // At M7 this flushes the autosave and returns to the library.
-            // Until there is a library, leaving the mixer is the whole of
-            // what it can honestly do.
-            model.openTrack(model.state.activeTrackIndex)
+            // Edits already autosave; this flushes and returns.
+            Task { await onLeave() }
         } label: {
             Text("Back to projects")
                 // 0.15px at 15px, which is a hundredth of an em.
@@ -311,5 +312,5 @@ struct PressFade: ButtonStyle {
 }
 
 #Preview {
-    SequencerView()
+    SequencerView(model: SequencerModel(store: InMemoryProjectStore()), onLeave: {})
 }
