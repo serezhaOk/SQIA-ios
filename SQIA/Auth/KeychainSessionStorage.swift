@@ -50,12 +50,12 @@ struct KeychainSessionStorage: SessionStorage {
         if updated == errSecItemNotFound {
             var insert = query
             insert.merge(attributes) { _, new in new }
-            SecItemAdd(insert as CFDictionary, nil)
+            _ = SecItemAdd(insert as CFDictionary, nil)
         }
     }
 
     func clear() async {
-        SecItemDelete(baseQuery() as CFDictionary)
+        _ = SecItemDelete(baseQuery() as CFDictionary)
     }
 
     private func baseQuery() -> [String: Any] {

@@ -100,7 +100,8 @@ final class AuthController: NSObject {
 
         isWorking = true
         message = nil
-        let session = ASWebAuthenticationSession(
+        // Named for what it is: `session` here would shadow the sign-in.
+        let browser = ASWebAuthenticationSession(
             url: url, callbackURLScheme: "sqia"
         ) { [weak self] callback, error in
             Task { @MainActor in
@@ -113,12 +114,12 @@ final class AuthController: NSObject {
                 }
             }
         }
-        session.presentationContextProvider = self
+        browser.presentationContextProvider = self
         // A sign-in the user can see the address bar of, and one that does
         // not inherit whatever is in Safari already.
-        session.prefersEphemeralWebBrowserSession = true
-        webSession = session
-        session.start()
+        browser.prefersEphemeralWebBrowserSession = true
+        webSession = browser
+        browser.start()
     }
 
     // --------------------------------------------------------------- Apple --
