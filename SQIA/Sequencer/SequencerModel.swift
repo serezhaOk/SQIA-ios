@@ -106,7 +106,12 @@ final class SequencerModel {
 
     /// What the panel has set. The transport reads its own copy through the
     /// box; this one is what the sliders are bound to.
+    ///
+    /// It outlives the app, because tuning by ear takes more than one
+    /// sitting and losing an afternoon of it to a relaunch would be its own
+    /// kind of bug.
     private(set) var tuning = Tuning.web
+    private static let tuningKey = "sqia.tuning"
 
     @ObservationIgnored private var tempoDragStart: Double?
     @ObservationIgnored private var tempoDragMoved = false
@@ -121,9 +126,16 @@ final class SequencerModel {
         state = SequencerState.fresh(voices: VoiceCatalog.defaultVoices)
         scenes = (0..<SequencerState.trackCount).map { _ in FieldScene() }
 
+        if let saved = UserDefaults.standard.string(forKey: Self.tuningKey),
+            let restored = Tuning.fromJSON(saved)
+        {
+            tuning = restored
+        }
+
         syncScenes()
         publishVoicing()
         wireTransport()
+        voicing.write(tuning: tuning)
     }
 
     // ------------------------------------------------------------- running --
@@ -140,8 +152,14 @@ final class SequencerModel {
             Task { @MainActor in self?.handleEngineStopped() }
         }
         engine.onRestarted = { [weak self] in
-            Task { @MainActor in self?.failure = nil }
+            Task { @MainActor in
+                self?.failure = nil
+                self?.publishRoom()
+            }
         }
+        // A restored tuning, or a mixer rebuilt after a route change, both
+        // start with a room set to its defaults. Tell it where it should be.
+        publishRoom()
         sequencer.bpm = state.bpm
         sequencer.start()
         isRunning = true
@@ -466,12 +484,21 @@ final class SequencerModel {
     /// event. Everything else is read fresh when the next note is rolled.
     private func publishTuning(_ knob: TuningKnob) {
         voicing.write(tuning: tuning)
+        if tuning.isWeb {
+            UserDefaults.standard.removeObject(forKey: Self.tuningKey)
+        } else {
+            UserDefaults.standard.set(tuning.json(), forKey: Self.tuningKey)
+        }
         switch knob {
         case .reverbDecay, .reverbPreDelay, .reverbDamping:
-            engine.mixer.schedule(AudioEvent.room(RoomSettings(tuning)))
+            publishRoom()
         default:
             break
         }
+    }
+
+    private func publishRoom() {
+        engine.mixer.schedule(AudioEvent.room(RoomSettings(tuning)))
     }
 
     func toggleErase() {
