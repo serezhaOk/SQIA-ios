@@ -675,7 +675,7 @@ Bundle id, подписи, App Store Connect, PrivacyInfo.xcprivacy, анкет�
    ID + ключ); задеплоить функцию — `supabase functions deploy
    delete-account`, код лежит в `supabase/functions/delete-account`.
    Без этого кнопки входа доходят до сервера, и он им отказывает.
-3. Скопировать `web/ios.html` в `funny-steps/public/ios.html` — это
+3. Скопировать `web/ios/` в `funny-steps/public/ios/` — это
    страница-мост для ссылки из письма (почтовый клиент не пойдёт по
    `sqia://`). Ничего не читает и не хранит, только пересылает.
 4. В Apple Developer: включить Sign in with Apple на App ID
