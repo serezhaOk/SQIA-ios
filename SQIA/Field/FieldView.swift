@@ -78,11 +78,11 @@ struct FieldView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: MTKView, context: Context) {
-        // `layers` is a fresh closure on every SwiftUI update; the renderer
+        // `frame` is a fresh closure on every SwiftUI update; the renderer
         // has to hold the current one or it would read stale state.
-        context.coordinator.renderer?.layerProvider = { [weak view] in
-            guard let view else { return [] }
-            return layers(CGRect(origin: .zero, size: view.bounds.size))
+        context.coordinator.renderer?.frameProvider = { [weak view] dt in
+            guard let view else { return FieldFrame() }
+            return frame(CGRect(origin: .zero, size: view.bounds.size), dt)
         }
     }
 

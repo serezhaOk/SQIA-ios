@@ -44,13 +44,18 @@ jobs:
           swift --version
       - name: Build
         run: |
+          # pipefail is load-bearing. Without it the step's exit status is
+          # xcbeautify's, and xcbeautify will happily format a failed build
+          # and exit zero — so a compile error was reported as a green job.
+          # That is not hypothetical: it hid two of them.
+          set -o pipefail
           xcodebuild build \
             -project SQIA.xcodeproj \
             -scheme SQIA \
             -destination 'generic/platform=iOS Simulator' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            | xcbeautify || exit ${PIPESTATUS[0]}
+            | xcbeautify
 
   # The fixtures are generated from the web app's sources. If those change,
   # the iOS port is being measured against stale data — worth knowing about,
