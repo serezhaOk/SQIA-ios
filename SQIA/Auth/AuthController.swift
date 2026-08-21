@@ -164,7 +164,7 @@ final class AuthController: NSObject {
 
     func sendMagicLink(to email: String) {
         let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard Self.looksLikeAnAddress(address) else {
+        guard EmailAddress.looksValid(address) else {
             message = Message(text: "Enter a valid email address.", isError: true)
             return
         }
@@ -179,17 +179,6 @@ final class AuthController: NSObject {
             }
             isWorking = false
         }
-    }
-
-    /// The web's `/^\S+@\S+\.\S+$/`, which is as much as a client should
-    /// claim to know: the only real test is whether the mail arrives.
-    static func looksLikeAnAddress(_ text: String) -> Bool {
-        guard !text.contains(" "), let at = text.firstIndex(of: "@") else { return false }
-        let local = text[text.startIndex..<at]
-        let domain = text[text.index(after: at)...]
-        return !local.isEmpty && domain.contains(".")
-            && !domain.hasPrefix(".") && !domain.hasSuffix(".")
-            && !domain.contains("@")
     }
 
     // ------------------------------------------------------------ coming in --
@@ -218,7 +207,7 @@ final class AuthController: NSObject {
                 AuthSession(
                     accessToken: accessToken, refreshToken: refreshToken,
                     expiresAt: Date().timeIntervalSince1970 + expiresIn,
-                    user: AuthUser(id: Self.subject(of: accessToken) ?? "", email: nil)))
+                    user: AuthUser(id: JWT.subject(of: accessToken) ?? "", email: nil)))
             await settle()
 
         case .failure(let reason):
@@ -227,23 +216,6 @@ final class AuthController: NSObject {
         case .none:
             break
         }
-    }
-
-    /// The user id out of the access token, for the one route that hands
-    /// over a session without a user attached. It is the app's own token and
-    /// the claim is not being trusted for anything — every row is guarded by
-    /// what Postgres reads out of the same token, server-side.
-    static func subject(of jwt: String) -> String? {
-        let parts = jwt.split(separator: ".")
-        guard parts.count == 3 else { return nil }
-        var payload = String(parts[1])
-            .replacingOccurrences(of: "-", with: "+")
-            .replacingOccurrences(of: "_", with: "/")
-        while payload.count % 4 != 0 { payload.append("=") }
-        guard let data = Data(base64Encoded: payload),
-            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return json["sub"] as? String
     }
 
     // ------------------------------------------------------------ leaving --

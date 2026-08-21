@@ -503,3 +503,40 @@ struct AuthSessionTests {
         #expect(try JSONDecoder().decode(AuthSession.self, from: data) == original)
     }
 }
+
+@Suite("Reading the token, and the address")
+struct TokenAndAddressTests {
+    @Test("The subject comes out of the middle segment")
+    func subject() {
+        // {"sub":"user-1","email":"a@b.co"} in base64url, unpadded — which
+        // is how a real one arrives, and the padding has to be put back.
+        let token = "header.eyJzdWIiOiJ1c2VyLTEiLCJlbWFpbCI6ImFAYi5jbyJ9.signature"
+        #expect(JWT.subject(of: token) == "user-1")
+    }
+
+    @Test("Anything that is not a token gives nothing rather than a guess")
+    func notAToken() {
+        #expect(JWT.subject(of: "") == nil)
+        #expect(JWT.subject(of: "a.b") == nil)
+        #expect(JWT.subject(of: "a.!!!!.c") == nil)
+        // Valid base64, valid JSON, no subject.
+        #expect(JWT.subject(of: "h.eyJlbWFpbCI6ImFAYi5jbyJ9.s") == nil)
+    }
+
+    @Test("An address is checked as loosely as the web checks it")
+    func addresses() {
+        #expect(EmailAddress.looksValid("a@b.co"))
+        #expect(EmailAddress.looksValid("first.last+tag@sub.example.museum"))
+        // Real addresses that a stricter rule would turn away.
+        #expect(EmailAddress.looksValid("i_like_underscores@but.example"))
+
+        #expect(!EmailAddress.looksValid(""))
+        #expect(!EmailAddress.looksValid("nobody"))
+        #expect(!EmailAddress.looksValid("no@domain"))
+        #expect(!EmailAddress.looksValid("@b.co"))
+        #expect(!EmailAddress.looksValid("a@.co"))
+        #expect(!EmailAddress.looksValid("a@b."))
+        #expect(!EmailAddress.looksValid("two@at@b.co"))
+        #expect(!EmailAddress.looksValid("has space@b.co"))
+    }
+}
