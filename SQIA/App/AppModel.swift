@@ -28,9 +28,22 @@ final class AppModel {
     /// Signing in is M8; until then the account pill has nothing to show.
     private(set) var accountEmail: String?
 
-    init(store: any ProjectStore = FileProjectStore()) {
-        self.store = store
-        library = LibraryModel(store: store)
+    init(store: (any ProjectStore)? = nil) {
+        let resolved = store ?? Self.defaultStore()
+        self.store = resolved
+        library = LibraryModel(store: resolved)
+    }
+
+    /// Where the rows come from. The Supabase store is written and under
+    /// test; what it is waiting on is a session, and that is M8. Until then
+    /// the library is the file on the phone — which is also what the
+    /// Supabase store falls back to once there is something to fall back
+    /// from.
+    static func defaultStore(
+        session: SupabaseProjectStore.Session? = nil
+    ) -> any ProjectStore {
+        guard let session else { return FileProjectStore() }
+        return SupabaseProjectStore(session: session)
     }
 
     func open(_ project: Project) {
