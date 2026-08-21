@@ -1,4 +1,5 @@
-// Which screen is up, and the one audio engine underneath both.
+// Which screen is up, the one audio engine underneath, and the session
+// everything else hangs off.
 //
 // The sequencer's model is built the first time a project opens and then
 // kept, which is what the web's `ensureAudio()` does: starting an audio
@@ -6,6 +7,9 @@
 // would be heard. Opening a project is also the gesture iOS wants before it
 // will let anything make a sound, so the engine could not start earlier
 // anyway.
+//
+// The project store is built once and asks for a token per call, so it does
+// not need rebuilding when somebody signs in — it simply starts working.
 
 import Foundation
 import SQIACore
@@ -15,36 +19,61 @@ import SwiftUI
 @Observable
 final class AppModel {
     enum Screen {
+        case landing
         case library
         case sequencer
     }
 
-    private(set) var screen = Screen.library
+    private(set) var screen = Screen.landing
+    let auth: AuthController
     let library: LibraryModel
     /// Nil until a project has been opened for the first time.
     private(set) var sequencer: SequencerModel?
 
     @ObservationIgnored private let store: any ProjectStore
-    /// Signing in is M8; until then the account pill has nothing to show.
-    private(set) var accountEmail: String?
+    /// True once a session has taken us past the sign-in screen. Losing one
+    /// after that is what sends the user back; not having one before it is
+    /// just the starting state.
+    @ObservationIgnored private var wasSignedIn = false
 
-    init(store: (any ProjectStore)? = nil) {
-        let resolved = store ?? Self.defaultStore()
-        self.store = resolved
-        library = LibraryModel(store: resolved)
+    init(auth: AuthController = AuthController()) {
+        self.auth = auth
+        let keeper = auth.keeper
+        store = SupabaseProjectStore(session: { await keeper.supabaseSession() })
+        library = LibraryModel(store: store)
     }
 
-    /// Where the rows come from. The Supabase store is written and under
-    /// test; what it is waiting on is a session, and that is M8. Until then
-    /// the library is the file on the phone — which is also what the
-    /// Supabase store falls back to once there is something to fall back
-    /// from.
-    static func defaultStore(
-        session: SupabaseProjectStore.Session? = nil
-    ) -> any ProjectStore {
-        guard let session else { return FileProjectStore() }
-        return SupabaseProjectStore(session: session)
+    var accountEmail: String? { auth.session?.user.email }
+
+    // ------------------------------------------------------------ the door --
+
+    func start() async {
+        await auth.start()
+        if auth.isSignedIn {
+            wasSignedIn = true
+            screen = .library
+        }
     }
+
+    /// A session means the library; losing one means the sign-in screen, and
+    /// whatever reason the keeper wrote down goes with it.
+    func sessionChanged(to signedIn: Bool) {
+        guard auth.hasSettled else { return }
+        if signedIn {
+            wasSignedIn = true
+            if screen == .landing { screen = .library }
+        } else if wasSignedIn {
+            wasSignedIn = false
+            sequencer?.stop()
+            screen = .landing
+        }
+    }
+
+    func open(_ url: URL) async {
+        await auth.handle(url)
+    }
+
+    // ------------------------------------------------------------ projects --
 
     func open(_ project: Project) {
         let model = engine()
@@ -77,9 +106,21 @@ final class AppModel {
         screen = .library
     }
 
-    func signOut() {
-        // M8.
-        accountEmail = nil
+    // ------------------------------------------------------------ the exit --
+
+    func signOut() async {
+        await sequencer?.leave()
+        await auth.signOut()
+        sessionChanged(to: false)
+    }
+
+    /// Guideline 5.1.1(v). Everything goes: `projects` and `profiles` both
+    /// cascade from the account row.
+    func deleteAccount() async {
+        await sequencer?.leave()
+        if await auth.deleteAccount() {
+            sessionChanged(to: false)
+        }
     }
 
     private func engine() -> SequencerModel {

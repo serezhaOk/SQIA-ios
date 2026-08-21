@@ -19,11 +19,13 @@ struct LibraryView: View {
     var accountEmail: String?
     var onOpen: (Project) -> Void
     var onCreate: () -> Void
-    var onSignOut: () -> Void
+    var onSignOut: @MainActor () async -> Void
+    var onDeleteAccount: @MainActor () async -> Void
 
     @State private var renaming: Project?
     @State private var renameText = ""
     @State private var deleting: Project?
+    @State private var closingAccount = false
 
     var body: some View {
         GeometryReader { geometry in
@@ -68,6 +70,16 @@ struct LibraryView: View {
         } message: { _ in
             Text("This cannot be undone.")
         }
+        .confirmationDialog(
+            "Delete your account?", isPresented: $closingAccount, titleVisibility: .visible
+        ) {
+            Button("Delete account", role: .destructive) {
+                Task { await onDeleteAccount() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Every project goes with it. This cannot be undone.")
+        }
     }
 
     // -------------------------------------------------------------- header --
@@ -86,14 +98,11 @@ struct LibraryView: View {
 
     private var accountMenu: some View {
         Menu {
-            if let accountEmail, !accountEmail.isEmpty {
-                Section(accountEmail) {
-                    Button("Log out", role: .destructive, action: onSignOut)
-                }
-            } else {
-                // Signing in is M8. Until then the pill says so rather than
-                // offering to log out of nothing.
-                Text("Not signed in")
+            Section(accountEmail ?? "Signed in") {
+                Button("Log out") { Task { await onSignOut() } }
+                // Guideline 5.1.1(v): an account made in the app has to be
+                // closable from the app.
+                Button("Delete account", role: .destructive) { closingAccount = true }
             }
         } label: {
             Image(systemName: "face.smiling")
