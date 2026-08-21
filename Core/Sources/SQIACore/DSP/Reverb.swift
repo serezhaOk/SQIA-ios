@@ -23,18 +23,28 @@ public struct Reverb: Sendable {
     private static let delays = (0.0297, 0.0371, 0.0411, 0.0437)
     /// Where the top end is rolled off inside the loop, so the tail darkens
     /// as it fades the way a real room does.
-    private static let damping = 4500.0
+    ///
+    /// The web has no such filter: its impulse is white noise under an
+    /// envelope, so its tail stays bright the whole way down. Slide this up
+    /// and the two converge.
+    public static let damping = 4500.0
 
     /// A one-pole lowpass, and deliberately not a biquad. A biquad at Q = 1
     /// has a resonant peak of about a decibel, and a decibel of gain inside
     /// a loop already running at 0.96 is a loop running above unity — which
     /// is to say a howl rather than a room. A one-pole cannot peak.
     private struct OnePole: Sendable {
-        private let coefficient: Double
+        private var coefficient: Double
         private var value = 0.0
 
         init(frequency: Double, sampleRate: Double) {
             coefficient = 1 - exp(-2 * .pi * frequency / sampleRate)
+        }
+
+        /// Retuned rather than rebuilt, so the room can be adjusted while it
+        /// is sounding without the render thread allocating anything.
+        mutating func setFrequency(_ frequency: Double, sampleRate: Double) {
+            coefficient = 1 - exp(-2 * .pi * max(20, frequency) / sampleRate)
         }
 
         mutating func process(_ x: Double) -> Double {
@@ -70,19 +80,22 @@ public struct Reverb: Sendable {
     private var preDelayLeft: DelayLine
     private var preDelayRight: DelayLine
     private var feedbackGain: Double
+    private let sampleRate: Double
 
     public init(
         decay: Double = defaultDecay,
         preDelay: Double = defaultPreDelay,
+        damping: Double = Reverb.damping,
         sampleRate: Double
     ) {
+        self.sampleRate = sampleRate
         let (a, b, c, d) = Self.delays
         lineA = DelayLine(maximum: 0.2, delay: a, sampleRate: sampleRate)
         lineB = DelayLine(maximum: 0.2, delay: b, sampleRate: sampleRate)
         lineC = DelayLine(maximum: 0.2, delay: c, sampleRate: sampleRate)
         lineD = DelayLine(maximum: 0.2, delay: d, sampleRate: sampleRate)
 
-        let damper = OnePole(frequency: Self.damping, sampleRate: sampleRate)
+        let damper = OnePole(frequency: damping, sampleRate: sampleRate)
         dampA = damper
         dampB = damper
         dampC = damper
@@ -97,6 +110,23 @@ public struct Reverb: Sendable {
         // average trip is the mean of the four lengths.
         let average = (a + b + c + d) / 4
         feedbackGain = pow(10, -3 * average / max(decay, 0.05))
+    }
+
+    /// Move the room while it is sounding. Nothing here allocates: the
+    /// lines are already as long as they will ever need to be, so only the
+    /// taps and the gains change.
+    public mutating func retune(decay: Double, preDelay: Double, damping: Double) {
+        let (a, b, c, d) = Self.delays
+        let average = (a + b + c + d) / 4
+        feedbackGain = pow(10, -3 * average / max(decay, 0.05))
+
+        dampA.setFrequency(damping, sampleRate: sampleRate)
+        dampB.setFrequency(damping, sampleRate: sampleRate)
+        dampC.setFrequency(damping, sampleRate: sampleRate)
+        dampD.setFrequency(damping, sampleRate: sampleRate)
+
+        preDelayLeft.setDelay(max(preDelay, 0.001), sampleRate: sampleRate)
+        preDelayRight.setDelay(max(preDelay, 0.001), sampleRate: sampleRate)
     }
 
     public mutating func clear() {

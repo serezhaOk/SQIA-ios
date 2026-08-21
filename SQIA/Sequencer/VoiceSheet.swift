@@ -14,8 +14,10 @@ import SQIACore
 import SwiftUI
 
 struct VoiceSheet: View {
-    let selected: Int
+    let model: SequencerModel
     let onPick: (SynthPreset) -> Void
+
+    private var selected: Int { model.state.activeTrack.voiceIndex }
 
     @Environment(\.dismiss) private var dismiss
 
@@ -28,6 +30,19 @@ struct VoiceSheet: View {
                     }
                 } footer: {
                     Text("The patch drifts once a bar, and every note is rolled fresh.")
+                }
+
+                Section {
+                    NavigationLink {
+                        TuningView(model: model)
+                    } label: {
+                        Label("Tuning", systemImage: "slider.horizontal.3")
+                    }
+                } footer: {
+                    Text(
+                        model.tuning.isWeb
+                            ? "Every voice opens on the web's numbers."
+                            : "Moved from the web's numbers.")
                 }
             }
             .navigationTitle("Sound")
@@ -71,6 +86,6 @@ struct VoiceSheet: View {
 #Preview {
     Color.black
         .sheet(isPresented: .constant(true)) {
-            VoiceSheet(selected: 0, onPick: { _ in })
+            VoiceSheet(model: SequencerModel(), onPick: { _ in })
         }
 }

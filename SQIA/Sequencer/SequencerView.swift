@@ -12,6 +12,7 @@ struct SequencerView: View {
     @State private var model = SequencerModel()
     @State private var showingVoices = false
     @State private var showingKey = false
+    @State private var showingTuning = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -23,12 +24,15 @@ struct SequencerView: View {
         .background(Palette.background.ignoresSafeArea())
         .sheet(isPresented: $showingVoices) {
             VoiceSheet(
-                selected: model.state.activeTrack.voiceIndex,
+                model: model,
                 onPick: { preset in
                     model.selectVoice(preset)
                     showingVoices = false
                 }
             )
+        }
+        .sheet(isPresented: $showingTuning) {
+            TuningSheet(model: model)
         }
         .sheet(isPresented: $showingKey) {
             KeySheet(

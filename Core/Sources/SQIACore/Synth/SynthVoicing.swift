@@ -30,19 +30,20 @@ public enum SynthVoicing {
         preset: SynthPreset,
         midi: Int,
         velocity: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning = .web
     ) -> [ScheduledVoice] {
         switch preset {
         case .reverie:
-            return reverie(midi: midi, velocity: velocity, using: random)
+            return reverie(midi: midi, velocity: velocity, using: random, tuning: tuning)
         case .machine:
-            return machine(midi: midi, velocity: velocity, using: random)
+            return machine(midi: midi, velocity: velocity, using: random, tuning: tuning)
         case .kalimba:
-            return kalimba(midi: midi, velocity: velocity, using: random)
+            return kalimba(midi: midi, velocity: velocity, using: random, tuning: tuning)
         case .rhodes:
-            return rhodes(midi: midi, velocity: velocity, using: random)
+            return rhodes(midi: midi, velocity: velocity, using: random, tuning: tuning)
         case .acid:
-            return acid(midi: midi, velocity: velocity, using: random)
+            return acid(midi: midi, velocity: velocity, using: random, tuning: tuning)
         }
     }
 
@@ -64,41 +65,48 @@ public enum SynthVoicing {
         duration: Double,
         velocity: Double,
         release: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning
     ) -> VoiceRecipe {
         var recipe = VoiceRecipe()
         recipe.preset = .reverie
         recipe.source = .oscillator
         recipe.frequency = frequency
         recipe.duration = duration
-        recipe.gain = VoiceRecipe.gain(db: -12, velocity: velocity)
+        recipe.gain = VoiceRecipe.gain(db: tuning[.reverieLevel].lower, velocity: velocity)
 
         recipe.waveform = random.pick(Waveform.reverieChoices)
         // Three notes in ten come in slowly, which is what makes it a pad
         // rather than a keyboard.
         recipe.attack =
-            random.chance(0.3) ? random.value(0.04, 0.35) : random.value(0.004, 0.02)
+            tuning.chance(.reverieSlowAttackChance, using: random)
+            ? tuning.value(.reverieSlowAttack, using: random)
+            : random.value(0.004, 0.02)
         recipe.decay = random.value(0.08, 0.5)
         recipe.sustain = random.value(0.1, 0.5)
         recipe.release = release
-        recipe.detuneCents = random.value(-14, 14)
+        let detune = tuning[.reverieDetune].upper
+        recipe.detuneCents = random.value(-detune, detune)
         return recipe
     }
 
     private static func reverie(
         midi: Int,
         velocity: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning
     ) -> [ScheduledVoice] {
         let frequency = Music.frequency(ofMidi: midi)
         let duration = random.value(0.06, 0.3)
-        let release = random.value(0.1, 0.9) * maxRelease
+        // The web rolls a tenth to nine tenths of 3.2 seconds; the knob holds
+        // the same span in seconds, so the draw is the same value.
+        let release = tuning.value(.reverieRelease, using: random)
 
         var voices = [
             ScheduledVoice(
                 recipe: reverieNote(
                     frequency: frequency, duration: duration, velocity: velocity,
-                    release: release, using: random))
+                    release: release, using: random, tuning: tuning))
         ]
 
         if random.chance(0.22) {
@@ -108,7 +116,7 @@ public enum SynthVoicing {
                 ScheduledVoice(
                     recipe: reverieNote(
                         frequency: frequency * 2, duration: duration * 0.6,
-                        velocity: ghostVelocity, release: release * 0.7, using: random),
+                        velocity: ghostVelocity, release: release * 0.7, using: random, tuning: tuning),
                     offset: offset))
         }
 
@@ -117,7 +125,7 @@ public enum SynthVoicing {
                 ScheduledVoice(
                     recipe: reverieNote(
                         frequency: frequency / 2, duration: duration,
-                        velocity: velocity * 0.5, release: release, using: random)))
+                        velocity: velocity * 0.5, release: release, using: random, tuning: tuning)))
         }
         return voices
     }
@@ -130,21 +138,23 @@ public enum SynthVoicing {
     private static func kalimba(
         midi: Int,
         velocity: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning
     ) -> [ScheduledVoice] {
         let frequency = Music.frequency(ofMidi: midi)
 
-        let resonance = random.value(0.55, 0.94)  // how long the tine rings
-        let dampening = random.value(900, 4500)  // the pluck's cutoff
+        let resonance = tuning.value(.kalimbaResonance, using: random)
+        let dampening = tuning.value(.kalimbaDampening, using: random)
 
         var recipe = VoiceRecipe()
         recipe.preset = .kalimba
         recipe.source = .pluck
         recipe.frequency = frequency
-        recipe.gain = VoiceRecipe.gain(db: 5 + pluckDecibels(velocity))
+        recipe.gain = VoiceRecipe.gain(
+            db: tuning[.kalimbaLevel].lower + pluckDecibels(velocity))
         recipe.pluckResonance = resonance
         recipe.pluckDampening = dampening
-        recipe.attackNoise = random.value(0.4, 1.8)
+        recipe.attackNoise = tuning.value(.kalimbaAttackNoise, using: random)
         // Tone's PluckSynth takes a release, and the web never triggers one
         // — but the value still comes off the stream, so it comes off this
         // one too.
@@ -152,7 +162,7 @@ public enum SynthVoicing {
         recipe.lifetime = 2.2
 
         recipe.filter = .lowpass
-        recipe.filterFrequency = random.value(1200, 5200)
+        recipe.filterFrequency = tuning.value(.kalimbaLowpass, using: random)
         recipe.filterQ = random.value(0.3, 2.2)
         recipe.filterTarget = random.value(500, 1600)
         recipe.filterRamp = random.value(0.3, 1.1)
@@ -166,7 +176,8 @@ public enum SynthVoicing {
             ghost.preset = .kalimba
             ghost.source = .pluck
             ghost.frequency = frequency * 2
-            ghost.gain = VoiceRecipe.gain(db: -3 + pluckDecibels(velocity * 0.5))
+            ghost.gain = VoiceRecipe.gain(
+                db: tuning[.kalimbaLevel].lower - 8 + pluckDecibels(velocity * 0.5))
             ghost.attackNoise = 0.6
             ghost.pluckDampening = dampening * 1.4
             ghost.pluckResonance = resonance * 0.8
@@ -193,18 +204,30 @@ public enum SynthVoicing {
     private static func acid(
         midi: Int,
         velocity: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning
     ) -> [ScheduledVoice] {
         let frequency = Music.frequency(ofMidi: midi)
         let accent = velocity > acidAccent
 
         // How resonant the filter is. High Q with a low base is the squelch.
-        let q = accent ? random.value(9, 15) : random.value(4, 11)
+        let q =
+            accent
+            ? tuning.value(.acidAccentResonance, using: random)
+            : tuning.value(.acidResonance, using: random)
         // Where the sweep starts, and how many octaves it climbs.
-        let base = random.value(90, 260) * (accent ? random.value(1.1, 1.6) : 1)
-        let octaves = accent ? random.value(3, 4.6) : random.value(1.6, 3.4)
+        let base =
+            tuning.value(.acidBaseCutoff, using: random)
+            * (accent ? random.value(1.1, 1.6) : 1)
+        // The knob holds the ordinary span; an accent opens about an octave
+        // and a third further, which is the gap the web keeps between them.
+        let span = tuning[.acidOctaves]
+        let octaves =
+            accent
+            ? random.value(span.lower + 1.4, span.upper + 1.2)
+            : random.value(span.lower, span.upper)
         // How fast it falls back — short is a blip, long is a wow.
-        let sweep = random.value(0.09, 0.42)
+        let sweep = tuning.value(.acidSweep, using: random)
         let duration = random.value(0.06, 0.22)
         let release = random.value(0.03, 0.14)
 
@@ -214,7 +237,7 @@ public enum SynthVoicing {
         // Bass carries far more energy than the other voices at the same
         // nominal level, so it sits deliberately under them.
         recipe.gain = VoiceRecipe.gain(
-            db: -18, velocity: accent ? 1 : velocity * 0.85)
+            db: tuning[.acidLevel].lower, velocity: accent ? 1 : velocity * 0.85)
         recipe.frequency = frequency / 4
         recipe.duration = duration
 
@@ -251,7 +274,8 @@ public enum SynthVoicing {
     private static func rhodes(
         midi: Int,
         velocity: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning
     ) -> [ScheduledVoice] {
         let frequency = Music.frequency(ofMidi: midi)
         let duration = random.value(0.12, 0.45)
@@ -262,24 +286,24 @@ public enum SynthVoicing {
         recipe.source = .fm
         recipe.frequency = frequency
         recipe.duration = duration
-        recipe.gain = VoiceRecipe.gain(db: 0, velocity: velocity)
+        recipe.gain = VoiceRecipe.gain(db: tuning[.rhodesLevel].lower, velocity: velocity)
         recipe.velocity = velocity
 
         recipe.harmonicity = random.pick(rhodesHarmonicities)
-        recipe.modulationIndex = random.value(3, 11)
+        recipe.modulationIndex = tuning.value(.rhodesModulationIndex, using: random)
         recipe.attack = random.value(0.002, 0.012)
         recipe.decay = random.value(0.25, 0.9)
         recipe.sustain = random.value(0.05, 0.28)
         recipe.release = release
         recipe.modulatorWaveform = random.pick([Waveform.sine, .triangle])
         recipe.modulationAttack = random.value(0.002, 0.02)
-        recipe.modulationDecay = random.value(0.1, 0.5)
-        recipe.modulationSustain = random.value(0, 0.2)
+        recipe.modulationDecay = tuning.value(.rhodesModulationDecay, using: random)
+        recipe.modulationSustain = tuning.value(.rhodesModulationSustain, using: random)
         recipe.modulationRelease = random.value(0.2, 0.8)
         recipe.detuneCents = random.value(-8, 8)
 
         recipe.tremoloRate = random.value(2.5, 7)
-        recipe.tremoloDepth = random.value(0.15, 0.55)
+        recipe.tremoloDepth = tuning.value(.rhodesTremoloDepth, using: random)
         recipe.lifetime = duration + release + 0.4
 
         var voices = [ScheduledVoice(recipe: recipe)]
@@ -298,7 +322,8 @@ public enum SynthVoicing {
             ghost.release = 0.9
             ghost.frequency = frequency * random.pick([1.5, 2.0])
             ghost.duration = duration * 0.7
-            ghost.gain = VoiceRecipe.gain(db: -12, velocity: velocity * 0.4)
+            ghost.gain = VoiceRecipe.gain(
+                db: tuning[.rhodesLevel].lower - 12, velocity: velocity * 0.4)
             ghost.velocity = velocity * 0.4
             ghost.lifetime = duration + 1.4
             voices.append(
@@ -315,28 +340,29 @@ public enum SynthVoicing {
     private static func machine(
         midi: Int,
         velocity: Double,
-        using random: RandomSource
+        using random: RandomSource,
+        tuning: Tuning
     ) -> [ScheduledVoice] {
         let frequency = Music.frequency(ofMidi: midi)
         let kind = ((midi % 12) + 12) % 12
 
-        if kind < 3 { return [kick(frequency, velocity, random)] }
+        if kind < 3 { return [kick(frequency, velocity, random, tuning)] }
         if kind < 6 { return [tom(frequency, velocity, random)] }
-        if kind < 9 { return snare(frequency, velocity, random) }
+        if kind < 9 { return snare(frequency, velocity, random, tuning) }
         if kind < 11 { return clap(velocity, random) }
-        return [metal(frequency, velocity, random)]
+        return [metal(frequency, velocity, random, tuning)]
     }
 
     private static func kick(
-        _ frequency: Double, _ velocity: Double, _ random: RandomSource
+        _ frequency: Double, _ velocity: Double, _ random: RandomSource, _ tuning: Tuning
     ) -> ScheduledVoice {
         var recipe = VoiceRecipe()
         recipe.preset = .machine
         recipe.source = .oscillator
         recipe.frequency = frequency / 4
-        recipe.gain = VoiceRecipe.gain(db: -3, velocity: velocity)
-        recipe.pitchDecay = random.value(0.02, 0.09)
-        recipe.pitchOctaves = random.value(3, 8)
+        recipe.gain = VoiceRecipe.gain(db: tuning[.machineKickLevel].lower, velocity: velocity)
+        recipe.pitchDecay = tuning.value(.machineKickPitchDecay, using: random)
+        recipe.pitchOctaves = tuning.value(.machineKickPitchStart, using: random)
         recipe.waveform = random.pick([Waveform.sine, .triangle])
         recipe.attack = 0.001
         recipe.decay = random.value(0.18, 0.6)
@@ -367,7 +393,7 @@ public enum SynthVoicing {
 
     /// Noise burst plus a tuned body, which is what a snare is.
     private static func snare(
-        _ frequency: Double, _ velocity: Double, _ random: RandomSource
+        _ frequency: Double, _ velocity: Double, _ random: RandomSource, _ tuning: Tuning
     ) -> [ScheduledVoice] {
         var burst = VoiceRecipe()
         burst.preset = .machine
@@ -380,7 +406,7 @@ public enum SynthVoicing {
         burst.sustain = 0
         burst.release = random.value(0.02, 0.12)
         burst.filter = .bandpass
-        burst.filterFrequency = random.value(1200, 3600)
+        burst.filterFrequency = tuning.value(.machineSnareBandpass, using: random)
         burst.filterQ = random.value(0.6, 2.4)
         burst.duration = random.value(0.05, 0.2)
 
@@ -433,14 +459,14 @@ public enum SynthVoicing {
 
     /// Hats and cymbals, open or closed at random.
     private static func metal(
-        _ frequency: Double, _ velocity: Double, _ random: RandomSource
+        _ frequency: Double, _ velocity: Double, _ random: RandomSource, _ tuning: Tuning
     ) -> ScheduledVoice {
         let open = random.chance(0.25)
 
         var recipe = VoiceRecipe()
         recipe.preset = .machine
         recipe.source = .metal
-        recipe.gain = VoiceRecipe.gain(db: -21, velocity: velocity)
+        recipe.gain = VoiceRecipe.gain(db: tuning[.machineMetalLevel].lower, velocity: velocity)
         recipe.attack = 0.001
         recipe.decay = open ? random.value(0.3, 0.9) : random.value(0.03, 0.14)
         recipe.sustain = 0

@@ -326,6 +326,11 @@ public final class AudioMixer: @unchecked Sendable {
             reverbRinging = 0
             masterQuiet = Self.ringOutFrames
 
+        case .room:
+            reverb.retune(
+                decay: event.room.decay, preDelay: event.room.preDelay,
+                damping: event.room.damping)
+
         case .presetDrift:
             let index = event.drift.preset.rawValue
             guard chains.indices.contains(index) else { return }

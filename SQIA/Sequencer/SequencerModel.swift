@@ -26,15 +26,22 @@ private final class VoicingBox: @unchecked Sendable {
     private let lock = NSLock()
     private var tracks: [Track] = []
     private var storedBPM = SequencerState.defaultBPM
+    private var storedTuning = Tuning.web
 
     /// Which subdivision each preset's echo currently sits on. Only the
     /// transport thread touches it, and only once a bar.
     var divisions = [Int](repeating: 0, count: SynthPreset.allCases.count)
 
-    func read() -> (tracks: [Track], bpm: Double) {
+    func read() -> (tracks: [Track], bpm: Double, tuning: Tuning) {
         lock.lock()
         defer { lock.unlock() }
-        return (tracks, storedBPM)
+        return (tracks, storedBPM, storedTuning)
+    }
+
+    func write(tuning: Tuning) {
+        lock.lock()
+        storedTuning = tuning
+        lock.unlock()
     }
 
     func write(tracks: [Track], bpm: Double) {
@@ -96,6 +103,10 @@ final class SequencerModel {
             return formatter.string(from: date)
         }()
     #endif
+
+    /// What the panel has set. The transport reads its own copy through the
+    /// box; this one is what the sliders are bound to.
+    private(set) var tuning = Tuning.web
 
     @ObservationIgnored private var tempoDragStart: Double?
     @ObservationIgnored private var tempoDragMoved = false
@@ -211,7 +222,7 @@ final class SequencerModel {
 
         sequencer.onStep = { [weak self] step, frame, lead in
             let mixer = engine.mixer
-            let (tracks, bpm) = voicing.read()
+            let (tracks, bpm, tuning) = voicing.read()
             var lit: [(track: Int, column: Int, velocity: Double)] = []
             var drifted = Set<Int>()
 
@@ -244,7 +255,7 @@ final class SequencerModel {
                         track.midi.indices.contains(hit.column) ? track.midi[hit.column] : 60
                     for voice in SynthVoicing.notes(
                         preset: track.preset, midi: midi, velocity: hit.velocity,
-                        using: random)
+                        using: random, tuning: tuning)
                     {
                         mixer.schedule(
                             AudioEvent.note(
@@ -422,6 +433,45 @@ final class SequencerModel {
     /// The finger came up. Whatever this touch was for, it is over.
     func endTouch() {
         touchSpent = false
+    }
+
+    // ------------------------------------------------------------- tuning --
+
+    func setTuning(_ knob: TuningKnob, to range: TunableRange) {
+        guard tuning[knob] != range else { return }
+        tuning[knob] = range
+        publishTuning(knob)
+    }
+
+    func resetTuning(_ knob: TuningKnob) {
+        guard tuning[knob] != Tuning.web[knob] else { return }
+        tuning.reset(knob)
+        publishTuning(knob)
+    }
+
+    func resetAllTuning() {
+        guard !tuning.isWeb else { return }
+        tuning.resetAll()
+        publishTuning(.reverbDecay)
+    }
+
+    func applyTuning(json: String) -> Bool {
+        guard let restored = Tuning.fromJSON(json) else { return false }
+        tuning = restored
+        publishTuning(.reverbDecay)
+        return true
+    }
+
+    /// The room's three numbers live on the render thread, so they travel by
+    /// event. Everything else is read fresh when the next note is rolled.
+    private func publishTuning(_ knob: TuningKnob) {
+        voicing.write(tuning: tuning)
+        switch knob {
+        case .reverbDecay, .reverbPreDelay, .reverbDamping:
+            engine.mixer.schedule(AudioEvent.room(RoomSettings(tuning)))
+        default:
+            break
+        }
     }
 
     func toggleErase() {
