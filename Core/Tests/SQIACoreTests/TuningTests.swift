@@ -102,12 +102,15 @@ struct TuningTests {
     @Test("Only what belongs in the room reaches it")
     func sendCutIsTunable() {
         // The web rolls the drums off at 380 Hz; this build cuts everything
-        // under a kilohertz, because a kick in a long tail is mud.
+        // under 1.1 kHz, because a kick in a tail is mud, and leaves the
+        // echo at a hint of what the web repeats.
         #expect(Tuning.web[.machineSendHighpass] == TunableRange(380))
-        #expect(Tuning.tuned[.machineSendHighpass] == TunableRange(1000))
+        #expect(Tuning.tuned[.machineSendHighpass] == TunableRange(1100))
+        #expect(Tuning.web[.machineDelayWet] == TunableRange(0.12))
+        #expect(Tuning.tuned[.machineDelayWet] == TunableRange(0.03))
 
         var chain = PresetChain(preset: .machine, sampleRate: 48_000)
-        chain.setSendHighpass(1000)
+        chain.setSendHighpass(1100)
 
         /// Send level against the chain's own output at one frequency.
         func ratio(_ frequency: Double) -> Double {

@@ -227,11 +227,13 @@ public struct Tuning: Codable, Sendable, Equatable {
         tuning[.machineKickPitchDecay] = TunableRange(0.02, 0.064)
         tuning[.machineKickLevel] = TunableRange(1.05)
         tuning[.machineMetalLevel] = TunableRange(-13.75)
-        // A drum kit is not in a key, and a seven-second room under a kick
-        // is mud however short the send is — so the drums keep their layout
-        // whatever the root is, and only their top half reaches the room.
+        // A drum kit is not in a key, and a room under a kick is mud however
+        // short the send is — so the drums keep their layout whatever the
+        // root is, only their top half reaches the room at all, and the echo
+        // is left as a hint rather than a repeat.
         tuning[.machineFollowsKey] = TunableRange(0)
-        tuning[.machineSendHighpass] = TunableRange(1000)
+        tuning[.machineSendHighpass] = TunableRange(1100)
+        tuning[.machineDelayWet] = TunableRange(0.03)
 
         tuning[.reverbDecay] = TunableRange(2.92)
         tuning[.reverbPreDelay] = TunableRange(0.0296)
