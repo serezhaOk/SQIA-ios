@@ -263,6 +263,7 @@ public enum SynthVoicing {
         recipe.frequency = frequency
         recipe.duration = duration
         recipe.gain = VoiceRecipe.gain(db: 0, velocity: velocity)
+        recipe.velocity = velocity
 
         recipe.harmonicity = random.pick(rhodesHarmonicities)
         recipe.modulationIndex = random.value(3, 11)
@@ -298,6 +299,7 @@ public enum SynthVoicing {
             ghost.frequency = frequency * random.pick([1.5, 2.0])
             ghost.duration = duration * 0.7
             ghost.gain = VoiceRecipe.gain(db: -12, velocity: velocity * 0.4)
+            ghost.velocity = velocity * 0.4
             ghost.lifetime = duration + 1.4
             voices.append(
                 ScheduledVoice(recipe: ghost, offset: random.value(0.01, 0.06)))

@@ -112,6 +112,14 @@ public struct VoiceRecipe: Sendable, Equatable {
     public var duration: Double = 0.2
     /// Linear, already carrying the preset's level and the note's velocity.
     public var gain: Double = 1
+    /// How hard the note was struck, on its own.
+    ///
+    /// Tone scales every envelope's peak by velocity, not just the
+    /// amplitude's — so on an FM voice it also decides how far the modulator
+    /// bends the carrier, and a soft note is mellow rather than merely
+    /// quiet. That is most of what separates an electric piano from a
+    /// synthesiser, so it cannot stay folded into `gain`.
+    public var velocity: Double = 1
 
     public var waveform: Waveform = .sine
     public var detuneCents: Double = 0

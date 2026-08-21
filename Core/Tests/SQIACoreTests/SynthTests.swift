@@ -613,6 +613,23 @@ struct RhodesTests {
         #expect(edge(bell) > edge(plain) * 3, "the modulator changed nothing")
     }
 
+    /// Tone scales every envelope's peak by velocity, the modulator's
+    /// included — `this._modulator._triggerEnvelopeAttack(time, velocity)`.
+    /// So a softly struck note is mellow and not merely quiet, which is most
+    /// of what separates an electric piano from a synthesiser. The measure
+    /// is level-independent on purpose: what is being checked is timbre.
+    @Test("A soft note is mellow, not just quiet")
+    func velocityDecidesBrightness() {
+        var hard = note(index: 10)
+        hard.velocity = 1
+        var soft = note(index: 10)
+        soft.velocity = 0.3
+
+        let bright = edge(render(hard, frames: 4096))
+        let mellow = edge(render(soft, frames: 4096))
+        #expect(bright > mellow * 1.5, "hard \(bright) against soft \(mellow)")
+    }
+
     @Test("The bell fades faster than the note it sits on")
     func modulationEnvelopeDecays() {
         let out = render(note(index: 10), frames: Int(rate / 2))

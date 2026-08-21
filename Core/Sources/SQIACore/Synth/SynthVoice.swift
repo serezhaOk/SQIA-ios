@@ -308,7 +308,12 @@ public struct SynthVoice: Sendable {
             // Tone's depth is the note's own frequency times the modulation
             // index, opened and shut by the modulator's envelope — so the
             // bell rings at the attack and the body is left behind.
-            let depth = tunedFrequency * recipe.modulationIndex * modulationEnvelope.next()
+            // Velocity scales the modulator's envelope as well as the
+            // carrier's, which is what makes a softly struck note mellow
+            // instead of just quiet.
+            let depth =
+                tunedFrequency * recipe.modulationIndex * recipe.velocity
+                * modulationEnvelope.next()
             let bend = modulator.render(
                 frequency: tunedFrequency * recipe.harmonicity, sampleRate: sampleRate)
             value = carrier.renderSigned(
