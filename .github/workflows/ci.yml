@@ -64,6 +64,10 @@ jobs:
       - name: Smoke test on a simulator
         run: |
           set -o pipefail
+          # What xcodebuild thinks the project and the scheme contain. Worth
+          # the four lines: "not configured for the test action" says nothing
+          # about which half is missing.
+          xcodebuild -list -project SQIA.xcodeproj
           xcodebuild test \
             -project SQIA.xcodeproj \
             -scheme SQIA \
