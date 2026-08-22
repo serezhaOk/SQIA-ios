@@ -57,6 +57,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify
 
+      # The smoke test walks the screens, which is the one thing the Linux
+      # suite cannot do: every one of its tests would still pass with a view
+      # wired to the wrong model. Needs a named simulator rather than the
+      # generic destination, because a test has to actually boot something.
+      - name: Smoke test on a simulator
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project SQIA.xcodeproj \
+            -scheme SQIA \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcbeautify
+
   # The fixtures are generated from the web app's sources. If those change,
   # the iOS port is being measured against stale data — worth knowing about,
   # but not worth blocking a build over, so this reports without failing.

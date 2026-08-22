@@ -13,6 +13,7 @@
 /* Begin PBXFileReference section */
 		A1B2C3D4E5F60718293A4B05 /* SQIA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SQIA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60718293A4B14 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4C02 /* SQIAUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SQIAUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +24,15 @@
 			explicitFolders = (
 			);
 			path = SQIA;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F60718293A4C03 /* SQIAUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			explicitFileTypes = {
+			};
+			explicitFolders = (
+			);
+			path = SQIAUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -43,6 +53,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60718293A4B06 /* SQIA */,
+				A1B2C3D4E5F60718293A4C03 /* SQIAUITests */,
 				A1B2C3D4E5F60718293A4B13 /* Support */,
 				A1B2C3D4E5F60718293A4B03 /* Products */,
 			);
@@ -52,6 +63,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B2C3D4E5F60718293A4B05 /* SQIA.app */,
+				A1B2C3D4E5F60718293A4C02 /* SQIAUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -90,6 +102,25 @@
 			productReference = A1B2C3D4E5F60718293A4B05 /* SQIA.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1B2C3D4E5F60718293A4C01 /* SQIAUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60718293A4C05 /* Build configuration list for PBXNativeTarget "SQIAUITests" */;
+			buildPhases = (
+				A1B2C3D4E5F60718293A4C04 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1B2C3D4E5F60718293A4C08 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D4E5F60718293A4C03 /* SQIAUITests */,
+			);
+			name = SQIAUITests;
+			productName = SQIAUITests;
+			productReference = A1B2C3D4E5F60718293A4C02 /* SQIAUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -102,6 +133,10 @@
 				TargetAttributes = {
 					A1B2C3D4E5F60718293A4B04 = {
 						CreatedOnToolsVersion = 16.0;
+					};
+					A1B2C3D4E5F60718293A4C01 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A1B2C3D4E5F60718293A4B04;
 					};
 				};
 			};
@@ -123,6 +158,7 @@
 			projectRoot = "";
 			targets = (
 				A1B2C3D4E5F60718293A4B04 /* SQIA */,
+				A1B2C3D4E5F60718293A4C01 /* SQIAUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -137,8 +173,33 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A1B2C3D4E5F60718293A4C08 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D4E5F60718293A4B04 /* SQIA */;
+			targetProxy = A1B2C3D4E5F60718293A4C09 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		A1B2C3D4E5F60718293A4C09 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1B2C3D4E5F60718293A4B01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60718293A4B04;
+			remoteInfo = SQIA;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXSourcesBuildPhase section */
 		A1B2C3D4E5F60718293A4B07 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60718293A4C04 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -314,6 +375,40 @@
 			};
 			name = Release;
 		};
+		A1B2C3D4E5F60718293A4C06 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U6DN6CYY76;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serezhaok.sqia.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SQIA;
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60718293A4C07 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U6DN6CYY76;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.serezhaok.sqia.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = SQIA;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -331,6 +426,15 @@
 			buildConfigurations = (
 				A1B2C3D4E5F60718293A4B0E /* Debug */,
 				A1B2C3D4E5F60718293A4B0F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60718293A4C05 /* Build configuration list for PBXNativeTarget "SQIAUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60718293A4C06 /* Debug */,
+				A1B2C3D4E5F60718293A4C07 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

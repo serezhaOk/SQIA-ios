@@ -30,6 +30,17 @@
       <TestPlans>
       </TestPlans>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "A1B2C3D4E5F60718293A4C01"
+               BuildableName = "SQIAUITests.xctest"
+               BlueprintName = "SQIAUITests"
+               ReferencedContainer = "container:SQIA.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

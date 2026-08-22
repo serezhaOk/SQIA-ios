@@ -39,6 +39,20 @@ final class AppModel {
     /// Built here rather than as a default argument: a default is evaluated
     /// outside the main actor, and `AuthController` lives on it.
     init(auth: AuthController? = nil) {
+        #if DEBUG
+            // The smoke test's way in. The web has the same seam — its suites
+            // call `__showProjects` and `__setRows` — and for the same
+            // reason: a test that needed a network and a real account would
+            // be testing the network and the account.
+            if Self.isUITesting {
+                let store = InMemoryProjectStore(
+                    random: Mulberry32(seed: 4), seeded: Self.fixtures)
+                self.auth = auth ?? AuthController(storage: InMemorySessionStorage())
+                self.store = store
+                library = LibraryModel(store: store)
+                return
+            }
+        #endif
         let auth = auth ?? AuthController()
         self.auth = auth
         let keeper = auth.keeper
@@ -46,11 +60,36 @@ final class AppModel {
         library = LibraryModel(store: store)
     }
 
+    #if DEBUG
+        static var isUITesting: Bool {
+            ProcessInfo.processInfo.arguments.contains("-uiTesting")
+        }
+
+        /// Two rows, so the library has something to draw and the test has
+        /// something to tap. Named rather than random: an assertion cannot
+        /// look for a name nobody knows.
+        private static let fixtures: [Project] = [
+            Project(
+                id: "fixture-wild", name: "Wild Amoeba", bpm: 120, rootPc: 9,
+                scale: "minor", tracks: [], updatedAt: "2026-08-21T12:00:00Z"),
+            Project(
+                id: "fixture-slow", name: "Slow Diatom", bpm: 96, rootPc: 4,
+                scale: "dorian", tracks: [], updatedAt: "2026-08-20T12:00:00Z"),
+        ]
+    #endif
+
     var accountEmail: String? { auth.session?.user.email }
 
     // ------------------------------------------------------------ the door --
 
     func start() async {
+        #if DEBUG
+            if Self.isUITesting {
+                wasSignedIn = true
+                screen = .library
+                return
+            }
+        #endif
         await auth.start()
         if auth.isSignedIn {
             wasSignedIn = true
