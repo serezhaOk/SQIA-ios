@@ -482,10 +482,14 @@ struct LimiterTests {
 
     @Test("Loud signals are pulled toward the threshold")
     func aboveKnee() {
-        let output = 12 + Limiter.gainReduction(forLevel: 12)
-        #expect(abs(output - (-8 + 20 / 12.0)) < 1e-9)
-        let louder = 24 + Limiter.gainReduction(forLevel: 24)
-        #expect(abs((louder - output) - 1) < 1e-9)
+        // Past the top of the knee — threshold + knee, so +22 dBFS — the
+        // slope is the ratio. Twelve decibels of input becomes one of
+        // output, and no sooner: this is a compressor with a very wide knee,
+        // not a brick wall at −8.
+        let kneeEnd = Limiter.threshold + Limiter.knee
+        let output = (kneeEnd + 12) + Limiter.gainReduction(forLevel: kneeEnd + 12)
+        let louder = (kneeEnd + 24) + Limiter.gainReduction(forLevel: kneeEnd + 24)
+        #expect(abs((louder - output) - 1) < 1e-6)
     }
 
     /// What a soft knee is: the ratio arrives gradually rather than
@@ -499,8 +503,10 @@ struct LimiterTests {
             return (high - low) / (2 * h)
         }
 
-        let kneeStart = Limiter.threshold - Limiter.knee / 2
-        let kneeEnd = Limiter.threshold + Limiter.knee / 2
+        // Blink's knee runs from the threshold upward, not centred on it —
+        // which is the whole of what R8 turned out to be about.
+        let kneeStart = Limiter.threshold
+        let kneeEnd = Limiter.threshold + Limiter.knee
 
         #expect(abs(slope(at: kneeStart - 5) - 1) < 1e-6)
         #expect(abs(slope(at: kneeEnd + 5) - 1 / Limiter.ratio) < 1e-6)
@@ -526,8 +532,16 @@ struct LimiterTests {
         }
     }
 
-    @Test("A sustained loud tone is brought down")
+    @Test("A sustained loud tone is brought down, by as little as the web brings it")
     func holdsLoudMaterial() {
+        // A full-scale tone comes out at about −0.2 dBFS: half a decibel of
+        // reduction from the curve, a quarter of a decibel of makeup back.
+        // That is not much, and it is exactly what the web does — at −8 with
+        // a 30 dB knee the node is nearly transparent until a signal is over
+        // full scale, and only then does it start working for a living.
+        //
+        // The previous curve took this to 0.6. Everything the app plays sat
+        // inside a compressor that the web was not applying.
         var limiter = Limiter(sampleRate: rate)
         var peak = 0.0
         for i in 0..<Int(rate) {
@@ -535,8 +549,8 @@ struct LimiterTests {
             let out = limiter.process(left: x, right: x)
             if i > Int(rate / 2) { peak = max(peak, abs(out.left)) }
         }
-        #expect(peak < 0.65)
-        #expect(peak > 0.2)
+        #expect(peak < 1.0, "a full-scale tone came out at \(peak)")
+        #expect(peak > 0.9)
     }
 
     @Test("It gets out of the way again")

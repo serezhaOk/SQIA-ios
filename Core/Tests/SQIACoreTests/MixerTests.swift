@@ -309,6 +309,61 @@ struct AudioMixerTests {
         #expect(peak < 1.5, "the limiter let it run away: \(peak)")
     }
 
+    /// The limiter became the web's in M9, and the web's is nearly
+    /// transparent below full scale — so the headroom that used to come from
+    /// a compressor squashing everything from −23 dBFS upward is gone.
+    ///
+    /// What is left is gain staging, and gain staging alone does not quite
+    /// keep a busy pattern off the ceiling: transients touch it. Measured,
+    /// that is one sample in four thousand on the web's own numbers and one
+    /// in six hundred on the tuned ones — audible as nothing, and the same
+    /// thing a browser does, because Web Audio's destination clamps at ±1
+    /// exactly as the renderer does here.
+    ///
+    /// So this asserts what actually matters: that clipping stays a rare
+    /// transient rather than becoming the sound. A tuning that pushed levels
+    /// far enough to crush the mix would fail here rather than by ear.
+    @Test("A busy pattern only ever touches the ceiling, never leans on it")
+    func clippingStaysRare() {
+        let mixer = AudioMixer(sampleRate: rate)
+        let random = Mulberry32(seed: 12)
+        let blockFrames = 512
+        var railed = 0
+        var counted = 0
+        var peak = 0.0
+
+        var next: Int64 = 0
+        for block in 0..<Int(rate * 12) / blockFrames {
+            while next < mixer.frame + Int64(blockFrames) {
+                // Three cells a step on each of two tracks: busy, not
+                // pathological.
+                for (preset, columns) in [
+                    (SynthPreset.reverie, [0, 4, 9]), (SynthPreset.machine, [1, 5, 8]),
+                ] {
+                    for column in columns {
+                        for voice in SynthVoicing.notes(
+                            preset: preset, midi: 48 + column, velocity: 1, using: random)
+                        {
+                            mixer.schedule(
+                                AudioEvent.note(
+                                    voice.recipe, at: next + Int64(voice.offset * rate)))
+                        }
+                    }
+                }
+                next += Int64(rate * 0.125)
+            }
+            let output = render(mixer, frames: blockFrames)
+            guard block > 20 else { continue }
+            peak = max(peak, output.map(abs).max() ?? 0)
+            railed += output.filter { abs($0) >= 0.999 }.count
+            counted += output.count
+        }
+
+        #expect(peak > 0.05, "the mixer went quiet")
+        let share = Double(railed) / Double(max(counted, 1))
+        #expect(share < 0.01, "\(100 * share)% of the mix is sitting on the rail")
+    }
+
     // ------------------------------------------------------------ the floor --
 
     /// Whatever happens upstream, a sample handed to the hardware is a number
