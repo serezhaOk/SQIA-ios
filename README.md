@@ -21,13 +21,21 @@ each part maps onto iOS.
 | M4 — the sequencer screen | done |
 | M5 — the five synths | done |
 | M6 — the mixer | done |
-| M7–M10 | see [PLAN.md](PLAN.md) |
+| M7 — the project library | done |
+| M8 — sign-in | done, waiting on the Supabase dashboard |
+| M9 — parity QA | done bar the device matrix |
+| M10 — release | materials written; the store side is manual |
 
-What runs today: the sequencer and the mixer. Draw on the field with a
-finger and it sounds; drag the tempo, choose the key, erase, scatter a
-pattern, pick a sound. The dots bloom exactly when their note lands. Tapping
-the track dots opens the mixer — the track being played flies into its panel
-while the other fades up beside it, each with a name and a mute button.
+What runs today: all of it. Sign in with Apple, Google or an email link;
+the library lists what you have made and creates new ones with a name out of
+the microbial world; opening a project starts it playing. Draw on the field
+with a finger and it sounds; drag the tempo, choose the key, erase, scatter a
+pattern, pick a sound. Edits save themselves, into the same Supabase rows the
+browser reads. The dots bloom exactly when their note lands — allowing for
+the buffer and the route, so the picture does not run ahead of the sound on
+Bluetooth. Tapping the track dots opens the mixer — the track being played
+flies into its panel while the other fades up beside it, each with a name and
+a mute button.
 
 The sounds are synthesised, not sampled — the sample set is gone. All five
 presets are written: REVERIE the drifting pad, KALIMBA a plucked string,
@@ -81,7 +89,7 @@ Core/          SQIACore — pitch mapping, the note matrix, dome geometry,
 SQIA/          The app: the AVFoundation shell around SQIACore, the design
                system, the screens. Xcode syncs this folder, so new files
                need no project edits.
-Support/       Info.plist
+Support/       Info.plist, the entitlements, and the App Store copy
 tools/         gen-fixtures (golden data from the web sources),
                make-icon.py, make-fonts.py
 ```
@@ -133,7 +141,9 @@ out of the variable font — the variable file's default instance is ExtraLight,
 which is not a weight SQIA uses anywhere.
 
 Manrope is under the SIL Open Font License 1.1; the licence ships beside the
-fonts in `SQIA/Resources/Fonts/`.
+fonts in `SQIA/Resources/Fonts/`. It is also the whole of the third-party
+list — see [NOTICE.md](NOTICE.md). There are no package dependencies: the
+sound is written out in `SQIACore` and Supabase is reached over plain HTTPS.
 
 ## Copyright
 
