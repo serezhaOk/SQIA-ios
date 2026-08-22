@@ -75,7 +75,8 @@ being built. A Run build is therefore a fair test of the sound.
 On the device, a Debug build floats a meter over the field: the audio load,
 the voices sounding, what a frame costs the main thread, and the frame rate
 actually being delivered, with dropped notes beside them when there are any.
-It is `#if DEBUG` only and comes out before release.
+It is `#if DEBUG` only, so it is not in anything that ships — and it stays,
+because it is the instrument for the next time something crackles.
 
 ## Layout
 
