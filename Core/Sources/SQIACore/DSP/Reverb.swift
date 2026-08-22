@@ -170,3 +170,29 @@ public struct Reverb: Sendable {
         return ((a + c) * 0.5, (b + d) * 0.5)
     }
 }
+
+extension Reverb {
+    /// What Tone's `decay` parameter actually comes to, in seconds of RT60.
+    ///
+    /// It is not a decay time, which is the trap. Tone builds its impulse
+    /// response by fading a noise burst with
+    /// `exponentialApproachValueAtTime(0, preDelay, decay)`, and that turns
+    /// the number into a `setTargetAtTime` time constant:
+    ///
+    ///     timeConstant = ln(decay + 1) / ln(200)
+    ///
+    /// (Param.ts, `exponentialApproachValueAtTime`.) An exponential from 1
+    /// with that time constant is 60 dB down after `timeConstant · ln(1000)`
+    /// — so the web's `decay: 7` is a room that rings for 2.7 seconds, not
+    /// seven. The rest of the seven-second buffer is silence: by the point
+    /// Tone starts its closing linear ramp, at 0.9 · decay, the tail is 139
+    /// dB down.
+    ///
+    /// This exists so `Tuning.web` can hold what the web *sounds* like
+    /// rather than what it says, and so the conversion is somewhere a test
+    /// can look at it.
+    public static func rt60(forToneDecay decay: Double) -> Double {
+        let timeConstant = log(decay + 1) / log(200)
+        return timeConstant * log(1000)
+    }
+}

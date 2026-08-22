@@ -38,7 +38,11 @@ struct TuningTests {
         #expect(web[.machineKickLevel] == TunableRange(-3))
         #expect(web[.machineMetalLevel] == TunableRange(-21))
 
-        #expect(web[.reverbDecay] == TunableRange(7))
+        // The web writes `decay: 7` and Tone reads it as a time constant,
+        // so the room is 2.7 seconds. This baseline holds the room the web
+        // has rather than the number the web types — see
+        // `ReverbParityTests`, which is where that was measured.
+        #expect(web[.reverbDecay] == TunableRange(Reverb.rt60(forToneDecay: 7)))
         #expect(web[.reverbPreDelay] == TunableRange(0.02))
     }
 

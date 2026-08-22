@@ -284,11 +284,23 @@ public struct Tuning: Codable, Sendable, Equatable {
         .machineSendHighpass: TunableRange(380),
         .machineDelayWet: TunableRange(0.12),
 
-        // The room. Decay and damping are the two that are not the web's —
-        // see `Reverb` — so they are the two most worth moving.
-        .reverbDecay: TunableRange(7),
+        // The room. Both of these were wrong until the A/B in M9 measured
+        // them, and wrong in the baseline is the worst place to be wrong:
+        // everything else is compared against it.
+        //
+        // The web asks Tone for `decay: 7`, and the number reads like
+        // seconds. It is not one. Tone turns it into a `setTargetAtTime`
+        // time constant — `ln(decay + 1) / ln(200)` — so the room it
+        // actually builds rings for 2.7 seconds, and the rest of the
+        // seven-second buffer is silence 139 dB down. Holding a 7 here gave
+        // a baseline that rang two and a half times longer than the thing
+        // it was standing in for.
+        .reverbDecay: TunableRange(Reverb.rt60(forToneDecay: 7)),
         .reverbPreDelay: TunableRange(0.02),
-        .reverbDamping: TunableRange(4500),
+        // And the web damps nowhere at all: its impulse is white noise
+        // under a gain envelope, bright the whole way down. Above the
+        // audible band is how this network says "no filter".
+        .reverbDamping: TunableRange(20000),
     ]
 
     // -------------------------------------------------------------- specs --
