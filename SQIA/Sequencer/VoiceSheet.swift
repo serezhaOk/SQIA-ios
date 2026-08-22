@@ -32,18 +32,24 @@ struct VoiceSheet: View {
                     Text("The patch drifts once a bar, and every note is rolled fresh.")
                 }
 
-                Section {
-                    NavigationLink {
-                        TuningView(model: model)
-                    } label: {
-                        Label("Tuning", systemImage: "slider.horizontal.3")
+                // Twenty-nine sliders with no explanation is a workbench,
+                // not a feature — it is how the sound got tuned, and it stays
+                // where the tuning happens. The numbers it produced ship as
+                // `Tuning.tuned`; the panel does not.
+                #if DEBUG
+                    Section {
+                        NavigationLink {
+                            TuningView(model: model)
+                        } label: {
+                            Label("Tuning", systemImage: "slider.horizontal.3")
+                        }
+                    } footer: {
+                        Text(
+                            model.tuning.isDefault
+                                ? "Every voice is where it was tuned to."
+                                : "Moved from the tuning this build ships with.")
                     }
-                } footer: {
-                    Text(
-                        model.tuning.isDefault
-                            ? "Every voice is where it was tuned to."
-                            : "Moved from the tuning this build ships with.")
-                }
+                #endif
             }
             .navigationTitle("Sound")
             .navigationBarTitleDisplayMode(.inline)

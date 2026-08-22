@@ -18,6 +18,11 @@ final class AudioEngine {
     private let session = AudioSessionController()
     private var source: AVAudioSourceNode?
 
+    /// The gap between a sample being rendered and being heard. The mixer's
+    /// frame counter says when a note is written into the buffer; this is
+    /// how much later it leaves the speaker.
+    var outputLatency: Double { session.outputLatency }
+
     /// Raised when the engine had to stop for a reason of its own — an
     /// interruption, a route change — so the transport can follow.
     var onStopped: (() -> Void)?

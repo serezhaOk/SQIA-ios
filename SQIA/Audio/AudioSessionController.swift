@@ -37,6 +37,18 @@ final class AudioSessionController {
         AVAudioSession.sharedInstance().sampleRate
     }
 
+    /// How long after the renderer fills a sample it actually reaches the
+    /// ear: the buffer being filled ahead, plus whatever the route costs.
+    ///
+    /// Read fresh every time. Plugging in headphones changes it, and
+    /// Bluetooth changes it by an order of magnitude — around 200 ms on some
+    /// earbuds, which is a fifth of a second of the picture running ahead of
+    /// the sound.
+    var outputLatency: Double {
+        let session = AVAudioSession.sharedInstance()
+        return session.outputLatency + session.ioBufferDuration
+    }
+
     func activate() throws {
         let session = AVAudioSession.sharedInstance()
         // A sequencer is a music app: it plays through the silent switch,

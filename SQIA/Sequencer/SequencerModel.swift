@@ -347,8 +347,18 @@ final class SequencerModel {
                 }
             }
 
-            // Bloom the dots exactly when their sound lands.
-            DispatchQueue.main.asyncAfter(deadline: .now() + max(0, lead)) {
+            // Bloom the dots exactly when their sound lands — which is
+            // two waits, not one. `lead` is how long until the mixer writes
+            // the note into the buffer; the route then takes it a while
+            // longer to reach the ear. Without the second half the picture
+            // runs ahead of the sound by the buffer plus the route: barely
+            // noticeable on the speaker, a fifth of a second on some
+            // Bluetooth earbuds.
+            //
+            // Read per step rather than captured, because plugging in
+            // headphones changes it mid-pattern.
+            let travel = max(0, lead) + engine.outputLatency
+            DispatchQueue.main.asyncAfter(deadline: .now() + travel) {
                 Task { @MainActor in self?.land(step: step, lit: lit) }
             }
         }

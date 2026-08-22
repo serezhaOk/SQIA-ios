@@ -9,6 +9,13 @@
 // Everything opens on the web's values. What has been moved is marked, and
 // the whole set copies out as JSON, so a tuning arrived at by ear can be
 // read back and written into the source.
+//
+// Debug builds only. It is the workbench the sound was made on, not a
+// feature — twenty-nine sliders with no explanation is not something to hand
+// somebody who opened a music app. What it produced ships as `Tuning.tuned`;
+// this does not ship at all.
+
+#if DEBUG
 
 import SQIACore
 import SwiftUI
@@ -156,15 +163,4 @@ struct TuningView: View {
     }
 }
 
-/// Presented on its own, from the meter.
-struct TuningSheet: View {
-    let model: SequencerModel
-
-    var body: some View {
-        NavigationStack {
-            TuningView(model: model)
-        }
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-    }
-}
+#endif
