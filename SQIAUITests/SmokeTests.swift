@@ -38,7 +38,11 @@ final class SmokeTests: XCTestCase {
     /// modifier produces is not a thing worth asserting on, and is not stable
     /// across OS versions either.
     private func named(_ label: String) -> XCUIElement {
-        app.descendants(matching: .any)[label]
+        // `firstMatch`, because a label is not unique: the field calls
+        // itself "Tracks" while the mixer is open and the header button
+        // does too, and an ambiguous query fails rather than picking one.
+        app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label))
+            .firstMatch
     }
 
     @discardableResult
