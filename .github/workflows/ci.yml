@@ -61,17 +61,37 @@ jobs:
       # suite cannot do: every one of its tests would still pass with a view
       # wired to the wrong model. Needs a named simulator rather than the
       # generic destination, because a test has to actually boot something.
-      - name: Smoke test on a simulator
+      # The smoke test walks the screens, which is the one thing the Linux
+      # suite cannot do: every one of its tests would still pass with a view
+      # wired to the wrong model.
+      - name: Pick a simulator
+        id: sim
+        run: |
+          # Runner images change their line-up without notice — this one
+          # carries iPhone 17s where the workflow was first written against
+          # an iPhone 16. Ask the runner rather than naming a model that
+          # will rot again, and go by udid so the answer cannot be
+          # ambiguous.
+          xcrun simctl list devices available -j > /tmp/sims.json
+          python3 - <<'PICK' >> "$GITHUB_OUTPUT"
+          import json
+          runtimes = json.load(open("/tmp/sims.json"))["devices"]
+          for runtime in sorted(runtimes, reverse=True):
+              for device in runtimes[runtime]:
+                  if device.get("isAvailable") and device["name"].startswith("iPhone"):
+                      print(f"udid={device['udid']}")
+                      print(f"name={device['name']}")
+                      raise SystemExit
+          raise SystemExit("no iPhone simulator on this runner")
+          PICK
+
+      - name: Smoke test on ${{ steps.sim.outputs.name }}
         run: |
           set -o pipefail
-          # What xcodebuild thinks the project and the scheme contain. Worth
-          # the four lines: "not configured for the test action" says nothing
-          # about which half is missing.
-          xcodebuild -list -project SQIA.xcodeproj
           xcodebuild test \
             -project SQIA.xcodeproj \
             -scheme SQIA \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination "id=${{ steps.sim.outputs.udid }}" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             | xcbeautify
