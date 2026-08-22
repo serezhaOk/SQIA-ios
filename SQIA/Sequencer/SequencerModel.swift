@@ -642,6 +642,12 @@ final class SequencerModel {
         setTempo(Tempo.scrub(from: start, dx: Double(dx)))
     }
 
+    /// For VoiceOver, which cannot drag. Five at a time: a swipe per beat
+    /// would take forty of them to cross the range.
+    func nudgeTempo(by delta: Double) {
+        setTempo(state.bpm + delta)
+    }
+
     /// A drag that never moved is a tap, and a tap bumps.
     func endTempoDrag() {
         if !tempoDragMoved { setTempo(Tempo.bump(state.bpm)) }

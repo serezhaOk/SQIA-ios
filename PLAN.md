@@ -26,9 +26,27 @@
 | Бэкенд | Supabase (auth + PostgREST + RLS) | **Тот же проект Supabase**, официальный `supabase-swift` | Ноль работ по бэкенду; кроссплатформенные проекты |
 | Auth | Google OAuth, magic-link на email | То же через ASWebAuthenticationSession + deep link; **плюс Sign in with Apple** (обязателен, см. §6) | |
 | Хранение сессии | localStorage (`sqia-auth`) | Keychain | |
-| Шрифты | Manrope, Material Symbols (Google Fonts, рантайм) | Бандлим в приложение: Manrope (OFL 1.1), сабсет Material Symbols — глифы `more_vert`, `volume_off`, `check`, `emoticon` (Apache 2.0) | Лицензии позволяют; в NOTICE перенести |
+| Шрифты | Manrope, Material Symbols (Google Fonts, рантайм) | Бандлим Manrope (OFL 1.1), четыре статических начертания. Material Symbols **не бандлим**: иконки — SF Symbols | См. ниже |
 | Минимальная iOS | — | **iOS 17** (портрет, iPhone; адаптация iPad = веб-раскладка ≥768) | Observation, зрелый SwiftUI |
-| Зависимости | supabase-js, tone | SPM: только supabase-swift (в M7) | Аудио-зависимостей нет вовсе |
+| Зависимости | supabase-js, tone | **Ни одной.** Звук свой, Supabase — обычные HTTPS-запросы | См. ниже |
+
+### Две правки к таблице, сделанные по факту (M9)
+
+**Иконки — SF Symbols, а не Material Symbols.** План обещал забандлить
+сабсет с глифами `more_vert`, `volume_off`, `check`, `emoticon`. По факту
+после решения владельца от 20.08 (нативные модалки и кнопки) все иконки
+стали системными: `ellipsis` вместо `more_vert`, `speaker.slash.fill`
+вместо `volume_off`, `face.smiling` вместо `emoticon`, галочки рисует
+сам `List`. SF Symbols не поставляются с приложением — их рисует
+система, и лицензия Apple разрешает ровно такое использование. Один
+шрифт вместо двух, и на одну лицензию в NOTICE меньше.
+
+**Зависимостей нет ни одной.** `supabase-swift` в M8 не понадобился:
+PostgREST — это пять эндпоинтов без состояния, а auth оказался проще
+написать поверх `ASWebAuthenticationSession` и `AuthenticationServices`,
+чем тащить ради него клиент с realtime-сокетом и storage. Итог:
+`Package.swift` без единого `.package(url:)`, и SBOM приложения — это
+Manrope.
 
 ### Почему рендерер свой, а не набор AVAudioNode
 

@@ -74,7 +74,11 @@ struct SequencerView: View {
             // phone one.
             HStack(spacing: 10) {
                 label(model.state.rootName) { showingKey = true }
+                    .accessibilityLabel("Key")
+                    .accessibilityValue(model.state.rootName)
                 label(model.state.scale.name.uppercased()) { showingKey = true }
+                    .accessibilityLabel("Scale")
+                    .accessibilityValue(model.state.scale.name)
             }
         }
         .padding(.horizontal, 20)
@@ -96,6 +100,15 @@ struct SequencerView: View {
             )
             .accessibilityLabel("Tempo")
             .accessibilityValue("\(Int(model.state.bpm)) beats per minute")
+            // A drag is not a gesture VoiceOver has, so the tempo would
+            // otherwise be readable and unreachable.
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: model.nudgeTempo(by: 5)
+                case .decrement: model.nudgeTempo(by: -5)
+                @unknown default: break
+                }
+            }
     }
 
     /// One dot per track, the active one bright. Tapping opens the mixer,
@@ -136,6 +149,19 @@ struct SequencerView: View {
                         .onChanged { model.touch(at: $0.location) }
                         .onEnded { _ in model.endTouch() }
                 )
+                // The largest thing on the screen, and without this it is
+                // an unnamed rectangle. Painting is a drag, which VoiceOver
+                // does not have — so the hint says what it is for rather
+                // than pretending it can be operated.
+                //
+                // Before the overlay, not after: collapsing the field into
+                // one element after it would take the mixer's chips with it.
+                .accessibilityElement()
+                .accessibilityLabel(model.showingMixer ? "Tracks" : "Note field")
+                .accessibilityHint(
+                    model.showingMixer
+                        ? "Double-tap a panel to open that track."
+                        : "Drag to draw notes. Use Randomise below to fill it.")
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .overlay(alignment: .topLeading) { chips }
         }
