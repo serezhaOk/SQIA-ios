@@ -23,17 +23,24 @@ enum FieldSprites {
 
         // The illustrations are flat colour, authored as they are meant to
         // appear, so the loader must not treat them as sRGB and linearise
-        // them on the way in. Mipmaps because a field shrinks into a mixer
-        // panel, where a flower lands on a fraction of the pixels it was
-        // packed at.
-        let options: [MTKTextureLoader.Option: Any] = [
+        // them on the way in.
+        let base: [MTKTextureLoader.Option: Any] = [
             .SRGB: false,
-            .generateMipmaps: true,
             .textureUsage: MTLTextureUsage.shaderRead.rawValue,
             .textureStorageMode: MTLStorageMode.private.rawValue,
         ]
-        return try? MTKTextureLoader(device: device).newTexture(
-            cgImage: cgImage, options: options)
+
+        let loader = MTKTextureLoader(device: device)
+        // Mipmaps because a field shrinks into a mixer panel, where a flower
+        // lands on a fraction of the pixels it was packed at. Worth having,
+        // not worth losing the flowers over: a loader that will not make
+        // them is asked again without.
+        if let mipmapped = try? loader.newTexture(
+            cgImage: cgImage, options: base.merging([.generateMipmaps: true]) { _, new in new })
+        {
+            return mipmapped
+        }
+        return try? loader.newTexture(cgImage: cgImage, options: base)
     }
 
     /// One transparent texel, for the case where the atlas is not there. The
