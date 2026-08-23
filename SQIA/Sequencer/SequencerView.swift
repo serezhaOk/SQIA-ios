@@ -4,6 +4,11 @@
 // sound and the randomiser along the bottom. Metrics are the web app's, from
 // style.css: 18 by 20 points of padding on both bars, labels at 0.82rem with
 // wide tracking, nine-point track dots.
+//
+// The colours are not the web's. This screen is light, because the field on
+// it is a heat map and a heat map is read against paper; everywhere else in
+// the app stays black. `Palette.Sequencer` is that set, and it goes no
+// further than this file and the field's own clear colour.
 
 import SQIACore
 import SwiftUI
@@ -23,7 +28,11 @@ struct SequencerView: View {
             stage
             footer
         }
-        .background(Palette.background.ignoresSafeArea())
+        .background(Palette.Sequencer.background.ignoresSafeArea())
+        // Only this screen turns over. The scheme belongs to the window, so
+        // the status bar follows it here and the sheets below pin themselves
+        // back to dark rather than being dragged along.
+        .preferredColorScheme(.light)
         .sheet(isPresented: $showingVoices) {
             VoiceSheet(
                 model: model,
@@ -32,6 +41,7 @@ struct SequencerView: View {
                     showingVoices = false
                 }
             )
+            .preferredColorScheme(.dark)
         }
         .sheet(isPresented: $showingKey) {
             KeySheet(
@@ -40,6 +50,7 @@ struct SequencerView: View {
                 onPickRoot: { model.selectRoot($0) },
                 onPickScale: { model.selectScale($0) }
             )
+            .preferredColorScheme(.dark)
         }
         .onAppear { model.start() }
         .onChange(of: scenePhase) { _, phase in
@@ -55,7 +66,7 @@ struct SequencerView: View {
             if let failure = model.failure {
                 Text(failure)
                     .manrope(.regular, TextStyle.messageSize)
-                    .foregroundStyle(Palette.failure)
+                    .foregroundStyle(Palette.Sequencer.failure)
                     .padding(12)
             }
         }
@@ -89,7 +100,7 @@ struct SequencerView: View {
     private var tempoLabel: some View {
         Text("\(Int(model.state.bpm)) BPM")
             .manrope(.regular, TextStyle.labelSize, tracking: TextStyle.labelTracking)
-            .foregroundStyle(Palette.ink)
+            .foregroundStyle(Palette.Sequencer.ink)
             .padding(.vertical, 6)
             .padding(.horizontal, 4)
             .contentShape(Rectangle())
@@ -121,7 +132,7 @@ struct SequencerView: View {
             HStack(spacing: 7) {
                 ForEach(0..<SequencerState.trackCount, id: \.self) { index in
                     Circle()
-                        .fill(Palette.ui)
+                        .fill(Palette.Sequencer.ui)
                         .opacity(index == model.state.activeTrackIndex ? 1 : 0.3)
                         .frame(width: 9, height: 9)
                 }
@@ -204,11 +215,11 @@ struct SequencerView: View {
                 Text(model.voiceLabel(index))
                     // The chip sets its tracking to zero, unlike the labels.
                     .manrope(.regular, 16, tracking: 0)
-                    .foregroundStyle(Palette.background)
+                    .foregroundStyle(Palette.Sequencer.background)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
                     .frame(height: height)
-                    .background(Palette.ui)
+                    .background(Palette.Sequencer.ui)
             }
             .buttonStyle(PressFade())
             .accessibilityLabel("Open \(model.voiceLabel(index))")
@@ -220,10 +231,10 @@ struct SequencerView: View {
             } label: {
                 Image(systemName: "speaker.slash.fill")
                     .font(.system(size: 15))
-                    .foregroundStyle(model.isMuted(index) ? Palette.background : Palette.ui)
+                    .foregroundStyle(model.isMuted(index) ? Palette.Sequencer.background : Palette.Sequencer.ui)
                     .frame(width: height, height: height)
                     .background(
-                        model.isMuted(index) ? Palette.ui : Palette.ui.opacity(0.1)
+                        model.isMuted(index) ? Palette.Sequencer.ui : Palette.Sequencer.ui.opacity(0.1)
                     )
             }
             .buttonStyle(PressFade())
@@ -243,10 +254,10 @@ struct SequencerView: View {
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
-                .foregroundStyle(Palette.background)
+                .foregroundStyle(Palette.Sequencer.background)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(Palette.ink.opacity(0.9), in: Capsule())
+                .background(Palette.Sequencer.ink.opacity(0.9), in: Capsule())
                 .padding(.horizontal, 8)
                 .allowsHitTesting(false)
         #endif
@@ -273,10 +284,10 @@ struct SequencerView: View {
             Text("Back to projects")
                 // 0.15px at 15px, which is a hundredth of an em.
                 .manrope(.semibold, 15, tracking: 0.01)
-                .foregroundStyle(Palette.ui)
+                .foregroundStyle(Palette.Sequencer.ui)
                 .frame(maxWidth: 335)
                 .frame(height: 126)
-                .background(Palette.ui.opacity(0.2), in: RoundedRectangle(cornerRadius: 32))
+                .background(Palette.Sequencer.ui.opacity(0.2), in: RoundedRectangle(cornerRadius: 32))
         }
         .buttonStyle(PressFade())
         .opacity(model.showingMixer ? 1 : 0)
@@ -292,7 +303,7 @@ struct SequencerView: View {
                 .manrope(
                     .regular, TextStyle.labelSize, tracking: TextStyle.voiceLabelTracking
                 )
-                .foregroundStyle(Palette.ink)
+                .foregroundStyle(Palette.Sequencer.ink)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 4)
                 .contentShape(Rectangle())
@@ -316,7 +327,7 @@ struct SequencerView: View {
         Button(action: action) {
             Text(text)
                 .manrope(.regular, TextStyle.labelSize, tracking: TextStyle.labelTracking)
-                .foregroundStyle(active ? Palette.accent : Palette.ink)
+                .foregroundStyle(active ? Palette.Sequencer.accent : Palette.Sequencer.ink)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 4)
         }

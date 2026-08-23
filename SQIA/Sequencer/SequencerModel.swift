@@ -381,9 +381,12 @@ final class SequencerModel {
     /// animation so that it runs on the display link the field already runs
     /// on — two clocks over a third of a second would visibly disagree.
     func frame(in rect: CGRect, dt: Double) -> FieldFrame {
+        // The same style the scenes draw with, or a finger would be measured
+        // against a field that is not the one on screen.
         layout = Field.layout(
             x: Double(rect.minX), y: Double(rect.minY),
-            width: Double(rect.width), height: Double(rect.height))
+            width: Double(rect.width), height: Double(rect.height),
+            style: scenes[state.activeTrackIndex].style)
         stageSize = rect.size
 
         mixerTravel = MixerLayout.advance(

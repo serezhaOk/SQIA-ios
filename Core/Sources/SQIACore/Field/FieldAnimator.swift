@@ -47,6 +47,11 @@ public struct FieldDraw: Sendable, Equatable {
         case dot
         case glow
         case streak
+        /// A contribution to a summed field rather than something drawn on
+        /// its own. Sources near each other add up, and what gets drawn is
+        /// the total — which is what makes two notes side by side one shape
+        /// instead of two circles. Not the web's; no fixture produces one.
+        case source
     }
 
     public var kind: Kind
@@ -57,10 +62,16 @@ public struct FieldDraw: Sendable, Equatable {
     /// Streak only: where it ends.
     public var x1: Double = 0
     public var y1: Double = 0
-    /// Dot: radius. Glow: width and height. Streak: line width.
+    /// Dot: radius. Glow: width and height. Streak: line width. Source: the
+    /// radius its falloff reaches.
     public var size: Double
     public var color: RGB
+    /// Source: how much it contributes at its middle.
     public var alpha: Double
+    /// Source only: how hot the flash under it still is, carried so the
+    /// colour can ripple out of a blob that was struck without the ones
+    /// beside it moving in step.
+    public var energy: Double = 0
 }
 
 public final class FieldAnimator {
@@ -82,6 +93,9 @@ public final class FieldAnimator {
         RGB(80, 255, 130),  // green
         RGB(176, 107, 255),  // violet
     ]
+
+    /// The resting grid on a light field: dark, and almost not there.
+    public static let hint = RGB(28, 32, 44)
 
     public static let waveDuration = Double(waveStops.count) * waveStep
     public static let waveLife = waveDuration + waveRadius * waveRingDelay
@@ -208,6 +222,7 @@ public final class FieldAnimator {
         let baseDot = max(1.6, cell * 0.075)
         let a = max(0, min(1, alpha))
         if a <= 0.01 { return }
+        let heat = layout.style.heat
 
         for row in 0..<NoteGrid.rows {
             let onHead = row == playhead
@@ -258,6 +273,39 @@ public final class FieldAnimator {
                         )
                     } ?? .white
                 let inkColour = colour.truncated
+
+                if heat {
+                    // Only a drawn note is a source. An empty cell would
+                    // otherwise leave the screen blank, and a blank screen
+                    // is one you cannot aim at — so it gets a dot far too
+                    // faint to read as a mark, outside the field entirely.
+                    if v <= 0 {
+                        out.append(
+                            FieldDraw(
+                                kind: .dot, x: warped.x, y: warped.y,
+                                size: baseDot * 0.62 * breathe,
+                                color: Self.hint, alpha: 0.16 * breathe * a))
+                        continue
+                    }
+
+                    // Weight is what the sum is made of, so this is where a
+                    // cluster earns its heat: a lone note stays cool because
+                    // nothing adds to it, and neighbours pile up into a core.
+                    // A struck note leans on the sum for as long as the
+                    // flash lasts.
+                    let weight = v * (1 + 0.9 * e)
+                    // Generous on purpose. The brush bleeds into the cells
+                    // around the one under the finger, so a stroke lays down
+                    // a run of sources whose falloffs have to overlap enough
+                    // to close up into one shape.
+                    let reach = cell * (0.95 + 0.5 * v) * (0.97 + 0.03 * breathe)
+                    out.append(
+                        FieldDraw(
+                            kind: .source, x: warped.x, y: warped.y,
+                            size: reach, color: Self.hint, alpha: weight * a,
+                            energy: min(1, e)))
+                    continue
+                }
 
                 if v <= 0 && e <= 0 {
                     let lift = tinted.map { $0.amp * 0.85 } ?? 0

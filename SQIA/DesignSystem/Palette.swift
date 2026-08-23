@@ -4,6 +4,7 @@
 // is no light mode and no system colour anywhere, so these are plain sRGB
 // values rather than semantic colours that would shift under us.
 
+import Metal
 import SwiftUI
 
 enum Palette {
@@ -47,6 +48,26 @@ enum Palette {
     // Landing logo
     static let logoStroke = Color(hex: 0x4A4A4A)
     static let logoDot = Color(hex: 0xD9D9D9)
+
+    /// The sequencer, and nothing else. A heat map is read against paper —
+    /// the same picture on black reads as a glow instead of a reading, which
+    /// is the wrong idea about what the field is showing. The landing, the
+    /// library and the sheets stay as they are.
+    enum Sequencer {
+        static let background = Color(hex: 0xF4F3F0)
+        /// Labels: BPM, the key, ERASE and RNDM.
+        static let ink = Color(hex: 0x2A2A2E)
+        /// Chips and anything that has to sit as a solid on the ground.
+        static let ui = Color(hex: 0x1C1C20)
+        /// Off the hot end of the ramp, so the one lit control belongs to the
+        /// same picture as the field.
+        static let accent = Color(hex: 0xDE3A16)
+        static let failure = Color(hex: 0xB3341F)
+
+        /// The same value as `background`, for the Metal view's clear.
+        static let clearColor = MTLClearColor(
+            red: 0xF4 / 255, green: 0xF3 / 255, blue: 0xF0 / 255, alpha: 1)
+    }
 }
 
 extension Color {

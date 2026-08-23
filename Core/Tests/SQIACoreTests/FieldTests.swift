@@ -126,6 +126,8 @@ struct FieldTests {
                 case .dot: kind = "dot"
                 case .glow: kind = "glow"
                 case .streak: kind = "streak"
+                // The web sums nothing, so a fixture can never ask for one.
+                case .source: kind = "source"
                 }
                 #expect(kind == expected.op, "\(where_): kind")
                 if kind != expected.op { break }
@@ -147,6 +149,8 @@ struct FieldTests {
                 case .streak:
                     mine += [got.x1, got.y1, got.size]
                     theirs += [expected.x1 ?? .nan, expected.y1 ?? .nan, expected.width ?? .nan]
+                case .source:
+                    Issue.record("\(where_): the web draws no field sources")
                 }
                 worst = max(worst, maxRelativeError(mine, theirs))
             }
@@ -251,5 +255,116 @@ struct FieldTests {
         animator.reset()
         #expect(animator.activeWaveCount == 0)
         #expect(animator.energy.allSatisfy { $0 == 0 })
+    }
+
+    // ---------------------------------------------------------- heat style --
+
+    /// Drawing goes out through `warp` and a finger comes back through
+    /// `unwarp`. If those two ever stop agreeing about the dome, painting
+    /// lands in a cell next to the one under the finger — which looks like a
+    /// gesture bug rather than a geometry one, and is close enough to right
+    /// that it is easy to miss on a screen.
+    @Test("A flat field puts a finger in the cell it is over")
+    func flatRoundTrip() {
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: .heat)
+
+        for row in 0..<NoteGrid.rows {
+            for column in 0..<NoteGrid.columns {
+                let x = layout.ox + (Double(column) + 0.5) * layout.cell
+                let y = layout.oy + (Double(row) + 0.5) * layout.cell
+
+                let drawn = Field.warp(x: x, y: y, in: layout)
+                #expect(drawn.x == x, "row \(row) column \(column): x moved")
+                #expect(drawn.y == y, "row \(row) column \(column): y moved")
+
+                let hit = Field.hit(x: drawn.x, y: drawn.y, in: layout)
+                #expect(hit?.row == row, "row \(row) column \(column): row")
+                #expect(hit?.column == column, "row \(row) column \(column): column")
+            }
+        }
+    }
+
+    @Test("A flat field fills the box it is given")
+    func flatFitsTheBox() {
+        // The dome pushes dots outward, so the classic fit shaves the cell to
+        // make room. Flat, nothing overflows and nothing needs shaving.
+        let flat = Field.fitCell(width: 393, height: 700, style: .heat)
+        let classic = Field.fitCell(width: 393, height: 700, style: .classic)
+        #expect(flat == min(393 / Double(NoteGrid.columns), 700 / Double(NoteGrid.rows)))
+        #expect(classic < flat)
+    }
+
+    @Test("Only a drawn note is a source")
+    func onlyNotesAreSources() {
+        let animator = FieldAnimator()
+        var grid = NoteGrid()
+        grid.stamp(row: 2, column: 3)
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: .heat)
+        let draws = animator.draws(grid: grid, layout: layout, playhead: -1)
+
+        let sources = draws.filter { $0.kind == .source }
+        let lit = grid.cells.filter { $0 > 0 }.count
+        #expect(sources.count == lit)
+        #expect(sources.count > 0)
+
+        // Everything else on screen is the resting grid, and nothing in the
+        // heat style draws a halo or a streak of its own — the shape comes
+        // out of the sum.
+        #expect(!draws.contains { $0.kind == .glow || $0.kind == .streak })
+        #expect(draws.filter { $0.kind == .dot }.count == NoteGrid.count - lit)
+    }
+
+    @Test("Neighbouring sources reach far enough to close up")
+    func neighboursOverlap() {
+        let animator = FieldAnimator()
+        var grid = NoteGrid()
+        grid.stamp(row: 5, column: 5)
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: .heat)
+        let sources = animator.draws(grid: grid, layout: layout, playhead: -1)
+            .filter { $0.kind == .source }
+            .sorted { $0.x < $1.x }
+
+        // Two sources a cell apart have to overlap, or a stroke would read as
+        // a row of separate circles instead of one shape. Their radii sum has
+        // to beat the gap between them.
+        #expect(sources.count >= 2)
+        for (a, b) in zip(sources, sources.dropFirst()) {
+            let gap = hypot(b.x - a.x, b.y - a.y)
+            if gap > layout.cell * 1.5 { continue }
+            #expect(a.size + b.size > gap, "sources \(gap) apart do not reach each other")
+        }
+    }
+
+    @Test("A struck source carries its own heat")
+    func struckSourcesCarryEnergy() {
+        let animator = FieldAnimator()
+        var grid = NoteGrid()
+        grid.stamp(row: 5, column: 5)
+        grid.stamp(row: 12, column: 2)
+        animator.flash(row: 5, column: 5, velocity: 1)
+        animator.advance(by: 1 / 60)
+
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: .heat)
+        let sources = animator.draws(grid: grid, layout: layout, playhead: 5)
+            .filter { $0.kind == .source }
+
+        // The struck cell is hot and leans harder on the sum; the one across
+        // the grid is untouched, so the ripple stays where the note landed.
+        #expect(sources.contains { $0.energy > 0.5 })
+        #expect(sources.contains { $0.energy == 0 })
+    }
+
+    @Test("The classic field sums nothing")
+    func classicHasNoSources() {
+        let animator = FieldAnimator()
+        var grid = NoteGrid()
+        grid.randomize(using: Mulberry32(seed: 1))
+        animator.flash(row: 0, column: 0, velocity: 1)
+        animator.advance(by: 1 / 60)
+
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700)
+        #expect(!animator.draws(grid: grid, layout: layout, playhead: 0).contains {
+            $0.kind == .source
+        })
     }
 }

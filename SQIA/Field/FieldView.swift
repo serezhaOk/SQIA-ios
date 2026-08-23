@@ -7,6 +7,7 @@
 import MetalKit
 import SQIACore
 import SwiftUI
+import UIKit
 
 /// The state one field draws from. A class so the renderer can read the
 /// current values each frame without SwiftUI having to push them.
@@ -17,6 +18,9 @@ final class FieldScene {
     var playhead = -1
     var detail: Double = 1
     var alpha: Double = 1
+    /// How this field is drawn. One place, because the model has to hand the
+    /// same one to `Field.layout` when it works out what a finger touched.
+    var style: FieldStyle = .heat
     let animator = FieldAnimator()
 
     init(grid: NoteGrid = NoteGrid()) {
@@ -35,7 +39,8 @@ final class FieldScene {
             rect: rect,
             playhead: playhead,
             detail: detail,
-            alpha: alpha
+            alpha: alpha,
+            style: style
         )
     }
 }
@@ -53,9 +58,12 @@ struct FieldView: UIViewRepresentable {
         let view = MTKView()
         view.device = MTLCreateSystemDefaultDevice()
         view.colorPixelFormat = .bgra8Unorm
-        view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        // The ground the heat sits on. Light, and the same value the bars
+        // above and below the field use, so the screen reads as one surface
+        // rather than a picture pasted onto it.
+        view.clearColor = Palette.Sequencer.clearColor
         view.isOpaque = true
-        view.backgroundColor = .black
+        view.backgroundColor = UIColor(Palette.Sequencer.background)
         view.framebufferOnly = true
         // The field is never still, so it draws continuously rather than
         // waiting to be invalidated.
