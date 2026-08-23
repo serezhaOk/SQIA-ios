@@ -651,11 +651,23 @@ final class SequencerModel {
         setTempo(state.bpm + delta)
     }
 
-    /// A drag that never moved is a tap, and a tap bumps.
-    func endTempoDrag() {
-        if !tempoDragMoved { setTempo(Tempo.bump(state.bpm)) }
+    /// Ends a scrub and says whether it was one.
+    ///
+    /// A drag that never moved is a tap, and the design gives a tap to the
+    /// wheel rather than to the old bump-and-wrap — reaching a tempo by
+    /// tapping it upward eleven times is a web gesture. The view decides
+    /// what to open; the model only reports which gesture happened.
+    @discardableResult
+    func endTempoDrag() -> Bool {
+        let wasTap = !tempoDragMoved
         tempoDragStart = nil
         tempoDragMoved = false
+        return wasTap
+    }
+
+    /// Straight to a tempo, for the wheel.
+    func selectTempo(_ value: Double) {
+        setTempo(value)
     }
 
     private func setTempo(_ value: Double) {

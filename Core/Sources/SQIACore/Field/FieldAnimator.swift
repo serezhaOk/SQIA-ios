@@ -94,8 +94,9 @@ public final class FieldAnimator {
         RGB(176, 107, 255),  // violet
     ]
 
-    /// The resting grid on a light field: dark, and almost not there.
-    public static let hint = RGB(28, 32, 44)
+    /// The resting grid: the field's own green, dim enough to be a place
+    /// to aim at rather than a mark.
+    public static let hint = RGB(96, 206, 104)
 
     public static let waveDuration = Double(waveStops.count) * waveStep
     public static let waveLife = waveDuration + waveRadius * waveRingDelay

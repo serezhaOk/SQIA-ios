@@ -157,9 +157,10 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             let heatFragment = library.makeFunction(name: "heatFragment")
         else { return nil }
 
-        // Source over. The ground is light and the marks on it are dark, so
-        // adding light to it would only wash it out — the web's `lighter`
-        // belongs to the black field, not this one.
+        // Source over rather than the web's `lighter`. The heat pass below
+        // already decides a pixel's colour from the whole sum, so adding
+        // its result to whatever the resting grid left there would only
+        // wash the ramp out at the exact places the sum is highest.
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = vertexFunction
         descriptor.fragmentFunction = fragmentFunction

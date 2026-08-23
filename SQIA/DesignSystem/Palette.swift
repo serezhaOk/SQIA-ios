@@ -49,37 +49,34 @@ enum Palette {
     static let logoStroke = Color(hex: 0x4A4A4A)
     static let logoDot = Color(hex: 0xD9D9D9)
 
-    /// The sequencer, and nothing else. A heat map is read against paper —
-    /// the same picture on black reads as a glow instead of a reading, which
-    /// is the wrong idea about what the field is showing. The landing, the
-    /// library and the sheets stay as they are.
+    /// The sequencer screen, from the Figma. Black, like the rest of the
+    /// app — a surface a shade off it for anything raised, and two weights
+    /// of hairline. The inset glow along the bottom of every raised control
+    /// is what makes them read as pressed out of the ground rather than
+    /// laid on it.
     enum Sequencer {
-        static let background = Color(hex: 0xF4F3F0)
-        /// Labels: BPM, the key, ERASE and RNDM.
-        static let ink = Color(hex: 0x2A2A2E)
-        /// Chips and anything that has to sit as a solid on the ground.
-        static let ui = Color(hex: 0x1C1C20)
-        /// Off the hot end of the ramp, so the one lit control belongs to the
-        /// same picture as the field.
-        static let accent = Color(hex: 0xDE3A16)
-        static let failure = Color(hex: 0xB3341F)
+        static let background = Color.black
+        /// Raised: pills, and the tempo card.
+        static let surface = Color(hex: 0x101010)
+        static let hairline = Color.white.opacity(0.07)
+        /// The eraser at rest is an outline with no fill, and wants a border
+        /// it can be seen by.
+        static let outline = Color.white.opacity(0.2)
+        static let label = Color.white
+        static let pillLabel = Color(hex: 0xF5F3F3)
 
-        /// The same value as `background`, for the Metal view's clear.
-        static let clearColor = MTLClearColor(
-            red: 0xF4 / 255, green: 0xF3 / 255, blue: 0xF0 / 255, alpha: 1)
-    }
-}
+        /// The inset glow under a raised control. `#2b2b2b` at rest; a
+        /// control that is on or being pressed swaps the colour and keeps
+        /// everything else.
+        static let bloom = Color(hex: 0x2B2B2B)
+        /// The eraser, while it is on.
+        static let eraseBloom = Color.red
+        /// The shuffle, for as long as a finger is down on it.
+        static let shuffleBloom = Color(hex: 0xFF66E0)
 
-extension Color {
-    /// 0xRRGGBB in sRGB — the form the CSS is written in, so the two can be
-    /// read side by side.
-    init(hex: UInt32, opacity: Double = 1) {
-        self.init(
-            .sRGB,
-            red: Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >> 8) & 0xFF) / 255,
-            blue: Double(hex & 0xFF) / 255,
-            opacity: opacity
-        )
+        /// Dimmed while the eraser owns the screen.
+        static let dimmed = 0.3
+
+        static let clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 }

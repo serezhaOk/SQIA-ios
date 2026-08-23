@@ -216,7 +216,30 @@ struct HeatUniforms {
     float padding;
 };
 
-/// The ramp, low to high: a lone source is a cool speck, a cluster burns.
+/// What a note looks like when it is only drawn: green, and brighter where
+/// the sum is thicker. This is the field at rest, and most of what is on
+/// screen most of the time.
+static float3 restRamp(float t) {
+    const float3 colors[5] = {
+        float3(0.13, 0.34, 0.16),  // the faintest edge, on its way out
+        float3(0.22, 0.66, 0.26),
+        float3(0.35, 0.85, 0.34),
+        float3(0.55, 0.97, 0.45),
+        float3(0.82, 1.00, 0.72),  // the core
+    };
+    const float stops[5] = { 0.0, 0.30, 0.55, 0.78, 1.0 };
+
+    float3 out = colors[0];
+    for (uint i = 1; i < 5; i++) {
+        out = mix(out, colors[i], smoothstep(stops[i - 1], stops[i], t));
+    }
+    return out;
+}
+
+/// What a note looks like while it is sounding: a lone source is a cool
+/// speck, a cluster burns. Kept from the heat map — this is the reading the
+/// field is actually taking, and the green is what it looks like between
+/// readings.
 static float3 heatRamp(float t) {
     const float3 colors[8] = {
         float3(0.36, 0.52, 0.86),  // the faintest edge, on its way out
@@ -263,8 +286,14 @@ fragment float4 heatFragment(
         t = floor(t * u.bands) / max(u.bands - 1.0, 1.0);
     }
 
+    // Green at rest, and the heat ramp for as long as the note is sounding.
+    // The crossfade is the same per-pixel energy the ripple uses, so it
+    // follows the flash out of the blob it landed in and leaves the quiet
+    // shapes beside it green.
+    const float3 rgb = mix(restRamp(t), heatRamp(t), energy);
+
     // Dissolve into the ground at the bottom of the ramp rather than ending
     // on a visible edge.
     const float alpha = smoothstep(0.0, u.edge, v);
-    return float4(heatRamp(t), alpha);
+    return float4(rgb, alpha);
 }
