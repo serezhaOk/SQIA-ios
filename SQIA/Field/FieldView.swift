@@ -17,6 +17,9 @@ final class FieldScene {
     var playhead = -1
     var detail: Double = 1
     var alpha: Double = 1
+    /// How this field is drawn. One place, because the model has to hand the
+    /// same one to `Field.layout` when it works out what a finger touched.
+    var style: FieldStyle = .flat
     let animator = FieldAnimator()
 
     init(grid: NoteGrid = NoteGrid()) {
@@ -35,7 +38,8 @@ final class FieldScene {
             rect: rect,
             playhead: playhead,
             detail: detail,
-            alpha: alpha
+            alpha: alpha,
+            style: style
         )
     }
 }
