@@ -5,6 +5,7 @@
 // hands it to Metal. It makes no visual decisions of its own, which is why
 // the field can be tested without a device.
 
+import Foundation
 import Metal
 import MetalKit
 import SQIACore
@@ -20,6 +21,9 @@ struct FieldLayer {
     var playhead: Int = -1
     var detail: Double = 1
     var alpha: Double = 1
+    /// Dome or flat, dots or flowers. Hit-testing has to be given the same
+    /// one, or a finger lands in the wrong cell.
+    var style: FieldStyle = .flat
 }
 
 /// A slot's hairline border, which fades in as the mixer opens. It stays put
@@ -45,6 +49,10 @@ private struct FieldInstance {
     var halfSize: SIMD2<Float>
     var axis: SIMD2<Float>
     var kind: UInt32
+    /// Sprite only: which slot of the atlas.
+    var slot: UInt32 = 0
+    /// Sprite only: how far to pull the illustration toward `color`.
+    var tint: Float = 0
     var padding: UInt32 = 0
 }
 
@@ -67,6 +75,10 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    /// Flowers are composited over rather than added, so they need their own
+    /// blend state — and therefore their own pass.
+    private let spritePipeline: MTLRenderPipelineState
+    private let atlas: MTLTexture?
     private var instanceBuffers: [MTLBuffer] = []
     private let inFlight = DispatchSemaphore(value: maxFramesInFlight)
     private var bufferIndex = 0
@@ -74,6 +86,9 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// Scratch, reused every frame so the render loop allocates nothing.
     private var draws: [FieldDraw] = []
     private var instances: [FieldInstance] = []
+    /// The flowers, held apart from the rest because they are drawn in their
+    /// own pass. They go into the same buffer, after the others.
+    private var sprites: [FieldInstance] = []
 
     private var lastFrameTime: CFTimeInterval = 0
 
@@ -122,9 +137,24 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             return nil
         }
 
+        // Source over, premultiplied. A picture added to what is behind it
+        // loses its colours toward white, which is the whole of why the
+        // flowers cannot go through the pass above.
+        attachment?.sourceRGBBlendFactor = .one
+        attachment?.destinationRGBBlendFactor = .oneMinusSourceAlpha
+        attachment?.sourceAlphaBlendFactor = .one
+        attachment?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+
+        guard let spriteState = try? device.makeRenderPipelineState(descriptor: descriptor)
+        else { return nil }
+
         self.device = device
         commandQueue = queue
         pipeline = state
+        spritePipeline = spriteState
+        // Never nil: the fragment function declares the atlas, so something
+        // has to be bound even on a build where the asset went missing.
+        atlas = FieldSprites.atlas(device: device) ?? FieldSprites.blank(device: device)
         super.init()
 
         let length = MemoryLayout<FieldInstance>.stride * Self.maxInstances
@@ -134,6 +164,9 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             instanceBuffers.append(buffer)
         }
         instances.reserveCapacity(Self.maxInstances)
+        // Two fields are on screen at once while the mixer opens, and every
+        // sounding cell in each of them is a flower.
+        sprites.reserveCapacity(NoteGrid.count * 2)
         draws.reserveCapacity(Self.maxInstances)
     }
 
@@ -153,12 +186,21 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         inFlight.wait()
         bufferIndex = (bufferIndex + 1) % Self.maxFramesInFlight
         let buffer = instanceBuffers[bufferIndex]
+        let stride = MemoryLayout<FieldInstance>.stride
+        // One buffer, the field's own primitives first and the flowers after
+        // them, so the second pass is the same buffer read from an offset.
         let count = min(instances.count, Self.maxInstances)
+        let spriteCount = min(sprites.count, Self.maxInstances - count)
         if count > 0 {
             instances.withUnsafeBytes { source in
                 buffer.contents().copyMemory(
-                    from: source.baseAddress!,
-                    byteCount: count * MemoryLayout<FieldInstance>.stride)
+                    from: source.baseAddress!, byteCount: count * stride)
+            }
+        }
+        if spriteCount > 0 {
+            sprites.withUnsafeBytes { source in
+                buffer.contents().advanced(by: count * stride).copyMemory(
+                    from: source.baseAddress!, byteCount: spriteCount * stride)
             }
         }
 
@@ -176,16 +218,31 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             return
         }
 
-        if count > 0 {
+        if count > 0 || spriteCount > 0 {
             var viewport = SIMD2<Float>(
                 Float(view.drawableSize.width / view.contentScaleFactor),
                 Float(view.drawableSize.height / view.contentScaleFactor))
-            encoder.setRenderPipelineState(pipeline)
-            encoder.setVertexBuffer(buffer, offset: 0, index: 0)
             encoder.setVertexBytes(
                 &viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
-            encoder.drawPrimitives(
-                type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
+            // Bound for both passes: the fragment function declares the atlas
+            // whether or not the pass it is running for samples it.
+            encoder.setFragmentTexture(atlas, index: 0)
+
+            if count > 0 {
+                encoder.setRenderPipelineState(pipeline)
+                encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+                encoder.drawPrimitives(
+                    type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
+            }
+            // The flowers last, so they sit over the field's own light
+            // rather than under it.
+            if spriteCount > 0 {
+                encoder.setRenderPipelineState(spritePipeline)
+                encoder.setVertexBuffer(buffer, offset: count * stride, index: 0)
+                encoder.drawPrimitives(
+                    type: .triangleStrip, vertexStart: 0, vertexCount: 4,
+                    instanceCount: spriteCount)
+            }
         }
         encoder.endEncoding()
 
@@ -216,6 +273,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
     private func build(dt: Double) {
         instances.removeAll(keepingCapacity: true)
+        sprites.removeAll(keepingCapacity: true)
 
         // MTKView drives its delegate from the main run loop, so this is the
         // main thread; saying so lets the provider read main-actor state
@@ -236,7 +294,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                     x: Double(layer.rect.minX),
                     y: Double(layer.rect.minY),
                     width: Double(layer.rect.width),
-                    height: Double(layer.rect.height))
+                    height: Double(layer.rect.height),
+                    style: layer.style)
 
                 layer.animator.draws(
                     grid: layer.grid,
@@ -246,8 +305,12 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                     alpha: layer.alpha,
                     into: &draws)
 
-                for draw in draws where instances.count < Self.maxInstances {
-                    instances.append(instance(for: draw))
+                for draw in draws {
+                    if draw.kind == .sprite {
+                        sprites.append(instance(for: draw))
+                    } else if instances.count < Self.maxInstances {
+                        instances.append(instance(for: draw))
+                    }
                 }
             }
         }
@@ -290,6 +353,17 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                 halfSize: SIMD2(half, half),
                 axis: SIMD2(1, 0),
                 kind: 1)
+
+        case .sprite:
+            // The quad turns, and the picture in it turns with it.
+            return FieldInstance(
+                color: color,
+                center: SIMD2(Float(draw.x), Float(draw.y)),
+                halfSize: SIMD2(Float(draw.size), Float(draw.size)),
+                axis: SIMD2(Float(cos(draw.angle)), Float(sin(draw.angle))),
+                kind: 4,
+                slot: UInt32(max(0, draw.sprite)),
+                tint: Float(draw.tint))
 
         case .streak:
             let dx = draw.x1 - draw.x

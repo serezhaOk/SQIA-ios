@@ -5,6 +5,10 @@
 // the web's radial gradient written out as a curve, a streak is a capsule
 // that fades along its length. Blending is additive — the web draws the whole
 // field with `globalCompositeOperation = 'lighter'`, and light adds.
+//
+// A flower is the exception, and gets its own pass. Adding a picture to what
+// is behind it washes its colours out toward white; it is composited over
+// instead, premultiplied, which is how the atlas comes off the loader.
 
 #include <metal_stdlib>
 using namespace metal;
@@ -13,6 +17,11 @@ constant uint kindDot = 0;
 constant uint kindGlow = 1;
 constant uint kindStreak = 2;
 constant uint kindOutline = 3;
+constant uint kindSprite = 4;
+
+/// The flower atlas, four across and three down.
+constant uint kAtlasColumns = 4;
+constant uint kAtlasRows = 3;
 
 /// A slot outline is a hairline, the way the web strokes one.
 constant float kOutlineWidth = 1.0;
@@ -24,6 +33,10 @@ struct FieldInstance {
     /// Unit vector along the instance's local x. (1, 0) for anything round.
     float2 axis;
     uint kind;
+    /// Sprite only: which slot of the atlas to sample.
+    uint slot;
+    /// Sprite only: how far to pull the illustration toward `color`.
+    float tint;
     uint padding;
 };
 
@@ -33,6 +46,8 @@ struct VertexOut {
     float2 halfSize;
     float4 color;
     uint kind;
+    uint slot;
+    float tint;
 };
 
 vertex VertexOut fieldVertex(
@@ -65,6 +80,8 @@ vertex VertexOut fieldVertex(
     out.halfSize = instance.halfSize;
     out.color = instance.color;
     out.kind = instance.kind;
+    out.slot = instance.slot;
+    out.tint = instance.tint;
     return out;
 }
 
@@ -78,8 +95,30 @@ static float haloAlpha(float d) {
     return mix(0.07, 0.0, (d - 0.6) / 0.4);
 }
 
-fragment float4 fieldFragment(VertexOut in [[stage_in]]) {
+fragment float4 fieldFragment(
+    VertexOut in [[stage_in]],
+    texture2d<float> atlas [[texture(0)]]
+) {
     float alpha = in.color.a;
+
+    if (in.kind == kindSprite) {
+        constexpr sampler flowers(filter::linear, address::clamp_to_edge);
+
+        // Local -1…1 into the slot's corner of the atlas, held a texel short
+        // of the edges so linear filtering cannot reach into the neighbour.
+        const float2 within = clamp(in.uv * 0.5 + 0.5, 0.0, 1.0);
+        const float2 grid = float2(kAtlasColumns, kAtlasRows);
+        const float2 cell = float2(1.0) / grid;
+        const float2 corner = float2(in.slot % kAtlasColumns, in.slot / kAtlasColumns) * cell;
+        const float2 inset = 1.0 / float2(atlas.get_width(), atlas.get_height());
+        const float2 uv = corner + clamp(within * cell, inset, cell - inset);
+
+        // Premultiplied, so the colour wave has to be premultiplied too
+        // before it can be mixed in.
+        const float4 texel = atlas.sample(flowers, uv);
+        const float3 wash = in.color.rgb * texel.a;
+        return float4(mix(texel.rgb, wash, in.tint) * alpha, texel.a * alpha);
+    }
 
     if (in.kind == kindDot) {
         const float d = length(in.uv);

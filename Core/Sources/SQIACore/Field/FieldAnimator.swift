@@ -47,20 +47,30 @@ public struct FieldDraw: Sendable, Equatable {
         case dot
         case glow
         case streak
+        /// An illustration standing in for a sounding cell. Not the web's —
+        /// nothing in the fixtures produces one.
+        case sprite
     }
 
     public var kind: Kind
-    /// Dot and streak: the centre / the start. Glow: its top-left corner,
-    /// which is how the web places its sprite.
+    /// Dot, streak and sprite: the centre / the start. Glow: its top-left
+    /// corner, which is how the web places its sprite.
     public var x: Double
     public var y: Double
     /// Streak only: where it ends.
     public var x1: Double = 0
     public var y1: Double = 0
-    /// Dot: radius. Glow: width and height. Streak: line width.
+    /// Dot: radius. Glow: width and height. Streak: line width. Sprite: half
+    /// the side of the square it is drawn into.
     public var size: Double
     public var color: RGB
     public var alpha: Double
+    /// Sprite only: which illustration, and how far it has turned.
+    public var sprite: Int = -1
+    public var angle: Double = 0
+    /// Sprite only: how much of `color` to pull the illustration toward. Its
+    /// own colours are the point, so this stays small.
+    public var tint: Double = 0
 }
 
 public final class FieldAnimator {
@@ -279,6 +289,39 @@ public final class FieldAnimator {
                                 color: tinted.rgb.quantised,
                                 alpha: min(0.45, tinted.amp * 0.5) * a))
                     }
+                    continue
+                }
+
+                if layout.style.sprites {
+                    // One illustration, and nothing else. The halo and the
+                    // streak are the dot field's way of making a hit read as
+                    // a hit; a flower does that on its own, and both of them
+                    // over the top of it only smear it.
+                    //
+                    // Size is in cells rather than off the dot radius: an
+                    // illustration has to be big enough to be an
+                    // illustration. A hard hit overlaps its neighbours a
+                    // little, which is the point.
+                    let bloom = 1 + 0.45 * e
+                    let half = cell * (0.29 + 0.11 * v) * bloom * (0.97 + 0.03 * breathe)
+
+                    // A slow drift so the field is never quite still, offset
+                    // per cell so they do not turn in lockstep, and a kick
+                    // that spends itself as the flash decays.
+                    let turn =
+                        time * 0.35 + (Double(row) * 7 + Double(column) * 5) * 0.31 + e * 1.6
+
+                    out.append(
+                        FieldDraw(
+                            kind: .sprite,
+                            x: warped.x,
+                            y: warped.y,
+                            size: half,
+                            color: (tinted?.rgb ?? .white).quantised,
+                            alpha: min(1, 0.55 + 0.45 * v + 0.2 * e) * a,
+                            sprite: column,
+                            angle: turn,
+                            tint: min(1, tinted?.amp ?? 0) * 0.34))
                     continue
                 }
 

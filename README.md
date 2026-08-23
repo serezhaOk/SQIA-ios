@@ -91,8 +91,10 @@ SQIA/          The app: the AVFoundation shell around SQIACore, the design
                system, the screens. Xcode syncs this folder, so new files
                need no project edits.
 Support/       Info.plist, the entitlements, and the App Store copy
+art/           Source artwork — the twelve note illustrations the field
+               draws, before make-sprites.py packs them
 tools/         gen-fixtures (golden data from the web sources),
-               make-icon.py, make-fonts.py
+               make-icon.py, make-fonts.py, make-sprites.py
 ```
 
 ## Building
