@@ -80,3 +80,17 @@ enum Palette {
         static let clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
     }
 }
+
+extension Color {
+    /// 0xRRGGBB in sRGB — the form the CSS is written in, so the two can be
+    /// read side by side.
+    init(hex: UInt32, opacity: Double = 1) {
+        self.init(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
+            opacity: opacity
+        )
+    }
+}

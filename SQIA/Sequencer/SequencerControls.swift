@@ -91,8 +91,15 @@ struct BloomButtonStyle: ButtonStyle {
             // On the way down, not on the way up: a press that reports
             // itself when the finger lifts feels like a lag rather than a
             // button.
+            //
+            // `makeBody` carries no isolation of its own, and a hop to the
+            // main actor would put the buzz a frame behind the finger —
+            // which is the one thing haptics cannot afford. SwiftUI only
+            // ever calls this on the main thread, so say so, the same way
+            // the renderer does for its frame callback.
             .onChange(of: configuration.isPressed) { _, pressed in
-                if pressed { Haptics.tap() }
+                guard pressed else { return }
+                MainActor.assumeIsolated { Haptics.tap() }
             }
     }
 }
