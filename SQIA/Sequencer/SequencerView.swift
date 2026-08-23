@@ -420,7 +420,11 @@ struct SequencerView: View {
         )
         .opacity(model.eraseMode ? Palette.Sequencer.dimmed : 1)
         .disabled(model.eraseMode)
-        .accessibilityLabel("Shuffle track")
+        // "Shuffle", not "Shuffle track": the line it puts above the field
+        // says that, and two elements answering to one name is a thing
+        // VoiceOver has no way to tell apart.
+        .accessibilityLabel("Shuffle")
+        .accessibilityHint("Fills this track with a new pattern.")
     }
 
     private func announce(_ line: String) {
