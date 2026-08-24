@@ -31,10 +31,23 @@ public struct FieldStyle: Sendable, Equatable {
     /// they overlap.
     public var heat: Bool
 
-    public init(lensK: Double, swell: Bool, heat: Bool) {
+    /// Every number the heat field is drawn by.
+    ///
+    /// `.classic` carries the defaults, whose taper is the web's 0.72 and
+    /// 0.62 — so the parity suite measures the web whatever anybody does to
+    /// the panel, because the panel only ever edits the heat style's copy.
+    public var tuning: FieldTuning
+
+    public init(
+        lensK: Double,
+        swell: Bool,
+        heat: Bool,
+        tuning: FieldTuning = .current
+    ) {
         self.lensK = lensK
         self.swell = swell
         self.heat = heat
+        self.tuning = tuning
     }
 
     /// The web's field, which the fixtures are generated from. The dome
@@ -95,12 +108,14 @@ public enum Field {
         return (l.cx + ux * l.radius * f, l.cy + uy * l.radius * f)
     }
 
-    /// Local scale of the dome at a point — dots swell toward the centre.
+    /// Local scale at a point — marks are largest in the middle and taper
+    /// toward the rim.
     public static func warpScale(x: Double, y: Double, in l: FieldLayout) -> Double {
         guard l.style.swell else { return 1 }
         let ux = (x - l.cx) / l.radius
         let uy = (y - l.cy) / l.radius
-        return 0.72 + 0.62 * max(0, 1 - (ux * ux + uy * uy))
+        return l.style.tuning.rimScale
+            + l.style.tuning.centreLift * max(0, 1 - (ux * ux + uy * uy))
     }
 
     // ------------------------------------------------------------ inverse --

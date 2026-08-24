@@ -113,6 +113,12 @@ final class SequencerModel {
     private(set) var tuning = Tuning.tuned
     private static let tuningKey = "sqia.tuning"
 
+    /// What the field is drawn by, and the same argument: none of it can be
+    /// settled off a screen, and an evening of looking should survive a
+    /// relaunch.
+    private(set) var fieldTuning = FieldTuning.current
+    private static let fieldTuningKey = "sqia.fieldTuning"
+
     // ------------------------------------------------------------ the row --
     /// The project being played, and the thing that writes it. Every edit
     /// goes through `publishVoicing`, which is also where the save is asked
@@ -141,6 +147,12 @@ final class SequencerModel {
         {
             tuning = restored
         }
+        if let saved = UserDefaults.standard.string(forKey: Self.fieldTuningKey),
+            let restored = FieldTuning.decoded(from: saved)
+        {
+            fieldTuning = restored
+        }
+        applyFieldTuning()
 
         syncScenes()
         publishVoicing(saving: false)
@@ -527,6 +539,32 @@ final class SequencerModel {
     /// The finger came up. Whatever this touch was for, it is over.
     func endTouch() {
         touchSpent = false
+    }
+
+    // ------------------------------------------------------- the field's look --
+
+    /// Hand the panel's numbers to every field on screen.
+    ///
+    /// Most of them ride to the shader on the layer's style, which the
+    /// renderer already reads each frame. The return time is the exception:
+    /// the decay runs in `advance`, which has no layout in hand, so the
+    /// animator is told directly.
+    func setFieldTuning(_ next: FieldTuning) {
+        guard next != fieldTuning else { return }
+        fieldTuning = next
+        applyFieldTuning()
+        UserDefaults.standard.set(next.json, forKey: Self.fieldTuningKey)
+    }
+
+    func resetFieldTuning() {
+        setFieldTuning(.current)
+    }
+
+    private func applyFieldTuning() {
+        for scene in scenes {
+            scene.style.tuning = fieldTuning
+            scene.animator.bloomDecay = 1 / max(0.05, fieldTuning.returnSeconds)
+        }
     }
 
     // ------------------------------------------------------------- tuning --

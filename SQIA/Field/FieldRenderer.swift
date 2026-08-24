@@ -63,9 +63,9 @@ private struct FieldInstance {
 
 /// Matches `HeatUniforms` in FieldShaders.metal.
 ///
-/// Every number here is a look rather than a fact, and none of them can be
-/// judged anywhere but on a screen — so they sit together, named, instead of
-/// being spelled into the shader.
+/// None of these is a fact and none can be judged anywhere but on a screen,
+/// so they are not written down here at all: they come off the `FieldTuning`
+/// riding on the layer, which is what the panel edits.
 private struct HeatUniforms {
     var time: Float = 0
     /// How far the sum is stretched across the ramp. A single brush stroke
@@ -75,9 +75,6 @@ private struct HeatUniforms {
     var gain: Float = 0.26
     /// Below this the field dissolves into the ground.
     var edge: Float = 0.12
-    /// Rings per unit of intensity, and how fast they travel outward.
-    /// Broad and slow: the point is a colour spreading through a shape, and
-    /// a fast narrow ring reads as a flicker instead.
     var rippleFrequency: Float = 4.5
     var rippleSpeed: Float = 1.6
     var rippleAmplitude: Float = 0.16
@@ -85,6 +82,33 @@ private struct HeatUniforms {
     /// contour look. Off; the reference that settled the palette is smooth.
     var bands: Float = 0
     var padding: Float = 0
+
+    mutating func take(_ tuning: FieldTuning) {
+        gain = Float(tuning.gain)
+        edge = Float(tuning.edge)
+        rippleFrequency = Float(tuning.rippleFrequency)
+        rippleSpeed = Float(tuning.rippleSpeed)
+        rippleAmplitude = Float(tuning.rippleAmplitude)
+    }
+}
+
+/// The two ramps, flattened for the shader: rgb in xyz and the stop's place
+/// along the ramp in w, rest first and heat after it.
+private func rampStops(_ tuning: FieldTuning) -> [SIMD4<Float>] {
+    func packed(_ stops: [ColorStop], count: Int) -> [SIMD4<Float>] {
+        // The shader walks a fixed count. A panel mid-edit must not be able
+        // to hand it a short buffer.
+        let usable = stops.prefix(count)
+        var out = usable.map {
+            SIMD4<Float>(
+                Float($0.color.red / 255), Float($0.color.green / 255),
+                Float($0.color.blue / 255), Float($0.at))
+        }
+        while out.count < count { out.append(out.last ?? SIMD4<Float>(1, 1, 1, 1)) }
+        return out
+    }
+    return packed(tuning.rest, count: FieldTuning.restStops)
+        + packed(tuning.heat, count: FieldTuning.heatStops)
 }
 
 final class FieldRenderer: NSObject, MTKViewDelegate {
@@ -117,6 +141,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private let heatPipeline: MTLRenderPipelineState
     private var accumulation: MTLTexture?
     private var uniforms = HeatUniforms()
+    private var stops = rampStops(.current)
+    private var tuning = FieldTuning.current
     private var elapsed: Double = 0
     private var instanceBuffers: [MTLBuffer] = []
     private let inFlight = DispatchSemaphore(value: maxFramesInFlight)
@@ -330,6 +356,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             encoder.setFragmentTexture(summed, index: 0)
             encoder.setFragmentBytes(
                 &uniforms, length: MemoryLayout<HeatUniforms>.stride, index: 0)
+            encoder.setFragmentBytes(
+                stops, length: MemoryLayout<SIMD4<Float>>.stride * stops.count, index: 1)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
 
@@ -393,6 +421,14 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                     width: Double(layer.rect.width),
                     height: Double(layer.rect.height),
                     style: layer.style)
+
+                // Whatever the panel is holding. Every layer on screen is
+                // the same field, so the last one wins and they agree.
+                if layer.style.tuning != tuning {
+                    tuning = layer.style.tuning
+                    uniforms.take(tuning)
+                    stops = rampStops(tuning)
+                }
 
                 layer.animator.draws(
                     grid: layer.grid,

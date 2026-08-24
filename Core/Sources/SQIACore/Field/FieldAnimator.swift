@@ -86,7 +86,7 @@ public final class FieldAnimator {
     /// it cannot move. But a third of a second is the right length for a dot
     /// blinking and far too short for a colour spreading through a shape —
     /// the eye has barely found it before it is gone. So a struck cell keeps
-    /// a second reading that fades over about a second, and the heat style
+    /// a second reading that fades over its own time, and the heat style
     /// works from that one.
     public static let bloomDecay = 1.0
 
@@ -102,10 +102,6 @@ public final class FieldAnimator {
         RGB(80, 255, 130),  // green
         RGB(176, 107, 255),  // violet
     ]
-
-    /// The resting grid: the field's own colour, dim enough to be a place
-    /// to aim at rather than a mark.
-    public static let hint = RGB(198, 158, 48)
 
     public static let waveDuration = Double(waveStops.count) * waveStep
     public static let waveLife = waveDuration + waveRadius * waveRingDelay
@@ -129,6 +125,10 @@ public final class FieldAnimator {
 
     /// Per-cell flash energy again, on the slow clock the heat field reads.
     public private(set) var bloom = [Float](repeating: 0, count: NoteGrid.count)
+
+    /// How fast the slow reading fades, as a rate. Set from the tuning; the
+    /// decay runs in `advance`, which has no layout to read it off.
+    public var bloomDecay = FieldAnimator.bloomDecay
 
     private var waves: [Wave] = []
     private var sources: [Source] = []
@@ -169,7 +169,7 @@ public final class FieldAnimator {
         for i in waves.indices { waves[i].t += dt }
         if !waves.isEmpty { waves.removeAll { $0.t >= Self.waveLife } }
 
-        let slowFade = exp(-Self.bloomDecay * dt)
+        let slowFade = exp(-max(0.05, bloomDecay) * dt)
         for i in bloom.indices where bloom[i] > 0 {
             let next = Double(bloom[i]) * slowFade
             bloom[i] = next <= 0.002 ? 0 : Float(next)
@@ -298,6 +298,7 @@ public final class FieldAnimator {
                 if heat {
                     // The slow reading, not the dot field's. See `bloomDecay`.
                     let hot = Double(bloom[i])
+                    let tuning = layout.style.tuning
 
                     // Only a drawn note is a source. An empty cell would
                     // otherwise leave the screen blank, and a blank screen
@@ -312,8 +313,8 @@ public final class FieldAnimator {
                         out.append(
                             FieldDraw(
                                 kind: .dot, x: warped.x, y: warped.y,
-                                size: baseDot * 0.62 * lens * breathe,
-                                color: Self.hint, alpha: 0.16 * breathe * a))
+                                size: baseDot * tuning.dotScale * lens * breathe,
+                                color: tuning.hint, alpha: 0.16 * breathe * a))
                         continue
                     }
 
@@ -330,12 +331,12 @@ public final class FieldAnimator {
                     // further still, so the colour spreads outward rather
                     // than only brightening in place.
                     let reach =
-                        cell * (0.95 + 0.5 * v + 0.55 * hot) * lens
-                        * (0.97 + 0.03 * breathe)
+                        cell * (0.95 + 0.5 * v + tuning.spread * hot)
+                        * tuning.blobScale * lens * (0.97 + 0.03 * breathe)
                     out.append(
                         FieldDraw(
                             kind: .source, x: warped.x, y: warped.y,
-                            size: reach, color: Self.hint, alpha: weight * a,
+                            size: reach, color: tuning.hint, alpha: weight * a,
                             energy: min(1, hot)))
                     continue
                 }

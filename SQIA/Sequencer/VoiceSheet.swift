@@ -32,22 +32,22 @@ struct VoiceSheet: View {
                     Text("The patch drifts once a bar, and every note is rolled fresh.")
                 }
 
-                // Twenty-nine sliders with no explanation is a workbench,
-                // not a feature — it is how the sound got tuned, and it stays
-                // where the tuning happens. The numbers it produced ship as
-                // `Tuning.tuned`; the panel does not.
+                // A workbench, not a feature. The sound has one and is done
+                // with it — its numbers ship as `Tuning.tuned` — so the slot
+                // goes to the field, which is still being decided and can
+                // only be decided by looking at it.
                 #if DEBUG
                     Section {
                         NavigationLink {
-                            TuningView(model: model)
+                            FieldTuningView(model: model)
                         } label: {
-                            Label("Tuning", systemImage: "slider.horizontal.3")
+                            Label("Field", systemImage: "slider.horizontal.3")
                         }
                     } footer: {
                         Text(
-                            model.tuning.isDefault
-                                ? "Every voice is where it was tuned to."
-                                : "Moved from the tuning this build ships with.")
+                            model.fieldTuning.isDefault
+                                ? "The field is where it was last written down."
+                                : "Moved from the look this build ships with.")
                     }
                 #endif
             }

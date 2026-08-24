@@ -216,54 +216,29 @@ struct HeatUniforms {
     float padding;
 };
 
-/// What a note looks like when it is only drawn: brighter where the sum is
-/// thicker. This is the field at rest, and most of what is on screen most of
-/// the time.
-static float3 restRamp(float t) {
-    const float3 colors[5] = {
-        float3(0.30, 0.22, 0.05),  // the faintest edge, on its way out
-        float3(0.66, 0.48, 0.07),
-        float3(0.90, 0.72, 0.12),
-        float3(0.99, 0.88, 0.30),
-        float3(1.00, 0.97, 0.74),  // the core
-    };
-    const float stops[5] = { 0.0, 0.30, 0.55, 0.78, 1.0 };
-
-    float3 out = colors[0];
-    for (uint i = 1; i < 5; i++) {
-        out = mix(out, colors[i], smoothstep(stops[i - 1], stops[i], t));
+/// A ramp, read from the stops the tuning panel is holding rather than
+/// written in here. The look is somebody's decision, taken while watching
+/// the screen; the shader's job is to interpolate it.
+///
+/// Each stop is a colour in rgb and its place along the ramp in w.
+static float3 rampAt(constant float4 *stops, uint count, float t) {
+    float3 out = stops[0].rgb;
+    for (uint i = 1; i < count; i++) {
+        out = mix(out, stops[i].rgb, smoothstep(stops[i - 1].w, stops[i].w, t));
     }
     return out;
 }
 
-/// What a note looks like while it is sounding: a lone source is a cool
-/// speck, a cluster burns. Kept from the heat map — this is the reading the
-/// field is actually taking, and the green is what it looks like between
-/// readings.
-static float3 heatRamp(float t) {
-    const float3 colors[8] = {
-        float3(0.36, 0.52, 0.86),  // the faintest edge, on its way out
-        float3(0.20, 0.38, 0.83),  // blue
-        float3(0.42, 0.68, 0.90),  // lighter blue
-        float3(0.86, 0.93, 0.95),  // the pale turn
-        float3(0.99, 0.93, 0.62),  // pale yellow
-        float3(0.99, 0.80, 0.20),  // yellow
-        float3(0.96, 0.52, 0.12),  // orange
-        float3(0.87, 0.16, 0.10),  // the core
-    };
-    const float stops[8] = { 0.0, 0.22, 0.42, 0.55, 0.66, 0.78, 0.89, 1.0 };
-
-    float3 out = colors[0];
-    for (uint i = 1; i < 8; i++) {
-        out = mix(out, colors[i], smoothstep(stops[i - 1], stops[i], t));
-    }
-    return out;
-}
+/// How many stops each ramp carries. `FieldTuning` says the same thing on
+/// the other side, and the two have to agree.
+constant uint kRestStops = 5;
+constant uint kHeatStops = 8;
 
 fragment float4 heatFragment(
     ScreenOut in [[stage_in]],
     texture2d<float> field [[texture(0)]],
-    constant HeatUniforms &u [[buffer(0)]]
+    constant HeatUniforms &u [[buffer(0)]],
+    constant float4 *stops [[buffer(1)]]
 ) {
     constexpr sampler linearClamp(filter::linear, address::clamp_to_edge);
     const float2 sum = field.sample(linearClamp, in.uv).rg;
@@ -290,7 +265,12 @@ fragment float4 heatFragment(
     // The crossfade is the same per-pixel energy the ripple uses, so it
     // follows the flash out of the blob it landed in and leaves the quiet
     // shapes beside it green.
-    const float3 rgb = mix(restRamp(t), heatRamp(t), energy);
+    // Drawn, and sounding. The rest ramp comes first in the buffer and the
+    // heat ramp after it.
+    const float3 rgb = mix(
+        rampAt(stops, kRestStops, t),
+        rampAt(stops + kRestStops, kHeatStops, t),
+        energy);
 
     // Dissolve into the ground at the bottom of the ramp rather than ending
     // on a visible edge.
