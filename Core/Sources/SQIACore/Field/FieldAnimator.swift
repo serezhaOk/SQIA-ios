@@ -13,7 +13,9 @@
 
 import Foundation
 
-public struct RGB: Sendable, Equatable {
+/// Codable is declared here rather than beside the tuning that wants it:
+/// Swift only synthesises it in the file the type is declared in.
+public struct RGB: Sendable, Equatable, Codable {
     public var red: Double
     public var green: Double
     public var blue: Double

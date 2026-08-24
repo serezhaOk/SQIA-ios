@@ -151,8 +151,6 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     }
 }
 
-extension RGB: Codable {}
-
 extension RGB {
     /// `RRGGBB`, the form colours get typed in.
     public var hex: String {
