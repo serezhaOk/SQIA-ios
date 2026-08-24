@@ -354,6 +354,49 @@ struct FieldTests {
         #expect(sources.contains { $0.energy == 0 })
     }
 
+    /// The dot field blinks; the heat field spreads. Two very different
+    /// lengths of time, off one flash.
+    @Test("The heat field's flash outlives the dot field's")
+    func bloomOutlastsEnergy() {
+        let animator = FieldAnimator()
+        animator.flash(row: 4, column: 4, velocity: 1)
+        for _ in 0..<60 { animator.advance(by: 1 / 60) }
+
+        let i = 4 * NoteGrid.columns + 4
+        // A second on, the dot field has all but forgotten the note and the
+        // heat field is still better than a third lit.
+        #expect(Double(animator.bloom[i]) > 0.3)
+        #expect(Double(animator.bloom[i]) > 5 * Double(animator.energy[i]))
+    }
+
+    @Test("Resetting clears the slow reading too")
+    func resettingClearsBloom() {
+        let animator = FieldAnimator()
+        animator.flash(row: 4, column: 4, velocity: 1)
+        animator.advance(by: 1 / 60)
+        animator.reset()
+        #expect(animator.bloom.allSatisfy { $0 == 0 })
+    }
+
+    /// A grid of dots all one size reads as a weight sitting on the screen.
+    @Test("The resting grid tapers toward the rim")
+    func restingGridTapers() {
+        let animator = FieldAnimator()
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: .heat)
+        let dots = animator.draws(grid: NoteGrid(), layout: layout, playhead: -1)
+        #expect(dots.count == NoteGrid.count)
+
+        // Row-major, one dot per cell on an empty grid.
+        let corner = dots[0]
+        let middle = dots[8 * NoteGrid.columns + 6]
+        #expect(corner.size < middle.size)
+
+        // The breathing is a ±14% wobble and the taper is far wider than
+        // that, so no cell near the rim can out-measure one near the middle.
+        let rim = dots[(NoteGrid.rows - 1) * NoteGrid.columns + NoteGrid.columns - 1]
+        #expect(rim.size < middle.size)
+    }
+
     @Test("The classic field sums nothing")
     func classicHasNoSources() {
         let animator = FieldAnimator()

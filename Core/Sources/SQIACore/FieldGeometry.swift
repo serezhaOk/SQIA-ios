@@ -20,7 +20,10 @@ import Foundation
 public struct FieldStyle: Sendable, Equatable {
     /// Dome strength. Zero lies flat.
     public var lensK: Double
-    /// Whether dots swell toward the centre of the dome.
+    /// Whether marks taper toward the rim. Independent of the dome: with
+    /// `lensK` at zero nothing moves, but a grid of dots all one size reads
+    /// as a weight sitting on the screen rather than a surface receding
+    /// from you.
     public var swell: Bool
     /// Whether a sounding cell is a source in a summed field rather than a
     /// dot with its own halo and streak. Sources that fall close together
@@ -38,9 +41,10 @@ public struct FieldStyle: Sendable, Equatable {
     /// strength is the web's `LENS_K`.
     public static let classic = FieldStyle(lensK: 0.19, swell: true, heat: false)
 
-    /// Flat, and every note a source. The dome would shear the blobs, and a
-    /// heat map is read by shape.
-    public static let heat = FieldStyle(lensK: 0, swell: false, heat: true)
+    /// Flat, and every note a source. The dome would shear the blobs — a
+    /// heat map is read by shape — but the taper stays: without it the grid
+    /// sits on the screen as one flat weight.
+    public static let heat = FieldStyle(lensK: 0, swell: true, heat: true)
 }
 
 /// Where the field sits inside a box, in points.

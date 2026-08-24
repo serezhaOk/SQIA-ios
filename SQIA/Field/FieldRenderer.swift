@@ -75,9 +75,12 @@ private struct HeatUniforms {
     var gain: Float = 0.26
     /// Below this the field dissolves into the ground.
     var edge: Float = 0.12
-    var rippleFrequency: Float = 6
-    var rippleSpeed: Float = 3
-    var rippleAmplitude: Float = 0.12
+    /// Rings per unit of intensity, and how fast they travel outward.
+    /// Broad and slow: the point is a colour spreading through a shape, and
+    /// a fast narrow ring reads as a flicker instead.
+    var rippleFrequency: Float = 4.5
+    var rippleSpeed: Float = 1.6
+    var rippleAmplitude: Float = 0.16
     /// Above zero the ramp is quantised into this many bands — the stepped
     /// contour look. Off; the reference that settled the palette is smooth.
     var bands: Float = 0

@@ -216,16 +216,16 @@ struct HeatUniforms {
     float padding;
 };
 
-/// What a note looks like when it is only drawn: green, and brighter where
-/// the sum is thicker. This is the field at rest, and most of what is on
-/// screen most of the time.
+/// What a note looks like when it is only drawn: brighter where the sum is
+/// thicker. This is the field at rest, and most of what is on screen most of
+/// the time.
 static float3 restRamp(float t) {
     const float3 colors[5] = {
-        float3(0.13, 0.34, 0.16),  // the faintest edge, on its way out
-        float3(0.22, 0.66, 0.26),
-        float3(0.35, 0.85, 0.34),
-        float3(0.55, 0.97, 0.45),
-        float3(0.82, 1.00, 0.72),  // the core
+        float3(0.30, 0.22, 0.05),  // the faintest edge, on its way out
+        float3(0.66, 0.48, 0.07),
+        float3(0.90, 0.72, 0.12),
+        float3(0.99, 0.88, 0.30),
+        float3(1.00, 0.97, 0.74),  // the core
     };
     const float stops[5] = { 0.0, 0.30, 0.55, 0.78, 1.0 };
 

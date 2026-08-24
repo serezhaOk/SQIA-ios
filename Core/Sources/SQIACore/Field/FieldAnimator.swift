@@ -80,6 +80,15 @@ public final class FieldAnimator {
     public static let push = 0.62  // in cell units
     public static let pushRadius = 2.4  // in cell units
     public static let decay = 3.1  // energy falloff per second
+    /// The heat field's own falloff, and much slower than the dot field's.
+    ///
+    /// `decay` is the web's, and the fixtures are generated against it, so
+    /// it cannot move. But a third of a second is the right length for a dot
+    /// blinking and far too short for a colour spreading through a shape —
+    /// the eye has barely found it before it is gone. So a struck cell keeps
+    /// a second reading that fades over about a second, and the heat style
+    /// works from that one.
+    public static let bloomDecay = 1.0
 
     // The colour wave: a played note strobes yellow, green, violet in hard
     // steps and snaps back to white, and the flicker spreads ring by ring.
@@ -94,9 +103,9 @@ public final class FieldAnimator {
         RGB(176, 107, 255),  // violet
     ]
 
-    /// The resting grid: the field's own green, dim enough to be a place
+    /// The resting grid: the field's own colour, dim enough to be a place
     /// to aim at rather than a mark.
-    public static let hint = RGB(96, 206, 104)
+    public static let hint = RGB(198, 158, 48)
 
     public static let waveDuration = Double(waveStops.count) * waveStep
     public static let waveLife = waveDuration + waveRadius * waveRingDelay
@@ -118,6 +127,9 @@ public final class FieldAnimator {
     /// that is what the web stores it in, and the rounding shows.
     public private(set) var energy = [Float](repeating: 0, count: NoteGrid.count)
 
+    /// Per-cell flash energy again, on the slow clock the heat field reads.
+    public private(set) var bloom = [Float](repeating: 0, count: NoteGrid.count)
+
     private var waves: [Wave] = []
     private var sources: [Source] = []
     private var time: Double = 0
@@ -136,12 +148,14 @@ public final class FieldAnimator {
         let i = row * NoteGrid.columns + column
         let amp = 0.55 + 0.45 * velocity
         energy[i] = max(energy[i], Float(amp))
+        bloom[i] = max(bloom[i], Float(amp))
         if waves.count >= Self.maxWaves { waves.removeFirst() }
         waves.append(Wave(row: row, column: column, t: 0, amp: amp))
     }
 
     public func reset() {
         for i in energy.indices { energy[i] = 0 }
+        for i in bloom.indices { bloom[i] = 0 }
         waves.removeAll(keepingCapacity: true)
         sources.removeAll(keepingCapacity: true)
         time = 0
@@ -154,6 +168,12 @@ public final class FieldAnimator {
 
         for i in waves.indices { waves[i].t += dt }
         if !waves.isEmpty { waves.removeAll { $0.t >= Self.waveLife } }
+
+        let slowFade = exp(-Self.bloomDecay * dt)
+        for i in bloom.indices where bloom[i] > 0 {
+            let next = Double(bloom[i]) * slowFade
+            bloom[i] = next <= 0.002 ? 0 : Float(next)
+        }
 
         let fade = exp(-Self.decay * dt)
         sources.removeAll(keepingCapacity: true)
@@ -276,15 +296,23 @@ public final class FieldAnimator {
                 let inkColour = colour.truncated
 
                 if heat {
+                    // The slow reading, not the dot field's. See `bloomDecay`.
+                    let hot = Double(bloom[i])
+
                     // Only a drawn note is a source. An empty cell would
                     // otherwise leave the screen blank, and a blank screen
                     // is one you cannot aim at — so it gets a dot far too
                     // faint to read as a mark, outside the field entirely.
+                    //
+                    // `lens` tapers it toward the rim. A grid of dots all
+                    // one size reads as a weight sitting on the screen; the
+                    // same grid falling away at the edges reads as a surface,
+                    // and the field stops fighting the controls around it.
                     if v <= 0 {
                         out.append(
                             FieldDraw(
                                 kind: .dot, x: warped.x, y: warped.y,
-                                size: baseDot * 0.62 * breathe,
+                                size: baseDot * 0.62 * lens * breathe,
                                 color: Self.hint, alpha: 0.16 * breathe * a))
                         continue
                     }
@@ -294,17 +322,21 @@ public final class FieldAnimator {
                     // nothing adds to it, and neighbours pile up into a core.
                     // A struck note leans on the sum for as long as the
                     // flash lasts.
-                    let weight = v * (1 + 0.9 * e)
+                    let weight = v * (1 + 0.9 * hot)
                     // Generous on purpose. The brush bleeds into the cells
                     // around the one under the finger, so a stroke lays down
                     // a run of sources whose falloffs have to overlap enough
-                    // to close up into one shape.
-                    let reach = cell * (0.95 + 0.5 * v) * (0.97 + 0.03 * breathe)
+                    // to close up into one shape. A struck one reaches
+                    // further still, so the colour spreads outward rather
+                    // than only brightening in place.
+                    let reach =
+                        cell * (0.95 + 0.5 * v + 0.55 * hot) * lens
+                        * (0.97 + 0.03 * breathe)
                     out.append(
                         FieldDraw(
                             kind: .source, x: warped.x, y: warped.y,
                             size: reach, color: Self.hint, alpha: weight * a,
-                            energy: min(1, e)))
+                            energy: min(1, hot)))
                     continue
                 }
 
