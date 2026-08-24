@@ -226,7 +226,6 @@ struct SequencerView: View {
                 .overlay(alignment: .topLeading) { chips }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .top) { meter }
     }
 
     // --------------------------------------------------------------- mixer --
@@ -296,26 +295,6 @@ struct SequencerView: View {
             .accessibilityLabel(model.isMuted(index) ? "Unmute" : "Mute")
             .accessibilityAddTraits(model.isMuted(index) ? [.isSelected] : [])
         }
-    }
-
-    /// Where the time goes, in a Run build only. AUD is the audio thread's
-    /// share of realtime — under 0.2× there is room to spare, near 1.0× and
-    /// nothing can help. UI is what one frame costs the main thread, which
-    /// the audio thread has to share a phone with.
-    @ViewBuilder
-    private var meter: some View {
-        #if DEBUG
-            Text(model.renderLoad)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .foregroundStyle(Palette.Sequencer.background)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(Palette.Sequencer.label.opacity(0.9), in: Capsule())
-                .padding(.horizontal, 8)
-                .allowsHitTesting(false)
-        #endif
     }
 
     // -------------------------------------------------------------- footer --

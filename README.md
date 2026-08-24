@@ -72,11 +72,13 @@ reach a package target. Unoptimised, the same passage costs five times as
 much, and the audio thread's deadline does not care which configuration is
 being built. A Run build is therefore a fair test of the sound.
 
-On the device, a Debug build floats a meter over the field: the audio load,
-the voices sounding, what a frame costs the main thread, and the frame rate
-actually being delivered, with dropped notes beside them when there are any.
-It is `#if DEBUG` only, so it is not in anything that ships — and it stays,
-because it is the instrument for the next time something crackles.
+The renderer still measures itself — what a frame costs the main thread and
+how many are actually being delivered — but nothing shows those numbers now.
+A meter floated over the field while the sound was being tuned; it sat on top
+of the picture, which is what is being worked on, so it came off. The
+measurement stays where it was, so putting a readout back is a small view
+rather than a hunt: `FieldRenderer.onScreen` is the way to reach it, and the
+mixer carries its own load, sounding voices and dropped-note counts.
 
 ## Layout
 

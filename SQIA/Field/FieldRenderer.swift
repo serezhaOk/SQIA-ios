@@ -168,9 +168,13 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private var secondStarted: CFTimeInterval = 0
 
     #if DEBUG
-        /// The renderer currently on screen, so the debug readout can ask it
-        /// what a frame costs without the model having to own it. Debug
-        /// scaffolding for the crackle hunt; it goes when the readout does.
+        /// The renderer currently on screen, so anything that wants to know
+        /// what a frame costs can ask it without the model having to own it.
+        ///
+        /// Nothing reads this at the moment: the meter that used to float
+        /// over the field is gone, because it sat on top of the picture being
+        /// worked on. The measuring stays — it is the instrument for the next
+        /// time something crackles, and a readout is a small view away.
         @MainActor static weak var onScreen: FieldRenderer?
     #endif
 
