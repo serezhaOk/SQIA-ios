@@ -111,6 +111,18 @@ final class SequencerModel {
     private(set) var lightBackground = false
     private static let lightBackgroundKey = "sqia.lightBackground"
 
+    /// Whether to draw the dot field instead — the web's own look, dome and
+    /// all, which the heat field replaced.
+    ///
+    /// It is not a fallback for anything: the heat field is what ships. It
+    /// is here because the dot field is the thing the parity fixtures were
+    /// generated against, and being able to put it back on screen in a tap
+    /// is worth more than a comment saying it used to be there. `.classic`
+    /// keeps its own tuning — the panel edits the heat style's copy and
+    /// nothing else.
+    private(set) var dotField = false
+    private static let dotFieldKey = "sqia.dotField"
+
     /// The colours the screen is wearing. The mixer stands on its own
     /// ground, so the panels have something to lie on.
     var palette: SequencerPalette {
@@ -152,6 +164,7 @@ final class SequencerModel {
             fieldTuning = restored
         }
         lightBackground = UserDefaults.standard.bool(forKey: Self.lightBackgroundKey)
+        dotField = UserDefaults.standard.bool(forKey: Self.dotFieldKey)
         applyFieldTuning()
 
         syncScenes()
@@ -525,9 +538,25 @@ final class SequencerModel {
         UserDefaults.standard.set(on, forKey: Self.lightBackgroundKey)
     }
 
+    /// Put the dot field back, or take it away again.
+    ///
+    /// The style reaches hit-testing as well as drawing — `frame(in:dt:)`
+    /// hands the active scene's style to `Field.layout` — so the dome comes
+    /// back under a finger at the same moment it comes back on screen.
+    func setDotField(_ on: Bool) {
+        guard on != dotField else { return }
+        dotField = on
+        applyFieldTuning()
+        UserDefaults.standard.set(on, forKey: Self.dotFieldKey)
+    }
+
     private func applyFieldTuning() {
         for scene in scenes {
-            scene.style.tuning = fieldTuning
+            // The panel's numbers go to the heat style only. `.classic` is
+            // the web's field and carries the web's own, which is what the
+            // parity fixtures are measured against.
+            scene.style = dotField ? .classic : .heat
+            if !dotField { scene.style.tuning = fieldTuning }
             scene.animator.bloomDecay = 1 / max(0.05, fieldTuning.returnSeconds)
         }
     }

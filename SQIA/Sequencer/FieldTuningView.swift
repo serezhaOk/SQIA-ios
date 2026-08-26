@@ -94,6 +94,24 @@ struct FieldTuningView: View {
 
             Section {
                 Toggle(
+                    "The old dot field",
+                    isOn: Binding(
+                        get: { model.dotField },
+                        set: { model.setDotField($0) }))
+            } header: {
+                Text("Renderer")
+            } footer: {
+                Text(
+                    """
+                    The look this one replaced: a dot, a halo and a streak per \
+                    note, on the web's dome. It is the field the parity \
+                    fixtures were generated against, and nothing below \
+                    touches it — it carries the web's own numbers.
+                    """)
+            }
+
+            Section {
+                Toggle(
                     "Light ground",
                     isOn: Binding(
                         get: { model.lightBackground },
