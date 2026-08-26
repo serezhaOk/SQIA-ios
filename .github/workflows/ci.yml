@@ -85,6 +85,13 @@ jobs:
           raise SystemExit("no iPhone simulator on this runner")
           PICK
 
+      # Serially, on the simulator picked above rather than on clones of it.
+      # Every smoke failure so far has been a clone that would not start —
+      # `Failed to launch com.serezhaok.sqia.uitests.xctrunner`, or a
+      # DTServiceHub that could not resume the process it had just launched —
+      # and not one assertion among them. Five tests do not need the
+      # parallelism, and cloned simulators on a loaded runner evidently
+      # cannot be relied on to boot.
       - name: Smoke test on ${{ steps.sim.outputs.name }}
         run: |
           set -o pipefail
@@ -93,6 +100,7 @@ jobs:
             -scheme SQIA \
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -configuration Debug \
+            -parallel-testing-enabled NO \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee /tmp/xcodebuild.log | xcbeautify
 
