@@ -81,28 +81,6 @@ final class SequencerModel {
     @ObservationIgnored private let voicing = VoicingBox()
     @ObservationIgnored private let random = SystemRandomSource()
 
-    #if DEBUG
-        /// What the render thread is costing, live. A crackle is a deadline
-        /// missed on the device, and nothing on a desk can see that happen —
-        /// so while the sound is being tuned, the number is on screen. Debug
-        /// builds only; it is not part of the app.
-        private(set) var renderLoad = ""
-        @ObservationIgnored private var loadTimer: Timer?
-
-        /// When the binary now running was built. A stale build and a build
-        /// that did not fix anything look exactly alike from across a room,
-        /// and this is the difference.
-        private static let builtAt: String = {
-            guard
-                let path = Bundle.main.executablePath,
-                let date = try? FileManager.default.attributesOfItem(atPath: path)[
-                    .modificationDate] as? Date
-            else { return "?" }
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: date)
-        }()
-    #endif
 
     /// What the panel has set. The transport reads its own copy through the
     /// box; this one is what the sliders are bound to.
@@ -112,6 +90,45 @@ final class SequencerModel {
     /// kind of bug.
     private(set) var tuning = Tuning.tuned
     private static let tuningKey = "sqia.tuning"
+
+    /// What the field is drawn by, and the same argument: none of it can be
+    /// settled off a screen, and an evening of looking should survive a
+    /// relaunch.
+    private(set) var fieldTuning = FieldTuning.current
+    /// Numbered, because `edge` changed what it means: it used to be the top
+    /// of a fade running up from nothing and it now names the contour
+    /// itself. A set saved under the old meaning would decode without
+    /// complaint and draw something nobody chose, so it is left where it is
+    /// and this build starts from its own.
+    private static let fieldTuningKey = "sqia.fieldTuning.2"
+
+    /// Whether the screen stands on a light ground. Kept out of
+    /// `FieldTuning` on purpose: that one is pasted in and out as JSON, and
+    /// Swift's synthesised decoder does not fall back on a property's default
+    /// value — so a key added here would make every tuning written down
+    /// before today unreadable. This is a switch about the screen anyway,
+    /// not a number the field is drawn by.
+    private(set) var lightBackground = false
+    private static let lightBackgroundKey = "sqia.lightBackground"
+
+    /// Whether to draw the dot field instead — the web's own look, dome and
+    /// all, which the heat field replaced.
+    ///
+    /// It is not a fallback for anything: the heat field is what ships. It
+    /// is here because the dot field is the thing the parity fixtures were
+    /// generated against, and being able to put it back on screen in a tap
+    /// is worth more than a comment saying it used to be there. `.classic`
+    /// keeps its own tuning — the panel edits the heat style's copy and
+    /// nothing else.
+    private(set) var dotField = false
+    private static let dotFieldKey = "sqia.dotField"
+
+    /// The colours the screen is wearing. The mixer stands on its own
+    /// ground, so the panels have something to lie on.
+    var palette: SequencerPalette {
+        let base: SequencerPalette = lightBackground ? .light : .dark
+        return showingMixer ? base.opened : base
+    }
 
     // ------------------------------------------------------------ the row --
     /// The project being played, and the thing that writes it. Every edit
@@ -141,6 +158,14 @@ final class SequencerModel {
         {
             tuning = restored
         }
+        if let saved = UserDefaults.standard.string(forKey: Self.fieldTuningKey),
+            let restored = FieldTuning.decoded(from: saved)
+        {
+            fieldTuning = restored
+        }
+        lightBackground = UserDefaults.standard.bool(forKey: Self.lightBackgroundKey)
+        dotField = UserDefaults.standard.bool(forKey: Self.dotFieldKey)
+        applyFieldTuning()
 
         syncScenes()
         publishVoicing(saving: false)
@@ -226,7 +251,6 @@ final class SequencerModel {
         sequencer.bpm = state.bpm
         sequencer.start()
         isRunning = true
-        startWatchingLoad()
     }
 
     func stop() {
@@ -234,61 +258,13 @@ final class SequencerModel {
         sequencer.stop()
         engine.stop()
         isRunning = false
-        stopWatchingLoad()
         for scene in scenes { scene.playhead = -1 }
-    }
-
-    // ----------------------------------------------------------- the readout --
-
-    private func startWatchingLoad() {
-        #if DEBUG
-            guard loadTimer == nil else { return }
-            // Something on screen straight away, so an empty meter reads as
-            // "not measured yet" rather than "this build has no meter".
-            renderLoad = "\(Self.builtAt)  ·  AUD —"
-            let timer = Timer(timeInterval: 0.5, repeats: true) {
-                [weak self] _ in
-                // Scheduled on the main run loop, so this is the main thread.
-                MainActor.assumeIsolated {
-                    guard let self else { return }
-                    let mixer = self.engine.mixer
-                    // audio · voices · frame · fps, and the faults only when
-                    // there are any.
-                    var text = String(
-                        format: "%@  ·  AUD %.2f×  ·  %d voi",
-                        Self.builtAt, mixer.renderLoad, mixer.soundingVoices)
-                    if let renderer = FieldRenderer.onScreen {
-                        text += String(
-                            format: "  ·  UI %.1f ms  ·  %.0f fps",
-                            renderer.frameCost, renderer.framesPerSecond)
-                    }
-                    let dropped = mixer.droppedNoteCount
-                    if dropped > 0 { text += "  ·  \(dropped) cut" }
-                    let blowups = mixer.recoveredBlowups
-                    if blowups > 0 { text += "  ·  \(blowups) NaN" }
-                    self.renderLoad = text
-                }
-            }
-            // Common mode, so the number keeps moving while a finger is down
-            // — which is exactly when the load is worth watching.
-            RunLoop.main.add(timer, forMode: .common)
-            loadTimer = timer
-        #endif
-    }
-
-    private func stopWatchingLoad() {
-        #if DEBUG
-            loadTimer?.invalidate()
-            loadTimer = nil
-            renderLoad = ""
-        #endif
     }
 
     private func handleEngineStopped() {
         guard isRunning else { return }
         sequencer.stop()
         isRunning = false
-        stopWatchingLoad()
         for scene in scenes { scene.playhead = -1 }
     }
 
@@ -381,9 +357,12 @@ final class SequencerModel {
     /// animation so that it runs on the display link the field already runs
     /// on — two clocks over a third of a second would visibly disagree.
     func frame(in rect: CGRect, dt: Double) -> FieldFrame {
+        // The same style the scenes draw with, or a finger would be measured
+        // against a field that is not the one on screen.
         layout = Field.layout(
             x: Double(rect.minX), y: Double(rect.minY),
-            width: Double(rect.width), height: Double(rect.height))
+            width: Double(rect.width), height: Double(rect.height),
+            style: scenes[state.activeTrackIndex].style)
         stageSize = rect.size
 
         mixerTravel = MixerLayout.advance(
@@ -410,6 +389,11 @@ final class SequencerModel {
 
             var layer = scenes[index].layer(
                 in: CGRect(x: panel.x, y: panel.y, width: panel.width, height: panel.height))
+            // A panel is a whole field squeezed into a card, so it keeps what
+            // it holds. Cut to the travelling rect rather than to the slot it
+            // is heading for: on the way in, the field is still most of the
+            // screen and it should be cut where it is, not where it will be.
+            layer.clipped = true
             layer.alpha = alpha
             layer.detail = MixerLayout.detail(active: isActive, eased: t)
             frame.layers.append(layer)
@@ -524,6 +508,57 @@ final class SequencerModel {
     /// The finger came up. Whatever this touch was for, it is over.
     func endTouch() {
         touchSpent = false
+    }
+
+    // ------------------------------------------------------- the field's look --
+
+    /// Hand the panel's numbers to every field on screen.
+    ///
+    /// Most of them ride to the shader on the layer's style, which the
+    /// renderer already reads each frame. The return time is the exception:
+    /// the decay runs in `advance`, which has no layout in hand, so the
+    /// animator is told directly.
+    func setFieldTuning(_ next: FieldTuning) {
+        guard next != fieldTuning else { return }
+        fieldTuning = next
+        applyFieldTuning()
+        UserDefaults.standard.set(next.json, forKey: Self.fieldTuningKey)
+    }
+
+    func resetFieldTuning() {
+        setFieldTuning(.current)
+    }
+
+    /// Turn the screen over. Nothing about the field itself changes — the
+    /// ramps are the panel's, and a look tuned against black will want
+    /// retyping against paper.
+    func setLightBackground(_ on: Bool) {
+        guard on != lightBackground else { return }
+        lightBackground = on
+        UserDefaults.standard.set(on, forKey: Self.lightBackgroundKey)
+    }
+
+    /// Put the dot field back, or take it away again.
+    ///
+    /// The style reaches hit-testing as well as drawing — `frame(in:dt:)`
+    /// hands the active scene's style to `Field.layout` — so the dome comes
+    /// back under a finger at the same moment it comes back on screen.
+    func setDotField(_ on: Bool) {
+        guard on != dotField else { return }
+        dotField = on
+        applyFieldTuning()
+        UserDefaults.standard.set(on, forKey: Self.dotFieldKey)
+    }
+
+    private func applyFieldTuning() {
+        for scene in scenes {
+            // The panel's numbers go to the heat style only. `.classic` is
+            // the web's field and carries the web's own, which is what the
+            // parity fixtures are measured against.
+            scene.style = dotField ? .classic : .heat
+            if !dotField { scene.style.tuning = fieldTuning }
+            scene.animator.bloomDecay = 1 / max(0.05, fieldTuning.returnSeconds)
+        }
     }
 
     // ------------------------------------------------------------- tuning --
@@ -648,11 +683,23 @@ final class SequencerModel {
         setTempo(state.bpm + delta)
     }
 
-    /// A drag that never moved is a tap, and a tap bumps.
-    func endTempoDrag() {
-        if !tempoDragMoved { setTempo(Tempo.bump(state.bpm)) }
+    /// Ends a scrub and says whether it was one.
+    ///
+    /// A drag that never moved is a tap, and the design gives a tap to the
+    /// wheel rather than to the old bump-and-wrap — reaching a tempo by
+    /// tapping it upward eleven times is a web gesture. The view decides
+    /// what to open; the model only reports which gesture happened.
+    @discardableResult
+    func endTempoDrag() -> Bool {
+        let wasTap = !tempoDragMoved
         tempoDragStart = nil
         tempoDragMoved = false
+        return wasTap
+    }
+
+    /// Straight to a tempo, for the wheel.
+    func selectTempo(_ value: Double) {
+        setTempo(value)
     }
 
     private func setTempo(_ value: Double) {

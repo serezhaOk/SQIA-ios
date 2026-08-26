@@ -7,8 +7,61 @@
 //
 // Port of the geometry in the web app's src/grid.ts. Pure functions here;
 // the renderer owns the caching.
+//
+// The dome is a choice rather than a fact, so it is carried in a `FieldStyle`
+// on the layout instead of being wired into the arithmetic. Everything that
+// already had a layout in hand therefore keeps working unchanged, and the
+// parity suite still measures the web's geometry because that is what
+// `.classic` is.
 
 import Foundation
+
+/// How a field is drawn.
+public struct FieldStyle: Sendable, Equatable {
+    /// Dome strength. Zero lies flat.
+    public var lensK: Double
+    /// Whether marks taper toward the rim. Independent of the dome: with
+    /// `lensK` at zero nothing moves, but a grid of dots all one size reads
+    /// as a weight sitting on the screen rather than a surface receding
+    /// from you.
+    public var swell: Bool
+    /// Whether a sounding cell is a source in a summed field rather than a
+    /// dot with its own halo and streak. Sources that fall close together
+    /// add up and are drawn as one shape; dots never merge, however much
+    /// they overlap.
+    public var heat: Bool
+
+    /// Every number the heat field is drawn by.
+    ///
+    /// `.classic` is pinned to `.web` rather than to whatever the panel last
+    /// wrote, so the parity suite goes on measuring the web's taper however
+    /// far the heat style is tuned away from it.
+    public var tuning: FieldTuning
+
+    public init(
+        lensK: Double,
+        swell: Bool,
+        heat: Bool,
+        tuning: FieldTuning = .current
+    ) {
+        self.lensK = lensK
+        self.swell = swell
+        self.heat = heat
+        self.tuning = tuning
+    }
+
+    /// The web's field, which the fixtures are generated from. The dome
+    /// strength is the web's `LENS_K`, and the taper is the web's too —
+    /// stated rather than defaulted, because the default is the panel's and
+    /// the panel is somebody's evening rather than a specification.
+    public static let classic = FieldStyle(
+        lensK: 0.19, swell: true, heat: false, tuning: .web)
+
+    /// Flat, and every note a source. The dome would shear the blobs — a
+    /// heat map is read by shape — but the taper stays: without it the grid
+    /// sits on the screen as one flat weight.
+    public static let heat = FieldStyle(lensK: 0, swell: true, heat: true)
+}
 
 /// Where the field sits inside a box, in points.
 public struct FieldLayout: Sendable, Equatable {
@@ -22,36 +75,50 @@ public struct FieldLayout: Sendable, Equatable {
     public let cy: Double
     /// Half-diagonal of the grid; the dome's reference radius.
     public let radius: Double
+    /// How this field is drawn. Defaulted, so every existing caller — and
+    /// every fixture — goes on measuring the web's field.
+    public let style: FieldStyle
 
-    public init(cell: Double, ox: Double, oy: Double, cx: Double, cy: Double, radius: Double) {
+    public init(
+        cell: Double,
+        ox: Double,
+        oy: Double,
+        cx: Double,
+        cy: Double,
+        radius: Double,
+        style: FieldStyle = .classic
+    ) {
         self.cell = cell
         self.ox = ox
         self.oy = oy
         self.cx = cx
         self.cy = cy
         self.radius = radius
+        self.style = style
     }
 }
 
 public enum Field {
-    /// Dome strength.
-    public static let lensK = 0.19
-
     // ------------------------------------------------------------ forward --
 
     /// Grid-space point → screen point, over the dome.
     public static func warp(x: Double, y: Double, in l: FieldLayout) -> (x: Double, y: Double) {
+        let k = l.style.lensK
+        if k == 0 { return (x, y) }
         let ux = (x - l.cx) / l.radius
         let uy = (y - l.cy) / l.radius
-        let f = 1 + lensK * (1 - (ux * ux + uy * uy))
+        let f = 1 + k * (1 - (ux * ux + uy * uy))
         return (l.cx + ux * l.radius * f, l.cy + uy * l.radius * f)
     }
 
-    /// Local scale of the dome at a point — dots swell toward the centre.
+    /// Local scale at a point — marks are largest in the middle and taper
+    /// toward the rim.
     public static func warpScale(x: Double, y: Double, in l: FieldLayout) -> Double {
+        guard l.style.swell else { return 1 }
         let ux = (x - l.cx) / l.radius
         let uy = (y - l.cy) / l.radius
-        return 0.72 + 0.62 * max(0, 1 - (ux * ux + uy * uy))
+        return l.style.tuning.rimScale
+            + l.style.tuning.centreLift * max(0, 1 - (ux * ux + uy * uy))
     }
 
     // ------------------------------------------------------------ inverse --
@@ -62,6 +129,13 @@ public enum Field {
     /// means solving that cubic for `t`, which Newton does in a handful of
     /// steps from a good starting guess (the radius itself).
     public static func unwarp(x: Double, y: Double, in l: FieldLayout) -> (x: Double, y: Double) {
+        // Flat, and the inverse of doing nothing is doing nothing. Worth
+        // saying out loud: drawing goes one way through `warp` and a finger
+        // comes back the other, so the two have to agree about the dome or
+        // painting lands in the wrong cell.
+        let lensK = l.style.lensK
+        if lensK == 0 { return (x, y) }
+
         let vx = (x - l.cx) / l.radius
         let vy = (y - l.cy) / l.radius
         let v = hypot(vx, vy)
@@ -84,8 +158,15 @@ public enum Field {
     /// The dome pushes dots outward, so the flat cell size would overflow.
     /// Measure the widest warped extent over the perimeter cells, shrink by
     /// what overflowed, and repeat — three passes is plenty to converge.
-    public static func fitCell(width: Double, height: Double) -> Double {
+    public static func fitCell(
+        width: Double,
+        height: Double,
+        style: FieldStyle = .classic
+    ) -> Double {
         var cell = min(width / Double(NoteGrid.columns), height / Double(NoteGrid.rows))
+        // Nothing is pushed outward on a flat field, so the flat cell size
+        // already fits and the passes below would only shave it for nothing.
+        if style.lensK == 0 { return cell }
 
         for _ in 0..<3 {
             let gw = cell * Double(NoteGrid.columns)
@@ -97,7 +178,8 @@ public enum Field {
                 oy: (height - gh) / 2,
                 cx: width / 2,
                 cy: height / 2,
-                radius: hypot(gw, gh) / 2
+                radius: hypot(gw, gh) / 2,
+                style: style
             )
 
             var maxX = 0.0
@@ -133,8 +215,14 @@ public enum Field {
     }
 
     /// The layout for a box on screen: fitted cell, centred, dome on top.
-    public static func layout(x: Double, y: Double, width: Double, height: Double) -> FieldLayout {
-        let cell = fitCell(width: width, height: height)
+    public static func layout(
+        x: Double,
+        y: Double,
+        width: Double,
+        height: Double,
+        style: FieldStyle = .classic
+    ) -> FieldLayout {
+        let cell = fitCell(width: width, height: height, style: style)
         let gw = cell * Double(NoteGrid.columns)
         let gh = cell * Double(NoteGrid.rows)
         return FieldLayout(
@@ -143,7 +231,8 @@ public enum Field {
             oy: y + (height - gh) / 2,
             cx: x + width / 2,
             cy: y + height / 2,
-            radius: hypot(gw, gh) / 2
+            radius: hypot(gw, gh) / 2,
+            style: style
         )
     }
 

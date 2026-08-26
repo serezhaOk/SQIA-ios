@@ -45,6 +45,11 @@ public enum MixerLayout {
     /// How far down the stage the panels start.
     public static let topFraction = 0.108
 
+    /// The corner a panel is cut to. Both the hairline round it and the
+    /// field inside it read this, and a border on one curve with a picture
+    /// on another would look like a mistake, so it is one number.
+    public static let corner = 26.0
+
     /// How long the view takes to travel between full screen and the mixer.
     public static let transition = 0.35
 

@@ -55,6 +55,28 @@ The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
 lives in `SQIACore`, where it can be tested off a device. [PLAN.md](PLAN.md)
 explains why, and what it costs.
 
+## Two fields, and which one ships
+
+The sequencer draws the **heat field**: notes are sources in a scalar field,
+the sum is accumulated into a texture, and a second pass draws a contour
+through the total. Two notes close together come out as one shape with one
+outline, which is the whole reason it exists — nothing you do to two
+separately drawn circles will do that. It is the target look, and it is what
+`FieldStyle.heat` selects.
+
+The **dot field** it replaced is still here, whole: a dot, a halo and a
+streak per note, on the web's dome. It is not dead code and not a fallback.
+It is what the parity fixtures were generated against — `warpField`,
+`hitTesting` and the rest measure `FieldStyle.classic`, which is pinned to
+the web's own numbers by `FieldTuning.web` and cannot be moved by anything
+in the tuning panel. Deleting it would delete the answer to the question
+this port exists to keep answering.
+
+Debug builds can switch between them: the field panel's first row, or
+`FieldScene.style` if you would rather do it in code. The style reaches
+hit-testing as well as drawing, so the dome comes back under a finger at the
+same moment it comes back on screen.
+
 ## What the render thread costs
 
 A crackle is a missed deadline, so the cost of rendering is measured rather
@@ -72,11 +94,13 @@ reach a package target. Unoptimised, the same passage costs five times as
 much, and the audio thread's deadline does not care which configuration is
 being built. A Run build is therefore a fair test of the sound.
 
-On the device, a Debug build floats a meter over the field: the audio load,
-the voices sounding, what a frame costs the main thread, and the frame rate
-actually being delivered, with dropped notes beside them when there are any.
-It is `#if DEBUG` only, so it is not in anything that ships — and it stays,
-because it is the instrument for the next time something crackles.
+The renderer still measures itself — what a frame costs the main thread and
+how many are actually being delivered — but nothing shows those numbers now.
+A meter floated over the field while the sound was being tuned; it sat on top
+of the picture, which is what is being worked on, so it came off. The
+measurement stays where it was, so putting a readout back is a small view
+rather than a hunt: `FieldRenderer.onScreen` is the way to reach it, and the
+mixer carries its own load, sounding voices and dropped-note counts.
 
 ## Layout
 

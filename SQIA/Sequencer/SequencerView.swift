@@ -1,9 +1,15 @@
 // The sequencer screen.
 //
 // Tempo and key across the top, the field in the middle, the eraser, the
-// sound and the randomiser along the bottom. Metrics are the web app's, from
-// style.css: 18 by 20 points of padding on both bars, labels at 0.82rem with
-// wide tracking, nine-point track dots.
+// sound and the randomiser along the bottom — laid out and styled from the
+// Figma rather than from the web's style.css, which is where this screen
+// stops being a port.
+//
+// Everything raised is one part wearing different colours: `ControlPill` and
+// `BloomButtonStyle` in SequencerControls.swift. The two icon buttons light
+// for different reasons and that difference is the design's, not an
+// accident — the eraser is a mode and stays lit, the shuffle is an action
+// and lights only under the finger.
 
 import SQIACore
 import SwiftUI
@@ -15,7 +21,16 @@ struct SequencerView: View {
 
     @State private var showingVoices = false
     @State private var showingKey = false
+    @State private var showingTempo = false
+    /// The line above the field. Set by an action, cleared by its own task.
+    @State private var announcement: String?
+    @State private var announcing: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
+
+    /// Which ground the screen is standing on. Read from the model here and
+    /// handed to everything below in the environment, so a control never has
+    /// to be told twice.
+    private var palette: SequencerPalette { model.palette }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -23,7 +38,17 @@ struct SequencerView: View {
             stage
             footer
         }
-        .background(Palette.background.ignoresSafeArea())
+        .background(palette.background.ignoresSafeArea())
+        .overlay(alignment: .top) {
+            if showingTempo {
+                TempoWheelOverlay(
+                    bpm: model.state.bpm,
+                    onChange: { model.selectTempo($0) },
+                    onClose: { showingTempo = false }
+                )
+            }
+        }
+        .animation(.easeOut(duration: 0.22), value: showingTempo)
         .sheet(isPresented: $showingVoices) {
             VoiceSheet(
                 model: model,
@@ -41,7 +66,10 @@ struct SequencerView: View {
                 onPickScale: { model.selectScale($0) }
             )
         }
-        .onAppear { model.start() }
+        .onAppear {
+            model.start()
+            Haptics.warm()
+        }
         .onChange(of: scenePhase) { _, phase in
             // Backgrounded, the app goes quiet — the same as a browser tab
             // losing its audio context.
@@ -59,56 +87,96 @@ struct SequencerView: View {
                     .padding(12)
             }
         }
+        // Last, so it wraps the overlays too: the environment travels
+        // inward, and the tempo card is placed over this screen rather than
+        // inside it.
+        .environment(\.sequencerPalette, palette)
     }
 
     // -------------------------------------------------------------- header --
 
     private var header: some View {
         HStack(spacing: 0) {
-            tempoLabel
+            tempoPill
             Spacer(minLength: 8)
-            trackDots
+            middleSlot
+                .animation(.easeInOut(duration: 0.2), value: currentAnnouncement)
             Spacer(minLength: 8)
-            // One tap opens the key rather than stepping it: reaching the
-            // twelfth note by tapping eleven times is a web gesture, not a
-            // phone one.
-            HStack(spacing: 10) {
-                label(model.state.rootName) { showingKey = true }
-                    .accessibilityLabel("Key")
-                    .accessibilityValue(model.state.rootName)
-                label(model.state.scale.name.uppercased()) { showingKey = true }
-                    .accessibilityLabel("Scale")
-                    .accessibilityValue(model.state.scale.name)
-            }
+            keyPill
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
     }
 
-    /// Drag sideways to scrub the tempo, tap to bump it.
-    private var tempoLabel: some View {
-        Text("\(Int(model.state.bpm)) BPM")
-            .manrope(.regular, TextStyle.labelSize, tracking: TextStyle.labelTracking)
-            .foregroundStyle(Palette.ink)
-            .padding(.vertical, 6)
-            .padding(.horizontal, 4)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { model.scrubTempo(dx: $0.translation.width) }
-                    .onEnded { _ in model.endTempoDrag() }
-            )
-            .accessibilityLabel("Tempo")
-            .accessibilityValue("\(Int(model.state.bpm)) beats per minute")
-            // A drag is not a gesture VoiceOver has, so the tempo would
-            // otherwise be readable and unreachable.
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: model.nudgeTempo(by: 5)
-                case .decrement: model.nudgeTempo(by: -5)
-                @unknown default: break
+    /// Drag sideways to scrub, tap to open the wheel.
+    private var tempoPill: some View {
+        ControlPill(width: 90) {
+            Text("\(Int(model.state.bpm)) bpm")
+                .manrope(.medium, 15, tracking: 0)
+                .foregroundStyle(palette.label)
+                .monospacedDigit()
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { model.scrubTempo(dx: $0.translation.width) }
+                .onEnded { _ in
+                    if model.endTempoDrag() {
+                        Haptics.tap()
+                        showingTempo = true
+                    }
                 }
+        )
+        .accessibilityLabel("Tempo")
+        .accessibilityValue("\(Int(model.state.bpm)) beats per minute")
+        // A drag is not a gesture VoiceOver has, so the tempo would
+        // otherwise be readable and unreachable.
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: model.nudgeTempo(by: 5)
+            case .decrement: model.nudgeTempo(by: -5)
+            @unknown default: break
             }
+        }
+    }
+
+    private var keyPill: some View {
+        Button {
+            Haptics.tap()
+            showingKey = true
+        } label: {
+            ControlPill(width: 90) {
+                Text("\(model.state.rootName) \(model.state.scale.name)")
+                    .manrope(.medium, 15, tracking: 0)
+                    .foregroundStyle(palette.label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+        }
+        .buttonStyle(PressFade())
+        .accessibilityLabel("Key")
+        .accessibilityValue("\(model.state.rootName) \(model.state.scale.name)")
+    }
+
+    /// The track dots, or whatever the screen has to say instead.
+    ///
+    /// One slot rather than two: a message and the dots never want the
+    /// middle at the same time, and the design puts both there.
+    @ViewBuilder
+    private var middleSlot: some View {
+        if let line = currentAnnouncement {
+            Text(line)
+                .manrope(.medium, 15, tracking: 0)
+                .foregroundStyle(palette.label)
+                .transition(.opacity)
+                .accessibilityAddTraits(.updatesFrequently)
+        } else {
+            trackDots
+        }
+    }
+
+    private var currentAnnouncement: String? {
+        model.eraseMode ? "Eraser is on" : announcement
     }
 
     /// One dot per track, the active one bright. Tapping opens the mixer,
@@ -116,14 +184,15 @@ struct SequencerView: View {
     /// there is nothing left for it to do.
     private var trackDots: some View {
         Button {
+            Haptics.toggle()
             model.openMixer()
         } label: {
             HStack(spacing: 7) {
                 ForEach(0..<SequencerState.trackCount, id: \.self) { index in
-                    Circle()
-                        .fill(Palette.ui)
-                        .opacity(index == model.state.activeTrackIndex ? 1 : 0.3)
-                        .frame(width: 9, height: 9)
+                    Capsule()
+                        .fill(palette.label)
+                        .opacity(index == model.state.activeTrackIndex ? 1 : 0.2)
+                        .frame(width: 9, height: 15)
                 }
             }
             .padding(8)
@@ -161,12 +230,11 @@ struct SequencerView: View {
                 .accessibilityHint(
                     model.showingMixer
                         ? "Double-tap a panel to open that track."
-                        : "Drag to draw notes. Use Randomise below to fill it.")
+                        : "Drag to draw notes. Use Shuffle below to fill it.")
                 .frame(width: geometry.size.width, height: geometry.size.height)
                 .overlay(alignment: .topLeading) { chips }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .overlay(alignment: .top) { meter }
     }
 
     // --------------------------------------------------------------- mixer --
@@ -199,16 +267,17 @@ struct SequencerView: View {
     private func chipRow(_ index: Int, height: CGFloat) -> some View {
         HStack(spacing: 0) {
             Button {
+                Haptics.toggle()
                 model.openTrack(index)
             } label: {
                 Text(model.voiceLabel(index))
                     // The chip sets its tracking to zero, unlike the labels.
                     .manrope(.regular, 16, tracking: 0)
-                    .foregroundStyle(Palette.background)
+                    .foregroundStyle(palette.background)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
                     .frame(height: height)
-                    .background(Palette.ui)
+                    .background(palette.label)
             }
             .buttonStyle(PressFade())
             .accessibilityLabel("Open \(model.voiceLabel(index))")
@@ -216,40 +285,25 @@ struct SequencerView: View {
             Spacer(minLength: 4)
 
             Button {
+                Haptics.tap()
                 model.toggleMute(index)
             } label: {
                 Image(systemName: "speaker.slash.fill")
                     .font(.system(size: 15))
-                    .foregroundStyle(model.isMuted(index) ? Palette.background : Palette.ui)
+                    .foregroundStyle(
+                        model.isMuted(index)
+                            ? palette.background : palette.label
+                    )
                     .frame(width: height, height: height)
                     .background(
-                        model.isMuted(index) ? Palette.ui : Palette.ui.opacity(0.1)
+                        model.isMuted(index)
+                            ? palette.label : palette.label.opacity(0.1)
                     )
             }
             .buttonStyle(PressFade())
             .accessibilityLabel(model.isMuted(index) ? "Unmute" : "Mute")
             .accessibilityAddTraits(model.isMuted(index) ? [.isSelected] : [])
         }
-    }
-
-    /// Where the time goes, in a Run build only. AUD is the audio thread's
-    /// share of realtime — under 0.2× there is room to spare, near 1.0× and
-    /// nothing can help. UI is what one frame costs the main thread, which
-    /// the audio thread has to share a phone with.
-    @ViewBuilder
-    private var meter: some View {
-        #if DEBUG
-            Text(model.renderLoad)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .foregroundStyle(Palette.background)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 5)
-                .background(Palette.ink.opacity(0.9), in: Capsule())
-                .padding(.horizontal, 8)
-                .allowsHitTesting(false)
-        #endif
     }
 
     // -------------------------------------------------------------- footer --
@@ -268,15 +322,14 @@ struct SequencerView: View {
     private var backTile: some View {
         Button {
             // Edits already autosave; this flushes and returns.
+            Haptics.toggle()
             Task { await onLeave() }
         } label: {
-            Text("Back to projects")
-                // 0.15px at 15px, which is a hundredth of an em.
-                .manrope(.semibold, 15, tracking: 0.01)
-                .foregroundStyle(Palette.ui)
-                .frame(maxWidth: 335)
-                .frame(height: 126)
-                .background(Palette.ui.opacity(0.2), in: RoundedRectangle(cornerRadius: 32))
+            ControlPill(width: 335, height: 126) {
+                Text("Back to projects")
+                    .manrope(.medium, 15, tracking: 0)
+                    .foregroundStyle(palette.pillLabel)
+            }
         }
         .buttonStyle(PressFade())
         .opacity(model.showingMixer ? 1 : 0)
@@ -286,41 +339,90 @@ struct SequencerView: View {
 
     private var toolbar: some View {
         HStack(spacing: 0) {
-            label("ERASE", active: model.eraseMode) { model.toggleErase() }
+            eraseButton
             Spacer(minLength: 8)
-            Text(model.activeVoiceLabel)
-                .manrope(
-                    .regular, TextStyle.labelSize, tracking: TextStyle.voiceLabelTracking
-                )
-                .foregroundStyle(Palette.ink)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 4)
-                .contentShape(Rectangle())
-                .onTapGesture { showingVoices = true }
-                .accessibilityLabel("Sound")
-                .accessibilityValue(model.activeVoiceLabel)
+            voicePill
             Spacer(minLength: 8)
-            label("RNDM") { model.randomize() }
+            shuffleButton
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 18)
     }
 
-    // ------------------------------------------------------------ the label --
+    /// A mode, so it stays lit for as long as it is on.
+    private var eraseButton: some View {
+        Button {
+            Haptics.toggle()
+            model.toggleErase()
+        } label: {
+            ControlIcon(name: "EraserIcon")
+        }
+        .buttonStyle(
+            BloomButtonStyle(
+                onColor: palette.eraseBloom,
+                pressColor: palette.eraseBloom,
+                isOn: model.eraseMode,
+                tint: model.eraseMode
+                    ? palette.eraseBloom : palette.label
+            )
+        )
+        .accessibilityLabel("Erase")
+        .accessibilityAddTraits(model.eraseMode ? [.isSelected] : [])
+    }
 
-    private func label(
-        _ text: String,
-        active: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Text(text)
-                .manrope(.regular, TextStyle.labelSize, tracking: TextStyle.labelTracking)
-                .foregroundStyle(active ? Palette.accent : Palette.ink)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 4)
+    private var voicePill: some View {
+        Button {
+            Haptics.tap()
+            showingVoices = true
+        } label: {
+            ControlPill(width: 124, height: 46) {
+                Text(model.activeVoiceLabel)
+                    .manrope(.medium, 15, tracking: 0)
+                    .foregroundStyle(palette.pillLabel)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
         }
         .buttonStyle(PressFade())
+        .opacity(model.eraseMode ? palette.dimmed : 1)
+        .disabled(model.eraseMode)
+        .accessibilityLabel("Sound")
+        .accessibilityValue(model.activeVoiceLabel)
+    }
+
+    /// An action, so it lights only while it is held and says what it did
+    /// above the field for a moment afterwards.
+    private var shuffleButton: some View {
+        Button {
+            model.randomize()
+            announce("Shuffle track")
+        } label: {
+            ControlIcon(name: "ShuffleIcon")
+        }
+        .buttonStyle(
+            BloomButtonStyle(
+                onColor: nil,
+                pressColor: palette.shuffleBloom,
+                isOn: false
+            )
+        )
+        .opacity(model.eraseMode ? palette.dimmed : 1)
+        .disabled(model.eraseMode)
+        // "Shuffle", not "Shuffle track": the line it puts above the field
+        // says that, and two elements answering to one name is a thing
+        // VoiceOver has no way to tell apart.
+        .accessibilityLabel("Shuffle")
+        .accessibilityHint("Fills this track with a new pattern.")
+    }
+
+    private func announce(_ line: String) {
+        announcing?.cancel()
+        announcement = line
+        announcing = Task {
+            try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
+            announcement = nil
+        }
     }
 }
 

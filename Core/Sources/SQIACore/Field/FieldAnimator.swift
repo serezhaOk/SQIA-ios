@@ -13,7 +13,9 @@
 
 import Foundation
 
-public struct RGB: Sendable, Equatable {
+/// Codable is declared here rather than beside the tuning that wants it:
+/// Swift only synthesises it in the file the type is declared in.
+public struct RGB: Sendable, Equatable, Codable {
     public var red: Double
     public var green: Double
     public var blue: Double
@@ -47,6 +49,11 @@ public struct FieldDraw: Sendable, Equatable {
         case dot
         case glow
         case streak
+        /// A contribution to a summed field rather than something drawn on
+        /// its own. Sources near each other add up, and what gets drawn is
+        /// the total — which is what makes two notes side by side one shape
+        /// instead of two circles. Not the web's; no fixture produces one.
+        case source
     }
 
     public var kind: Kind
@@ -57,10 +64,16 @@ public struct FieldDraw: Sendable, Equatable {
     /// Streak only: where it ends.
     public var x1: Double = 0
     public var y1: Double = 0
-    /// Dot: radius. Glow: width and height. Streak: line width.
+    /// Dot: radius. Glow: width and height. Streak: line width. Source: the
+    /// radius its falloff reaches.
     public var size: Double
     public var color: RGB
+    /// Source: how much it contributes at its middle.
     public var alpha: Double
+    /// Source only: how hot the flash under it still is, carried so the
+    /// colour can ripple out of a blob that was struck without the ones
+    /// beside it moving in step.
+    public var energy: Double = 0
 }
 
 public final class FieldAnimator {
@@ -69,6 +82,15 @@ public final class FieldAnimator {
     public static let push = 0.62  // in cell units
     public static let pushRadius = 2.4  // in cell units
     public static let decay = 3.1  // energy falloff per second
+    /// The heat field's own falloff, and much slower than the dot field's.
+    ///
+    /// `decay` is the web's, and the fixtures are generated against it, so
+    /// it cannot move. But a third of a second is the right length for a dot
+    /// blinking and far too short for a colour spreading through a shape —
+    /// the eye has barely found it before it is gone. So a struck cell keeps
+    /// a second reading that fades over its own time, and the heat style
+    /// works from that one.
+    public static let bloomDecay = 1.0
 
     // The colour wave: a played note strobes yellow, green, violet in hard
     // steps and snaps back to white, and the flicker spreads ring by ring.
@@ -103,6 +125,13 @@ public final class FieldAnimator {
     /// that is what the web stores it in, and the rounding shows.
     public private(set) var energy = [Float](repeating: 0, count: NoteGrid.count)
 
+    /// Per-cell flash energy again, on the slow clock the heat field reads.
+    public private(set) var bloom = [Float](repeating: 0, count: NoteGrid.count)
+
+    /// How fast the slow reading fades, as a rate. Set from the tuning; the
+    /// decay runs in `advance`, which has no layout to read it off.
+    public var bloomDecay = FieldAnimator.bloomDecay
+
     private var waves: [Wave] = []
     private var sources: [Source] = []
     private var time: Double = 0
@@ -121,12 +150,14 @@ public final class FieldAnimator {
         let i = row * NoteGrid.columns + column
         let amp = 0.55 + 0.45 * velocity
         energy[i] = max(energy[i], Float(amp))
+        bloom[i] = max(bloom[i], Float(amp))
         if waves.count >= Self.maxWaves { waves.removeFirst() }
         waves.append(Wave(row: row, column: column, t: 0, amp: amp))
     }
 
     public func reset() {
         for i in energy.indices { energy[i] = 0 }
+        for i in bloom.indices { bloom[i] = 0 }
         waves.removeAll(keepingCapacity: true)
         sources.removeAll(keepingCapacity: true)
         time = 0
@@ -139,6 +170,12 @@ public final class FieldAnimator {
 
         for i in waves.indices { waves[i].t += dt }
         if !waves.isEmpty { waves.removeAll { $0.t >= Self.waveLife } }
+
+        let slowFade = exp(-max(0.05, bloomDecay) * dt)
+        for i in bloom.indices where bloom[i] > 0 {
+            let next = Double(bloom[i]) * slowFade
+            bloom[i] = next <= 0.002 ? 0 : Float(next)
+        }
 
         let fade = exp(-Self.decay * dt)
         sources.removeAll(keepingCapacity: true)
@@ -208,6 +245,13 @@ public final class FieldAnimator {
         let baseDot = max(1.6, cell * 0.075)
         let a = max(0, min(1, alpha))
         if a <= 0.01 { return }
+        let heat = layout.style.heat
+        // What the taper does at the top of the field. A blob is drawn
+        // somewhere between this and its own place's scale, so that at zero
+        // every blob is the size the middle would make it — see
+        // `FieldTuning.sourceTaper` for why the marks and the blobs want
+        // different answers.
+        let middleLens = Field.warpScale(x: layout.cx, y: layout.cy, in: layout)
 
         for row in 0..<NoteGrid.rows {
             let onHead = row == playhead
@@ -258,6 +302,53 @@ public final class FieldAnimator {
                         )
                     } ?? .white
                 let inkColour = colour.truncated
+
+                if heat {
+                    // The slow reading, not the dot field's. See `bloomDecay`.
+                    let hot = Double(bloom[i])
+                    let tuning = layout.style.tuning
+
+                    // Only a drawn note is a source. An empty cell would
+                    // otherwise leave the screen blank, and a blank screen
+                    // is one you cannot aim at — so it gets a dot far too
+                    // faint to read as a mark, outside the field entirely.
+                    //
+                    // `lens` tapers it toward the rim. A grid of dots all
+                    // one size reads as a weight sitting on the screen; the
+                    // same grid falling away at the edges reads as a surface,
+                    // and the field stops fighting the controls around it.
+                    if v <= 0 {
+                        out.append(
+                            FieldDraw(
+                                kind: .dot, x: warped.x, y: warped.y,
+                                size: baseDot * tuning.dotScale * lens * breathe,
+                                color: tuning.hint, alpha: 0.16 * breathe * a))
+                        continue
+                    }
+
+                    // Weight is what the sum is made of, so this is where a
+                    // cluster earns its heat: a lone note stays cool because
+                    // nothing adds to it, and neighbours pile up into a core.
+                    // A struck note leans on the sum for as long as the
+                    // flash lasts.
+                    let weight = v * (1 + 0.9 * hot)
+                    // Generous on purpose. The brush bleeds into the cells
+                    // around the one under the finger, so a stroke lays down
+                    // a run of sources whose falloffs have to overlap enough
+                    // to close up into one shape. A struck one reaches
+                    // further still, so the colour spreads outward rather
+                    // than only brightening in place.
+                    let blobLens = middleLens + (lens - middleLens) * tuning.sourceTaper
+                    let reach =
+                        cell * (0.95 + 0.5 * v + tuning.spread * hot)
+                        * tuning.blobScale * blobLens * (0.97 + 0.03 * breathe)
+                    out.append(
+                        FieldDraw(
+                            kind: .source, x: warped.x, y: warped.y,
+                            size: reach, color: tuning.hint, alpha: weight * a,
+                            energy: min(1, hot)))
+                    continue
+                }
 
                 if v <= 0 && e <= 0 {
                     let lift = tinted.map { $0.amp * 0.85 } ?? 0
