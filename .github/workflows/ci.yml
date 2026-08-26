@@ -113,6 +113,13 @@ jobs:
       - name: Why the smoke test failed
         if: failure()
         run: |
+          # The build step can fail before the test step ever runs, and then
+          # there is no log to read — say so rather than printing grep's
+          # complaint about a missing file.
+          if [ ! -f /tmp/xcodebuild.log ]; then
+            echo "the smoke test never ran; the failure is above"
+            exit 0
+          fi
           grep -n -E \
             "error:|XCTAssert|Assertion Failure|Fatal error|Restarting after|Interruption|did not|never appeared|went away|Failed to|Timed out" \
             /tmp/xcodebuild.log | tail -80 || echo "nothing matched in the raw log"

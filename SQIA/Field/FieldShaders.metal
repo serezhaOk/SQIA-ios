@@ -59,9 +59,12 @@ struct VertexOut {
 };
 
 /// Distance to a rounded rectangle: negative inside, zero on the edge.
-static float roundedBox(float2 offset, float2 half, float radius) {
-    const float r = min(radius, min(half.x, half.y));
-    const float2 q = abs(offset) - (half - r);
+///
+/// `extent` rather than `half`, which is a type in this language and cannot
+/// be the name of anything.
+static float roundedBox(float2 offset, float2 extent, float radius) {
+    const float r = min(radius, min(extent.x, extent.y));
+    const float2 q = abs(offset) - (extent - r);
     return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
 }
 
@@ -72,9 +75,9 @@ static float roundedBox(float2 offset, float2 half, float radius) {
 /// and a blob at its rim reaches past the border and over its neighbour. The
 /// card has to cut what is inside it, and cut it on the same curve its
 /// hairline is drawn on.
-static float clipMask(float2 point, float2 centre, float2 half, float radius) {
-    if (half.x <= 0.0 || half.y <= 0.0) { return 1.0; }
-    const float d = roundedBox(point - centre, half, radius);
+static float clipMask(float2 point, float2 centre, float2 extent, float radius) {
+    if (extent.x <= 0.0 || extent.y <= 0.0) { return 1.0; }
+    const float d = roundedBox(point - centre, extent, radius);
     // Feathered by what a pixel is worth here rather than by a fixed
     // fraction of a point: the same edge has to come out one pixel wide on
     // every screen the app runs on.
