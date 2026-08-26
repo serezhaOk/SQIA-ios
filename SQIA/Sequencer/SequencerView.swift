@@ -27,13 +27,18 @@ struct SequencerView: View {
     @State private var announcing: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
+    /// Which ground the screen is standing on. Read from the model here and
+    /// handed to everything below in the environment, so a control never has
+    /// to be told twice.
+    private var palette: SequencerPalette { model.palette }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             stage
             footer
         }
-        .background(Palette.Sequencer.background.ignoresSafeArea())
+        .background(palette.background.ignoresSafeArea())
         .overlay(alignment: .top) {
             if showingTempo {
                 TempoWheelOverlay(
@@ -82,6 +87,10 @@ struct SequencerView: View {
                     .padding(12)
             }
         }
+        // Last, so it wraps the overlays too: the environment travels
+        // inward, and the tempo card is placed over this screen rather than
+        // inside it.
+        .environment(\.sequencerPalette, palette)
     }
 
     // -------------------------------------------------------------- header --
@@ -104,7 +113,7 @@ struct SequencerView: View {
         ControlPill(width: 90) {
             Text("\(Int(model.state.bpm)) bpm")
                 .manrope(.medium, 15, tracking: 0)
-                .foregroundStyle(Palette.Sequencer.label)
+                .foregroundStyle(palette.label)
                 .monospacedDigit()
         }
         .contentShape(Rectangle())
@@ -139,7 +148,7 @@ struct SequencerView: View {
             ControlPill(width: 90) {
                 Text("\(model.state.rootName) \(model.state.scale.name)")
                     .manrope(.medium, 15, tracking: 0)
-                    .foregroundStyle(Palette.Sequencer.label)
+                    .foregroundStyle(palette.label)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
@@ -158,7 +167,7 @@ struct SequencerView: View {
         if let line = currentAnnouncement {
             Text(line)
                 .manrope(.medium, 15, tracking: 0)
-                .foregroundStyle(Palette.Sequencer.label)
+                .foregroundStyle(palette.label)
                 .transition(.opacity)
                 .accessibilityAddTraits(.updatesFrequently)
         } else {
@@ -181,7 +190,7 @@ struct SequencerView: View {
             HStack(spacing: 7) {
                 ForEach(0..<SequencerState.trackCount, id: \.self) { index in
                     Capsule()
-                        .fill(Palette.Sequencer.label)
+                        .fill(palette.label)
                         .opacity(index == model.state.activeTrackIndex ? 1 : 0.2)
                         .frame(width: 9, height: 15)
                 }
@@ -264,11 +273,11 @@ struct SequencerView: View {
                 Text(model.voiceLabel(index))
                     // The chip sets its tracking to zero, unlike the labels.
                     .manrope(.regular, 16, tracking: 0)
-                    .foregroundStyle(Palette.Sequencer.background)
+                    .foregroundStyle(palette.background)
                     .lineLimit(1)
                     .padding(.horizontal, 10)
                     .frame(height: height)
-                    .background(Palette.Sequencer.label)
+                    .background(palette.label)
             }
             .buttonStyle(PressFade())
             .accessibilityLabel("Open \(model.voiceLabel(index))")
@@ -283,12 +292,12 @@ struct SequencerView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(
                         model.isMuted(index)
-                            ? Palette.Sequencer.background : Palette.Sequencer.label
+                            ? palette.background : palette.label
                     )
                     .frame(width: height, height: height)
                     .background(
                         model.isMuted(index)
-                            ? Palette.Sequencer.label : Palette.Sequencer.label.opacity(0.1)
+                            ? palette.label : palette.label.opacity(0.1)
                     )
             }
             .buttonStyle(PressFade())
@@ -319,7 +328,7 @@ struct SequencerView: View {
             ControlPill(width: 335, height: 126) {
                 Text("Back to projects")
                     .manrope(.medium, 15, tracking: 0)
-                    .foregroundStyle(Palette.Sequencer.pillLabel)
+                    .foregroundStyle(palette.pillLabel)
             }
         }
         .buttonStyle(PressFade())
@@ -350,11 +359,11 @@ struct SequencerView: View {
         }
         .buttonStyle(
             BloomButtonStyle(
-                onColor: Palette.Sequencer.eraseBloom,
-                pressColor: Palette.Sequencer.eraseBloom,
+                onColor: palette.eraseBloom,
+                pressColor: palette.eraseBloom,
                 isOn: model.eraseMode,
                 tint: model.eraseMode
-                    ? Palette.Sequencer.eraseBloom : Palette.Sequencer.label
+                    ? palette.eraseBloom : palette.label
             )
         )
         .accessibilityLabel("Erase")
@@ -369,13 +378,13 @@ struct SequencerView: View {
             ControlPill(width: 124, height: 46) {
                 Text(model.activeVoiceLabel)
                     .manrope(.medium, 15, tracking: 0)
-                    .foregroundStyle(Palette.Sequencer.pillLabel)
+                    .foregroundStyle(palette.pillLabel)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
         }
         .buttonStyle(PressFade())
-        .opacity(model.eraseMode ? Palette.Sequencer.dimmed : 1)
+        .opacity(model.eraseMode ? palette.dimmed : 1)
         .disabled(model.eraseMode)
         .accessibilityLabel("Sound")
         .accessibilityValue(model.activeVoiceLabel)
@@ -393,11 +402,11 @@ struct SequencerView: View {
         .buttonStyle(
             BloomButtonStyle(
                 onColor: nil,
-                pressColor: Palette.Sequencer.shuffleBloom,
+                pressColor: palette.shuffleBloom,
                 isOn: false
             )
         )
-        .opacity(model.eraseMode ? Palette.Sequencer.dimmed : 1)
+        .opacity(model.eraseMode ? palette.dimmed : 1)
         .disabled(model.eraseMode)
         // "Shuffle", not "Shuffle track": the line it puts above the field
         // says that, and two elements answering to one name is a thing

@@ -1,7 +1,7 @@
 // The sequencer's controls, from the Figma.
 //
 // Everything raised on this screen is the same object at heart: a shape a
-// shade off black, a hairline, and a glow along the inside of its bottom
+// shade off the ground, a hairline, and a glow along the inside of its bottom
 // edge. What changes between a pill and a button, and between resting and
 // lit, is the colour of that glow and whether the shape is filled at all.
 // So they are one set of parts rather than five views that happen to look
@@ -39,17 +39,20 @@ extension View {
 struct ControlPill<Label: View>: View {
     var width: CGFloat?
     var height: CGFloat = 40
-    var bloom: Color = Palette.Sequencer.bloom
+    /// Nil takes the ground's own glow, which is what every pill wants.
+    var bloom: Color?
     @ViewBuilder var label: () -> Label
+
+    @Environment(\.sequencerPalette) private var palette
 
     var body: some View {
         label()
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
             .frame(width: width, height: height)
-            .background(Palette.Sequencer.surface, in: controlShape())
-            .overlay { controlShape().strokeBorder(Palette.Sequencer.hairline, lineWidth: 1) }
-            .innerBloom(bloom)
+            .background(palette.surface, in: controlShape())
+            .overlay { controlShape().strokeBorder(palette.hairline, lineWidth: 1) }
+            .innerBloom(bloom ?? palette.bloom)
     }
 }
 
@@ -66,41 +69,66 @@ struct BloomButtonStyle: ButtonStyle {
     /// Shown while a finger is down.
     var pressColor: Color?
     var isOn: Bool = false
-    var tint: Color = Palette.Sequencer.label
+    /// Nil takes the ground's own label colour.
+    var tint: Color?
 
+    // A style is not a view and cannot read the environment, so what it
+    // makes is one — which is the only way the ground reaches a control that
+    // is styled rather than built. Not called `Body`: that is the protocol's
+    // own associated type, and a private one would not be allowed to stand
+    // for it.
     func makeBody(configuration: Configuration) -> some View {
-        let lit: Color? = configuration.isPressed ? pressColor : (isOn ? onColor : nil)
+        Chrome(
+            configuration: configuration,
+            onColor: onColor,
+            pressColor: pressColor,
+            isOn: isOn,
+            tint: tint)
+    }
 
-        return configuration.label
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 20)
-            .background { if lit != nil { controlShape().fill(Palette.Sequencer.surface) } }
-            .overlay {
-                controlShape().strokeBorder(
-                    lit == nil ? Palette.Sequencer.outline : Palette.Sequencer.hairline,
-                    lineWidth: 1)
-            }
-            .innerBloom(lit ?? .clear)
-            // The design draws the shuffle two points larger while it is
-            // held. Growing the control says the same thing and does not
-            // shift what sits beside it.
-            .scaleEffect(configuration.isPressed ? 1.03 : 1)
-            .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
-            .animation(.easeOut(duration: 0.16), value: isOn)
-            // On the way down, not on the way up: a press that reports
-            // itself when the finger lifts feels like a lag rather than a
-            // button.
-            //
-            // `makeBody` carries no isolation of its own, and a hop to the
-            // main actor would put the buzz a frame behind the finger —
-            // which is the one thing haptics cannot afford. SwiftUI only
-            // ever calls this on the main thread, so say so, the same way
-            // the renderer does for its frame callback.
-            .onChange(of: configuration.isPressed) { _, pressed in
-                guard pressed else { return }
-                MainActor.assumeIsolated { Haptics.tap() }
-            }
+    private struct Chrome: View {
+        let configuration: ButtonStyleConfiguration
+        let onColor: Color?
+        let pressColor: Color?
+        let isOn: Bool
+        let tint: Color?
+
+        @Environment(\.sequencerPalette) private var palette
+
+        var body: some View {
+            let lit: Color? = configuration.isPressed ? pressColor : (isOn ? onColor : nil)
+
+            return configuration.label
+                .foregroundStyle(tint ?? palette.label)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 20)
+                .background { if lit != nil { controlShape().fill(palette.surface) } }
+                .overlay {
+                    controlShape().strokeBorder(
+                        lit == nil ? palette.outline : palette.hairline,
+                        lineWidth: 1)
+                }
+                .innerBloom(lit ?? .clear)
+                // The design draws the shuffle two points larger while it is
+                // held. Growing the control says the same thing and does not
+                // shift what sits beside it.
+                .scaleEffect(configuration.isPressed ? 1.03 : 1)
+                .animation(.easeOut(duration: 0.16), value: configuration.isPressed)
+                .animation(.easeOut(duration: 0.16), value: isOn)
+                // On the way down, not on the way up: a press that reports
+                // itself when the finger lifts feels like a lag rather than a
+                // button.
+                //
+                // `body` carries no isolation of its own, and a hop to the
+                // main actor would put the buzz a frame behind the finger —
+                // which is the one thing haptics cannot afford. SwiftUI only
+                // ever builds this on the main thread, so say so, the same
+                // way the renderer does for its frame callback.
+                .onChange(of: configuration.isPressed) { _, pressed in
+                    guard pressed else { return }
+                    MainActor.assumeIsolated { Haptics.tap() }
+                }
+        }
     }
 }
 

@@ -58,12 +58,12 @@ struct FieldView: UIViewRepresentable {
         let view = MTKView()
         view.device = MTLCreateSystemDefaultDevice()
         view.colorPixelFormat = .bgra8Unorm
-        // The ground the heat sits on. Light, and the same value the bars
-        // above and below the field use, so the screen reads as one surface
-        // rather than a picture pasted onto it.
-        view.clearColor = Palette.Sequencer.clearColor
+        // The ground the heat sits on: the same value the bars above and
+        // below the field use, so the screen reads as one surface rather
+        // than a picture pasted onto it. Which ground that is comes down the
+        // environment, and can be turned over while the field is running.
+        ground(context.environment.sequencerPalette, on: view)
         view.isOpaque = true
-        view.backgroundColor = UIColor(Palette.Sequencer.background)
         view.framebufferOnly = true
         // The field is never still, so it draws continuously rather than
         // waiting to be invalidated.
@@ -86,12 +86,20 @@ struct FieldView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: MTKView, context: Context) {
+        ground(context.environment.sequencerPalette, on: view)
         // `frame` is a fresh closure on every SwiftUI update; the renderer
         // has to hold the current one or it would read stale state.
         context.coordinator.renderer?.frameProvider = { [weak view] dt in
             guard let view else { return FieldFrame() }
             return frame(CGRect(origin: .zero, size: view.bounds.size), dt)
         }
+    }
+
+    /// Metal clears to it, UIKit paints behind it — both, or a resize shows
+    /// the old ground for a frame in the strip that has not been drawn yet.
+    private func ground(_ palette: SequencerPalette, on view: MTKView) {
+        view.clearColor = palette.clearColor
+        view.backgroundColor = UIColor(palette.background)
     }
 
     @MainActor

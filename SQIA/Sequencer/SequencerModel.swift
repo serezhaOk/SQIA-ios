@@ -97,6 +97,18 @@ final class SequencerModel {
     private(set) var fieldTuning = FieldTuning.current
     private static let fieldTuningKey = "sqia.fieldTuning"
 
+    /// Whether the screen stands on a light ground. Kept out of
+    /// `FieldTuning` on purpose: that one is pasted in and out as JSON, and
+    /// Swift's synthesised decoder does not fall back on a property's default
+    /// value — so a key added here would make every tuning written down
+    /// before today unreadable. This is a switch about the screen anyway,
+    /// not a number the field is drawn by.
+    private(set) var lightBackground = false
+    private static let lightBackgroundKey = "sqia.lightBackground"
+
+    /// The colours the screen is wearing.
+    var palette: SequencerPalette { lightBackground ? .light : .dark }
+
     // ------------------------------------------------------------ the row --
     /// The project being played, and the thing that writes it. Every edit
     /// goes through `publishVoicing`, which is also where the save is asked
@@ -130,6 +142,7 @@ final class SequencerModel {
         {
             fieldTuning = restored
         }
+        lightBackground = UserDefaults.standard.bool(forKey: Self.lightBackgroundKey)
         applyFieldTuning()
 
         syncScenes()
@@ -487,6 +500,15 @@ final class SequencerModel {
 
     func resetFieldTuning() {
         setFieldTuning(.current)
+    }
+
+    /// Turn the screen over. Nothing about the field itself changes — the
+    /// ramps are the panel's, and a look tuned against black will want
+    /// retyping against paper.
+    func setLightBackground(_ on: Bool) {
+        guard on != lightBackground else { return }
+        lightBackground = on
+        UserDefaults.standard.set(on, forKey: Self.lightBackgroundKey)
     }
 
     private func applyFieldTuning() {

@@ -24,12 +24,13 @@ struct TempoWheel: View {
     private static let ruleHeight: CGFloat = 13
 
     @State private var dragStart: Double?
+    @Environment(\.sequencerPalette) private var palette
 
     var body: some View {
         VStack(spacing: 0) {
             Text("Set tempo")
                 .manrope(.medium, 15)
-                .foregroundStyle(Palette.Sequencer.label)
+                .foregroundStyle(palette.label)
                 .padding(.top, 42)
 
             rule
@@ -37,18 +38,18 @@ struct TempoWheel: View {
 
             Text("\(Int(bpm.rounded())) bpm")
                 .manrope(.bold, 20, tracking: -0.02)
-                .foregroundStyle(Palette.Sequencer.label)
+                .foregroundStyle(palette.label)
                 .monospacedDigit()
                 .padding(.top, 27)
 
             Spacer(minLength: 0)
         }
         .frame(width: 355, height: 184)
-        .background(Palette.Sequencer.surface, in: card)
-        .overlay { card.strokeBorder(Color.black, lineWidth: 1) }
+        .background(palette.surface, in: card)
+        .overlay { card.strokeBorder(palette.cardEdge, lineWidth: 1) }
         // The card's glow is the controls' glow, further out — it is a
         // bigger object and the design opens the shadow up to match.
-        .innerBloom(Palette.Sequencer.bloom, blur: 14.3)
+        .innerBloom(palette.bloom, blur: 14.3)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tempo")
         .accessibilityValue("\(Int(bpm.rounded())) beats per minute")
@@ -92,13 +93,13 @@ struct TempoWheel: View {
                         CGRect(
                             x: x - 0.75, y: (size.height - height) / 2,
                             width: 1.5, height: height)),
-                    with: .color(Palette.Sequencer.label.opacity(0.18 + 0.5 * fade)))
+                    with: .color(palette.label.opacity(0.18 + 0.5 * fade)))
             }
 
             // The marker, and the only thing on the rule that does not move.
             context.fill(
                 Path(CGRect(x: middle - 1.25, y: 0, width: 2.5, height: size.height)),
-                with: .color(Palette.Sequencer.label))
+                with: .color(palette.label))
         }
         .frame(width: Self.ruleWidth, height: Self.ruleHeight)
         .contentShape(Rectangle())

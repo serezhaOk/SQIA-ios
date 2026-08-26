@@ -65,6 +65,16 @@ struct FieldTuningTests {
         #expect(abs(middle - (0.72 + 0.62)) < 1e-12)
     }
 
+    /// The taper above is only pinned for as long as the classic style is
+    /// reading the web's numbers rather than the panel's, and the panel's
+    /// change every evening.
+    @Test("The classic style does not follow the panel")
+    func classicDoesNotFollowThePanel() {
+        #expect(FieldStyle.classic.tuning == .web)
+        #expect(FieldTuning.web.rimScale == 0.72)
+        #expect(FieldTuning.web.centreLift == 0.62)
+    }
+
     @Test("Both ramps carry the number of stops the shader walks")
     func rampsAreTheLengthTheShaderExpects() {
         #expect(FieldTuning.current.rest.count == FieldTuning.restStops)

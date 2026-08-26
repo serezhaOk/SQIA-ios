@@ -99,8 +99,60 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     public static let restStops = 5
     public static let heatStops = 8
 
-    /// Where the field stands now. Everything here was arrived at by eye.
+    /// Where the field stands now.
+    ///
+    /// Arrived at on a screen and copied back out of the panel, which is the
+    /// only way any of it could have been decided. Two things in here are
+    /// worth knowing rather than reading off:
+    ///
+    /// A drawn note is white at every stop — the rest ramp carries no colour
+    /// at all, so the field at rest is a white grid and every colour on
+    /// screen belongs to a note that is sounding.
+    ///
+    /// The taper is severe: four tenths at the rim against nearly one and a
+    /// half in the middle, so the grid falls away hard toward the edges.
     public static let current = FieldTuning(
+        rimScale: 0.3987588852643967,
+        centreLift: 0.9969604969024658,
+        dotScale: 0.7437907487154006,
+        blobScale: 0.44638523608446123,
+        returnSeconds: 1.1477322801947596,
+        spread: 0.6575244069099426,
+        rippleFrequency: 7.269474625587463,
+        rippleSpeed: 6.574946403503418,
+        rippleAmplitude: 0.3058905959129333,
+        gain: 0.6700709116458893,
+        edge: 0.42028889536857605,
+        hint: RGB(255, 255, 255),
+        rest: [
+            ColorStop(at: 0, RGB(255, 255, 255)),
+            ColorStop(at: 0.30, RGB(255, 255, 255)),
+            ColorStop(at: 0.55, RGB(255, 255, 255)),
+            ColorStop(at: 0.78, RGB(255, 255, 255)),
+            ColorStop(at: 1, RGB(255, 255, 255)),
+        ],
+        heat: [
+            ColorStop(at: 0, RGB(92, 133, 219)),
+            ColorStop(at: 0.22, RGB(51, 97, 212)),
+            ColorStop(at: 0.42, RGB(107, 173, 230)),
+            ColorStop(at: 0.55, RGB(219, 237, 242)),
+            ColorStop(at: 0.6914083361625671, RGB(252, 237, 158)),
+            ColorStop(at: 0.8195136189460754, RGB(252, 204, 51)),
+            ColorStop(at: 0.8859473466873169, RGB(245, 133, 31)),
+            ColorStop(at: 1, RGB(255, 112, 226)),
+        ]
+    )
+
+    /// The web's own taper, and the amber the heat field shipped with before
+    /// the panel existed.
+    ///
+    /// `.classic` is pinned to this rather than to `.current`, and that is
+    /// the whole reason it exists: the geometry fixtures measure `warpScale`
+    /// against numbers generated from the web, so leaving the classic style
+    /// on whatever the panel last wrote would turn every evening of tuning
+    /// into a red parity suite. The two are separate questions and they now
+    /// have separate answers.
+    public static let web = FieldTuning(
         rimScale: 0.72,
         centreLift: 0.62,
         dotScale: 0.62,

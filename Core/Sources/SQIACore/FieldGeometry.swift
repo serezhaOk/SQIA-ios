@@ -33,9 +33,9 @@ public struct FieldStyle: Sendable, Equatable {
 
     /// Every number the heat field is drawn by.
     ///
-    /// `.classic` carries the defaults, whose taper is the web's 0.72 and
-    /// 0.62 — so the parity suite measures the web whatever anybody does to
-    /// the panel, because the panel only ever edits the heat style's copy.
+    /// `.classic` is pinned to `.web` rather than to whatever the panel last
+    /// wrote, so the parity suite goes on measuring the web's taper however
+    /// far the heat style is tuned away from it.
     public var tuning: FieldTuning
 
     public init(
@@ -51,8 +51,11 @@ public struct FieldStyle: Sendable, Equatable {
     }
 
     /// The web's field, which the fixtures are generated from. The dome
-    /// strength is the web's `LENS_K`.
-    public static let classic = FieldStyle(lensK: 0.19, swell: true, heat: false)
+    /// strength is the web's `LENS_K`, and the taper is the web's too —
+    /// stated rather than defaulted, because the default is the panel's and
+    /// the panel is somebody's evening rather than a specification.
+    public static let classic = FieldStyle(
+        lensK: 0.19, swell: true, heat: false, tuning: .web)
 
     /// Flat, and every note a source. The dome would shear the blobs — a
     /// heat map is read by shape — but the taper stays: without it the grid

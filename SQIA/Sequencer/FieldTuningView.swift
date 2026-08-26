@@ -80,6 +80,25 @@ struct FieldTuningView: View {
             }
 
             Section {
+                Toggle(
+                    "Light ground",
+                    isOn: Binding(
+                        get: { model.lightBackground },
+                        set: { model.setLightBackground($0) }))
+            } header: {
+                Text("Ground")
+            } footer: {
+                Text(
+                    """
+                    Turns the whole screen over — the field's ground and the \
+                    controls with it. The field's own colours are the ones \
+                    below and do not turn: a look tuned against black is \
+                    mostly pale, and pale on paper is nothing at all. Start \
+                    with the resting grid and the drawn ramp.
+                    """)
+            }
+
+            Section {
                 hex("Resting grid", model.fieldTuning.hint) { colour in
                     write { $0.hint = colour }
                 }
