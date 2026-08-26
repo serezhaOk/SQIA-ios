@@ -59,12 +59,19 @@ final class AuthController: NSObject {
 
     // ------------------------------------------------------------ starting --
 
+    /// What storage says, with no network in it. Enough to know which screen
+    /// opens, not enough to trust — `start()` is what confirms it.
+    func peek() async -> Bool {
+        isSignedIn = await keeper.peek()
+        return isSignedIn
+    }
+
     /// Read what is stored, then confirm it. The first half is instant and
     /// decides which screen opens; the second may take a round trip.
     func start() async {
         // Straight from storage, no network: the library opens now rather
         // than after a token has been confirmed.
-        isSignedIn = await keeper.peek()
+        _ = await peek()
         let ok = await keeper.restore()
         isSignedIn = ok
         session = await keeper.current
