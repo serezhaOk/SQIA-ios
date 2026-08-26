@@ -341,6 +341,47 @@ struct FieldTests {
         }
     }
 
+    /// Two notes a cell apart have to close up the same at the top of the
+    /// field as in its middle — and whether they close up is their reach
+    /// against the gap between them, which does not taper. So the blobs must
+    /// not either, however hard the resting grid does.
+    @Test("Blobs are one size wherever they sit")
+    func sourcesDoNotTaper() {
+        var grid = NoteGrid()
+        grid.stamp(row: 1, column: 5)  // near the top edge
+        grid.stamp(row: 8, column: 5)  // the middle of the field
+
+        /// The two struck cells, drawn with the taper turned to `taper`.
+        func struck(_ taper: Double) -> (top: FieldDraw, middle: FieldDraw) {
+            var tuning = FieldTuning.current
+            tuning.sourceTaper = taper
+            let style = FieldStyle(lensK: 0, swell: true, heat: true, tuning: tuning)
+            let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: style)
+            let sources = FieldAnimator()
+                .draws(grid: grid, layout: layout, playhead: -1)
+                .filter { $0.kind == .source }
+
+            func at(_ row: Int, _ column: Int) -> FieldDraw {
+                let x = layout.ox + (Double(column) + 0.5) * layout.cell
+                let y = layout.oy + (Double(row) + 0.5) * layout.cell
+                return sources.min {
+                    hypot($0.x - x, $0.y - y) < hypot($1.x - x, $1.y - y)
+                }!
+            }
+            return (at(1, 5), at(8, 5))
+        }
+
+        let even = struck(0)
+        // The breathing is a wobble of well under a percent on a source, so
+        // anything past two is the taper and nothing else.
+        #expect(abs(even.top.size - even.middle.size) < even.middle.size * 0.02)
+
+        // And with it turned all the way up, the top of the field is where
+        // the small ones are — the look this is turned off to avoid.
+        let tapered = struck(1)
+        #expect(tapered.top.size < tapered.middle.size * 0.8)
+    }
+
     @Test("A struck source carries its own heat")
     func struckSourcesCarryEnergy() {
         let animator = FieldAnimator()

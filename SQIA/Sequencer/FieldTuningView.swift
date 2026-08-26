@@ -39,12 +39,21 @@ struct FieldTuningView: View {
             Section {
                 slider("At the rim", \.rimScale, 0.2...1.2)
                 slider("Added in the middle", \.centreLift, 0...1.2)
+                slider("Blobs follow it", \.sourceTaper, 0...1)
             } header: {
                 Text("Taper")
             } footer: {
                 Text(
-                    "Both at one and nothing tapers: the grid reads as a weight "
-                        + "sitting on the screen rather than a surface.")
+                    """
+                    Rim and middle are the resting grid: both at one and \
+                    nothing tapers, and it reads as a weight sitting on the \
+                    screen rather than a surface. The last one is how much of \
+                    that the blobs take. At zero they are all the size the \
+                    middle would make them, which is what keeps notes closing \
+                    up the same at the top of the field as in its centre — \
+                    the gap between two of them does not taper, so their \
+                    reach had better not either.
+                    """)
             }
 
             Section {

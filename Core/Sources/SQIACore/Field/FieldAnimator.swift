@@ -246,6 +246,12 @@ public final class FieldAnimator {
         let a = max(0, min(1, alpha))
         if a <= 0.01 { return }
         let heat = layout.style.heat
+        // What the taper does at the top of the field. A blob is drawn
+        // somewhere between this and its own place's scale, so that at zero
+        // every blob is the size the middle would make it — see
+        // `FieldTuning.sourceTaper` for why the marks and the blobs want
+        // different answers.
+        let middleLens = Field.warpScale(x: layout.cx, y: layout.cy, in: layout)
 
         for row in 0..<NoteGrid.rows {
             let onHead = row == playhead
@@ -332,9 +338,10 @@ public final class FieldAnimator {
                     // to close up into one shape. A struck one reaches
                     // further still, so the colour spreads outward rather
                     // than only brightening in place.
+                    let blobLens = middleLens + (lens - middleLens) * tuning.sourceTaper
                     let reach =
                         cell * (0.95 + 0.5 * v + tuning.spread * hot)
-                        * tuning.blobScale * lens * (0.97 + 0.03 * breathe)
+                        * tuning.blobScale * blobLens * (0.97 + 0.03 * breathe)
                     out.append(
                         FieldDraw(
                             kind: .source, x: warped.x, y: warped.y,

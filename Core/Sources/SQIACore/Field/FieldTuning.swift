@@ -32,6 +32,16 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     public var rimScale: Double
     /// What the middle adds on top of that.
     public var centreLift: Double
+    /// How much of that taper the blobs take, 0…1.
+    ///
+    /// Zero, and they are all the size the middle would make them. The
+    /// taper is right for the resting grid — a grid of dots one size reads
+    /// as a weight sitting on the screen — but it is wrong for the blobs:
+    /// whether two of them close up is their reach against the gap between
+    /// them, and the gap does not taper. Let them follow it and notes merge
+    /// in the middle of the field and stay separate at the top and bottom,
+    /// which reads as a distortion rather than as a surface.
+    public var sourceTaper: Double
     /// The resting grid's dots.
     public var dotScale: Double
     /// The blobs a drawn note makes.
@@ -71,6 +81,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     public init(
         rimScale: Double,
         centreLift: Double,
+        sourceTaper: Double,
         dotScale: Double,
         blobScale: Double,
         returnSeconds: Double,
@@ -87,6 +98,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     ) {
         self.rimScale = rimScale
         self.centreLift = centreLift
+        self.sourceTaper = sourceTaper
         self.dotScale = dotScale
         self.blobScale = blobScale
         self.returnSeconds = returnSeconds
@@ -120,6 +132,10 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// The taper is severe: four tenths at the rim against nearly one and a
     /// half in the middle, so the grid falls away hard toward the edges.
     ///
+    /// The blobs do not take that taper — `sourceTaper` is zero, so they are
+    /// all drawn at the size the middle would give them and notes close up
+    /// the same wherever they are on the field.
+    ///
     /// One number here is not the one that came out of the panel. `edge` was
     /// 0.42 when it meant the top of a fade running up from nothing; it now
     /// names the contour itself, and 0.21 is where that fade was half way —
@@ -128,6 +144,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     public static let current = FieldTuning(
         rimScale: 0.3987588852643967,
         centreLift: 0.9969604969024658,
+        sourceTaper: 0,
         dotScale: 0.7437907487154006,
         blobScale: 0.44638523608446123,
         returnSeconds: 1.1477322801947596,
@@ -170,6 +187,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     public static let web = FieldTuning(
         rimScale: 0.72,
         centreLift: 0.62,
+        sourceTaper: 1,
         dotScale: 0.62,
         blobScale: 1,
         returnSeconds: 1,
@@ -201,7 +219,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     )
 
     private enum CodingKeys: String, CodingKey {
-        case rimScale, centreLift, dotScale, blobScale
+        case rimScale, centreLift, sourceTaper, dotScale, blobScale
         case returnSeconds, spread, rippleFrequency, rippleSpeed, rippleAmplitude
         case gain, edge, softness, hint, rest, heat
     }
@@ -223,6 +241,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
         }
         rimScale = try number(.rimScale, built.rimScale)
         centreLift = try number(.centreLift, built.centreLift)
+        sourceTaper = try number(.sourceTaper, built.sourceTaper)
         dotScale = try number(.dotScale, built.dotScale)
         blobScale = try number(.blobScale, built.blobScale)
         returnSeconds = try number(.returnSeconds, built.returnSeconds)
