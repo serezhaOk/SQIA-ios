@@ -26,7 +26,7 @@ each part maps onto iOS.
 | M9 — parity QA | done bar the device matrix |
 | M10 — release | materials written; the store side is manual |
 
-What runs today: all of it. Sign in with Apple, Google or an email link;
+What runs today: all of it. Sign in with Apple or Google;
 the library lists what you have made and creates new ones with a name out of
 the microbial world; opening a project starts it playing. Draw on the field
 with a finger and it sounds; drag the tempo, choose the key, erase, scatter a

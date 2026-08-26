@@ -18,15 +18,11 @@ enum Palette {
     /// `--accent`
     static let accent = Color.white
 
-    // Landing
-    static let tagline = Color(hex: 0xCFCFCF)
-    static let muted = Color(hex: 0x8A8A8A)
-    static let link = Color(hex: 0xB9B9B9)
-    static let copyright = Color(hex: 0x6A6A6A)
-    static let fieldBackground = Color(hex: 0x0F0F0F)
-    static let fieldBorder = Color(hex: 0x3A3A3A)
-    static let fieldBorderFocused = Color(hex: 0x8A8A8A)
-    static let placeholder = Color(hex: 0x6F6F6F)
+    // Sign-in. Everything on that screen sits over a film rather than over
+    // the black, so its ink is plain white at the weights the design gives
+    // it and not one of the greys above.
+    static let loginTagline = Color.white.opacity(0.7)
+    static let loginTerms = Color.white.opacity(0.6)
     static let success = Color(hex: 0x9AD3A6)
     static let failure = Color(hex: 0xE08A80)
 
@@ -44,9 +40,8 @@ enum Palette {
     static let sheetGrip = Color(hex: 0x4A4A4A)
     static let scrim = Color.black.opacity(0.55)
 
-    // Landing logo
+    // The mark
     static let logoStroke = Color(hex: 0x4A4A4A)
-    static let logoDot = Color(hex: 0xD9D9D9)
 }
 
 extension Color {
