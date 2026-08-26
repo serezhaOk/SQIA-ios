@@ -67,6 +67,7 @@ struct FieldTuningView: View {
             Section {
                 slider("Gain", \.gain, 0.02...1.2)
                 slider("Edge", \.edge, 0.01...0.8)
+                slider("Softness", \.softness, 0.2...12, unit: " px")
             } header: {
                 Text("Light")
             } footer: {
@@ -74,8 +75,11 @@ struct FieldTuningView: View {
                     """
                     Gain decides where cool ends and hot begins: a lone note \
                     sums to about one at its middle and a crowded corner to \
-                    three or four. Edge is where the field dissolves into the \
-                    ground.
+                    three or four. Edge is the level the outline is drawn at \
+                    — raise it and every shape shrinks toward its middle, \
+                    and a note quieter than the level goes altogether. \
+                    Softness is how wide that outline is, in pixels, and it \
+                    is the same width on a lone note as on a burning cluster.
                     """)
             }
 

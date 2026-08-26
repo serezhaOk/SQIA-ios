@@ -95,7 +95,12 @@ final class SequencerModel {
     /// settled off a screen, and an evening of looking should survive a
     /// relaunch.
     private(set) var fieldTuning = FieldTuning.current
-    private static let fieldTuningKey = "sqia.fieldTuning"
+    /// Numbered, because `edge` changed what it means: it used to be the top
+    /// of a fade running up from nothing and it now names the contour
+    /// itself. A set saved under the old meaning would decode without
+    /// complaint and draw something nobody chose, so it is left where it is
+    /// and this build starts from its own.
+    private static let fieldTuningKey = "sqia.fieldTuning.2"
 
     /// Whether the screen stands on a light ground. Kept out of
     /// `FieldTuning` on purpose: that one is pasted in and out as JSON, and

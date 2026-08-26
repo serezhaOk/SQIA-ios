@@ -94,7 +94,20 @@ jobs:
             -destination "id=${{ steps.sim.outputs.udid }}" \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            | xcbeautify
+            2>&1 | tee /tmp/xcodebuild.log | xcbeautify
+
+      # xcbeautify's summary names the failing test and says how long it took,
+      # and nothing else — not the assertion, not a crash, not a simulator
+      # that refused to launch the runner. That is enough to know something
+      # is wrong and not enough to fix it, and there is no second chance at
+      # the log once the runner is gone. Keep the raw output and print the
+      # lines that say why.
+      - name: Why the smoke test failed
+        if: failure()
+        run: |
+          grep -n -E \
+            "error:|XCTAssert|Assertion Failure|Fatal error|Restarting after|Interruption|did not|never appeared|went away|Failed to|Timed out" \
+            /tmp/xcodebuild.log | tail -80 || echo "nothing matched in the raw log"
 
   # The fixtures are generated from the web app's sources. If those change,
   # the iOS port is being measured against stale data — worth knowing about,

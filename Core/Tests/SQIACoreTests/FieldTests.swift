@@ -319,7 +319,13 @@ struct FieldTests {
         let animator = FieldAnimator()
         var grid = NoteGrid()
         grid.stamp(row: 5, column: 5)
-        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: .heat)
+        // The shipped numbers, not whatever the panel was last left on. How
+        // far a source reaches is somebody's evening at a slider, and a
+        // stroke that stays a row of separate circles is a look rather than
+        // a bug — what this pins is that the arithmetic can close them up,
+        // which is a question about the code.
+        let style = FieldStyle(lensK: 0, swell: true, heat: true, tuning: .web)
+        let layout = Field.layout(x: 0, y: 0, width: 393, height: 700, style: style)
         let sources = animator.draws(grid: grid, layout: layout, playhead: -1)
             .filter { $0.kind == .source }
             .sorted { $0.x < $1.x }

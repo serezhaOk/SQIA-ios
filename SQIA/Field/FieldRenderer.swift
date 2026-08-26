@@ -73,19 +73,21 @@ private struct HeatUniforms {
     /// four, so this is what decides that one note is cool and a cluster
     /// burns.
     var gain: Float = 0.26
-    /// Below this the field dissolves into the ground.
+    /// The level the outline is drawn at.
     var edge: Float = 0.12
+    /// How wide that outline is, in pixels.
+    var softness: Float = 0.9
     var rippleFrequency: Float = 4.5
     var rippleSpeed: Float = 1.6
     var rippleAmplitude: Float = 0.16
     /// Above zero the ramp is quantised into this many bands — the stepped
     /// contour look. Off; the reference that settled the palette is smooth.
     var bands: Float = 0
-    var padding: Float = 0
 
     mutating func take(_ tuning: FieldTuning) {
         gain = Float(tuning.gain)
         edge = Float(tuning.edge)
+        softness = Float(tuning.softness)
         rippleFrequency = Float(tuning.rippleFrequency)
         rippleSpeed = Float(tuning.rippleSpeed)
         rippleAmplitude = Float(tuning.rippleAmplitude)
@@ -127,10 +129,15 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// apart over the third of a second they share.
     var frameProvider: (@MainActor (Double) -> FieldFrame)?
 
-    /// The accumulator is kept at half the drawable, which costs a quarter
-    /// of the fill and blurs the sum slightly on the way back up — both of
-    /// which the picture wants.
-    private static let accumulationScale = 0.5
+    /// The accumulator is the size of the drawable.
+    ///
+    /// It used to be half that, which cost a quarter of the fill and blurred
+    /// the sum on the way back up — fine while the shapes ended in a long
+    /// gradient, and not fine now that they end in a contour a pixel or two
+    /// wide. A contour read out of a half-resolution field is reconstructed
+    /// from texels twice the size of the edge it is drawing, and it comes
+    /// out faceted. The fill is a cheap fragment either way.
+    private static let accumulationScale = 1.0
 
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue

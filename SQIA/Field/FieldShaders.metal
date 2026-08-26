@@ -204,8 +204,10 @@ struct HeatUniforms {
     float time;
     /// How much of the ramp the sum is stretched across.
     float gain;
-    /// Below this the field dissolves into the ground.
+    /// The level the outline is drawn at.
     float edge;
+    /// How wide that outline is, in pixels.
+    float softness;
     /// Rings per unit of intensity, how fast they travel, how far they push.
     float rippleFrequency;
     float rippleSpeed;
@@ -213,7 +215,6 @@ struct HeatUniforms {
     /// Above zero, the ramp is quantised into this many bands — the stepped
     /// contour look, off by default.
     float bands;
-    float padding;
 };
 
 /// A ramp, read from the stops the tuning panel is holding rather than
@@ -244,6 +245,12 @@ fragment float4 heatFragment(
     const float2 sum = field.sample(linearClamp, in.uv).rg;
 
     const float v = sum.x;
+
+    // How much the sum changes across one pixel, which is what turns a
+    // level into an edge of a chosen width. Taken here, before anything can
+    // discard: a derivative is worked out across a quad of neighbouring
+    // fragments, and it needs all four of them still running.
+    const float band = max(fwidth(v) * u.softness, 1e-5);
     if (v <= 0.0) { discard_fragment(); }
 
     // The energy of whatever dominates here, not the total — a hot blob next
@@ -272,8 +279,17 @@ fragment float4 heatFragment(
         rampAt(stops + kRestStops, kHeatStops, t),
         energy);
 
-    // Dissolve into the ground at the bottom of the ramp rather than ending
-    // on a visible edge.
-    const float alpha = smoothstep(0.0, u.edge, v);
+    // The outline is a contour through the sum, and its width is set in
+    // pixels rather than in field values. That difference is the whole
+    // reason a drawn note used to look soft while a struck one looked
+    // sharp: the old fade ran from nothing up to `edge`, so a shape whose
+    // peak barely cleared the level was almost all fade, and one that
+    // towered over it was a plateau with a thin fringe — the same rule
+    // giving opposite results either side of it. A contour cannot tell them
+    // apart. It is drawn where the sum crosses the level and it is exactly
+    // as sharp there as `softness` says, whether one note made it or six
+    // did.
+    const float alpha = smoothstep(u.edge - band, u.edge + band, v);
+    if (alpha <= 0.0) { discard_fragment(); }
     return float4(rgb, alpha);
 }

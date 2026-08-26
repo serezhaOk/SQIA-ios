@@ -40,6 +40,19 @@ struct FieldTuningTests {
         #expect(FieldTuning.current.isDefault)
     }
 
+    /// A tuning is pasted out of the panel and into the source, so JSON
+    /// written before a number existed has to go on reading after it does.
+    /// Swift's own decoder throws on a missing key rather than reaching for
+    /// the default, which would quietly drop somebody's evening.
+    @Test("A set written before a number existed still loads")
+    func decodingToleratesAMissingKey() throws {
+        let restored = try #require(FieldTuning.decoded(from: #"{"gain": 0.33}"#))
+        #expect(restored.gain == 0.33)
+        #expect(restored.softness == FieldTuning.current.softness)
+        #expect(restored.heat == FieldTuning.current.heat)
+        #expect(restored.hint == FieldTuning.current.hint)
+    }
+
     /// The taper is read off the tuning rather than written into the
     /// geometry, so this is the wire between the panel and the picture.
     @Test("The taper comes from the tuning")

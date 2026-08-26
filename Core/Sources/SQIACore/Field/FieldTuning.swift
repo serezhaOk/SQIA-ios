@@ -53,8 +53,14 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// How far the sum is stretched across the ramp — where cool ends and
     /// hot begins.
     public var gain: Double
-    /// Below this the field dissolves into the ground.
+    /// The level the sum has to reach for the field to be there at all —
+    /// the outline is the contour drawn where it crosses this.
     public var edge: Double
+    /// How wide that contour is, in pixels. A number in pixels rather than
+    /// in field values is the whole point: it is the same edge on a lone
+    /// quiet note as on a burning cluster, which is not true of anything
+    /// measured in the sum itself.
+    public var softness: Double
     /// The resting grid.
     public var hint: RGB
     /// A note that is only drawn.
@@ -74,6 +80,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
         rippleAmplitude: Double,
         gain: Double,
         edge: Double,
+        softness: Double,
         hint: RGB,
         rest: [ColorStop],
         heat: [ColorStop]
@@ -89,6 +96,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
         self.rippleAmplitude = rippleAmplitude
         self.gain = gain
         self.edge = edge
+        self.softness = softness
         self.hint = hint
         self.rest = rest
         self.heat = heat
@@ -111,6 +119,12 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     ///
     /// The taper is severe: four tenths at the rim against nearly one and a
     /// half in the middle, so the grid falls away hard toward the edges.
+    ///
+    /// One number here is not the one that came out of the panel. `edge` was
+    /// 0.42 when it meant the top of a fade running up from nothing; it now
+    /// names the contour itself, and 0.21 is where that fade was half way —
+    /// so the shapes keep the size they read at, with an edge instead of a
+    /// gradient.
     public static let current = FieldTuning(
         rimScale: 0.3987588852643967,
         centreLift: 0.9969604969024658,
@@ -122,7 +136,8 @@ public struct FieldTuning: Sendable, Equatable, Codable {
         rippleSpeed: 6.574946403503418,
         rippleAmplitude: 0.3058905959129333,
         gain: 0.6700709116458893,
-        edge: 0.42028889536857605,
+        edge: 0.21,
+        softness: 0.9,
         hint: RGB(255, 255, 255),
         rest: [
             ColorStop(at: 0, RGB(255, 255, 255)),
@@ -164,6 +179,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
         rippleAmplitude: 0.16,
         gain: 0.26,
         edge: 0.12,
+        softness: 0.9,
         hint: RGB(198, 158, 48),
         rest: [
             ColorStop(at: 0, RGB(77, 56, 13)),
@@ -183,6 +199,44 @@ public struct FieldTuning: Sendable, Equatable, Codable {
             ColorStop(at: 1, RGB(222, 41, 26)),
         ]
     )
+
+    private enum CodingKeys: String, CodingKey {
+        case rimScale, centreLift, dotScale, blobScale
+        case returnSeconds, spread, rippleFrequency, rippleSpeed, rippleAmplitude
+        case gain, edge, softness, hint, rest, heat
+    }
+
+    /// A missing key is not an error, and that is deliberate.
+    ///
+    /// A tuning is written down by copying JSON out of the panel and pasting
+    /// it into this file, so a set written last week has to go on reading
+    /// after a number is added this week — and Swift's synthesised decoder
+    /// does not fall back on a property's default value, it throws, which
+    /// would silently drop the whole set. Every field falls back on the
+    /// build's own, so an older tuning loads and only the new number comes
+    /// from here.
+    public init(from decoder: Decoder) throws {
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        let built = FieldTuning.current
+        func number(_ key: CodingKeys, _ fallback: Double) throws -> Double {
+            try box.decodeIfPresent(Double.self, forKey: key) ?? fallback
+        }
+        rimScale = try number(.rimScale, built.rimScale)
+        centreLift = try number(.centreLift, built.centreLift)
+        dotScale = try number(.dotScale, built.dotScale)
+        blobScale = try number(.blobScale, built.blobScale)
+        returnSeconds = try number(.returnSeconds, built.returnSeconds)
+        spread = try number(.spread, built.spread)
+        rippleFrequency = try number(.rippleFrequency, built.rippleFrequency)
+        rippleSpeed = try number(.rippleSpeed, built.rippleSpeed)
+        rippleAmplitude = try number(.rippleAmplitude, built.rippleAmplitude)
+        gain = try number(.gain, built.gain)
+        edge = try number(.edge, built.edge)
+        softness = try number(.softness, built.softness)
+        hint = try box.decodeIfPresent(RGB.self, forKey: .hint) ?? built.hint
+        rest = try box.decodeIfPresent([ColorStop].self, forKey: .rest) ?? built.rest
+        heat = try box.decodeIfPresent([ColorStop].self, forKey: .heat) ?? built.heat
+    }
 
     public var isDefault: Bool { self == .current }
 
