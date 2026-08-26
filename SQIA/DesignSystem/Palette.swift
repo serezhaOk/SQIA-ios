@@ -91,7 +91,19 @@ struct SequencerPalette: Equatable {
     /// Dimmed while the eraser owns the screen.
     var dimmed: Double
 
+    /// The ground the mixer's panels lie on, a shade off the sequencer's.
+    /// One field fills the screen and is the screen; four cards need
+    /// something to be lying on, or they read as holes cut in it.
+    var mixerGround: UInt32
+
     var background: Color { Color(hex: ground) }
+
+    /// The same palette, standing on the mixer's ground.
+    var opened: SequencerPalette {
+        var copy = self
+        copy.ground = mixerGround
+        return copy
+    }
 
     /// The same ground, for Metal. The field's texture is `.bgra8Unorm`,
     /// which is shown as written, so these are the sRGB values themselves and
@@ -117,7 +129,8 @@ struct SequencerPalette: Equatable {
         bloom: Color(hex: 0x2B2B2B),
         eraseBloom: .red,
         shuffleBloom: Color(hex: 0xFF66E0),
-        dimmed: 0.3
+        dimmed: 0.3,
+        mixerGround: 0x1C1C1C
     )
 
     /// The same screen turned over, for looking at the field on paper rather
@@ -137,7 +150,8 @@ struct SequencerPalette: Equatable {
         bloom: Color(hex: 0xD9D5D1),
         eraseBloom: .red,
         shuffleBloom: Color(hex: 0xFF66E0),
-        dimmed: 0.3
+        dimmed: 0.3,
+        mixerGround: 0xE7E4E1
     )
 }
 

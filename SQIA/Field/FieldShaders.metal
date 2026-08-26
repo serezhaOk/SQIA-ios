@@ -36,7 +36,12 @@ struct FieldInstance {
     uint kind;
     /// Source only: how hot the flash under it still is.
     float energy;
-    uint padding;
+    /// The rounded rectangle this instance is kept inside, in points. A
+    /// half-size of zero is no clip — the field with the screen to itself.
+    float2 clipCentre;
+    float2 clipHalf;
+    /// The corner: of that clip, or of the stroke itself on a slot outline.
+    float corner;
 };
 
 struct VertexOut {
@@ -45,7 +50,37 @@ struct VertexOut {
     float2 halfSize;
     float4 color;
     uint kind;
+    /// Where this fragment is on screen, in points — what the clip is
+    /// measured against.
+    float2 point;
+    float2 clipCentre;
+    float2 clipHalf;
+    float corner;
 };
+
+/// Distance to a rounded rectangle: negative inside, zero on the edge.
+static float roundedBox(float2 offset, float2 half, float radius) {
+    const float r = min(radius, min(half.x, half.y));
+    const float2 q = abs(offset) - (half - r);
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+/// How much of a pixel is inside the panel. One for everything when there is
+/// no panel to be inside.
+///
+/// A panel in the mixer is a preview of a whole field squeezed into a card,
+/// and a blob at its rim reaches past the border and over its neighbour. The
+/// card has to cut what is inside it, and cut it on the same curve its
+/// hairline is drawn on.
+static float clipMask(float2 point, float2 centre, float2 half, float radius) {
+    if (half.x <= 0.0 || half.y <= 0.0) { return 1.0; }
+    const float d = roundedBox(point - centre, half, radius);
+    // Feathered by what a pixel is worth here rather than by a fixed
+    // fraction of a point: the same edge has to come out one pixel wide on
+    // every screen the app runs on.
+    const float feather = max(fwidth(d), 1e-4);
+    return 1.0 - smoothstep(-feather, feather, d);
+}
 
 vertex VertexOut fieldVertex(
     uint vertexID [[vertex_id]],
@@ -77,6 +112,10 @@ vertex VertexOut fieldVertex(
     out.halfSize = instance.halfSize;
     out.color = instance.color;
     out.kind = instance.kind;
+    out.point = point;
+    out.clipCentre = instance.clipCentre;
+    out.clipHalf = instance.clipHalf;
+    out.corner = instance.corner;
     return out;
 }
 
@@ -102,12 +141,16 @@ fragment float4 fieldFragment(VertexOut in [[stage_in]]) {
     } else if (in.kind == kindGlow) {
         alpha *= haloAlpha(length(in.uv));
     } else if (in.kind == kindOutline) {
-        // Keep the ring one point wide inside the quad's edge, and nothing
-        // else — the same pixels `strokeRect` would light.
-        const float2 fromEdge = (float2(1.0) - abs(in.uv)) * in.halfSize;
-        const float d = min(fromEdge.x, fromEdge.y);
-        const float feather = fwidth(d);
-        alpha *= 1.0 - smoothstep(kOutlineWidth - feather, kOutlineWidth + feather, d);
+        // A hairline along the inside of a rounded rectangle — the curve the
+        // panel is cut to, and the same one the field inside it is clipped
+        // by. The band is `|d + w/2| < w/2`, which is the strip running from
+        // the edge inward by one point.
+        const float d = roundedBox(in.uv * in.halfSize, in.halfSize, in.corner);
+        const float ring = abs(d + kOutlineWidth * 0.5);
+        const float feather = fwidth(ring);
+        alpha *= 1.0
+            - smoothstep(
+                kOutlineWidth * 0.5 - feather, kOutlineWidth * 0.5 + feather, ring);
     } else {
         // A round-capped line: distance to the segment running along local
         // x, and a linear fade from the dot to the tip.
@@ -122,6 +165,10 @@ fragment float4 fieldFragment(VertexOut in [[stage_in]]) {
         alpha *= (1.0 - along) * across;
     }
 
+    // A slot's own border is the shape, not something inside it.
+    if (in.kind != kindOutline) {
+        alpha *= clipMask(in.point, in.clipCentre, in.clipHalf, in.corner);
+    }
     return float4(in.color.rgb, alpha);
 }
 
@@ -134,6 +181,10 @@ struct SourceOut {
     float weight;
     /// How hot the flash under it still is.
     float energy;
+    float2 point;
+    float2 clipCentre;
+    float2 clipHalf;
+    float corner;
 };
 
 vertex SourceOut sourceVertex(
@@ -158,6 +209,10 @@ vertex SourceOut sourceVertex(
     out.uv = local;
     out.weight = instance.color.a;
     out.energy = instance.energy;
+    out.point = point;
+    out.clipCentre = instance.clipCentre;
+    out.clipHalf = instance.clipHalf;
+    out.corner = instance.corner;
     return out;
 }
 
@@ -168,12 +223,20 @@ vertex SourceOut sourceVertex(
 /// a contour drawn through the sum needs if it is to close around two sources
 /// as one curve.
 fragment float2 sourceFragment(SourceOut in [[stage_in]]) {
+    // Before the early return below, not after it: the mask takes a
+    // derivative, and a derivative needs every fragment in the quad to have
+    // got that far.
+    const float mask = clipMask(in.point, in.clipCentre, in.clipHalf, in.corner);
+
     const float r2 = dot(in.uv, in.uv);
     if (r2 >= 1.0) { return float2(0.0); }
     const float k = 1.0 - r2;
     const float falloff = k * k * k;
 
-    const float here = in.weight * falloff;
+    // Clipped here, in the sum, rather than after the colouring: what is
+    // outside the panel never becomes field at all, so the contour closes
+    // along the panel's edge instead of being painted and then cut.
+    const float here = in.weight * falloff * mask;
     // Two channels: the sum itself, and the flash energy weighted by the
     // same falloff. Dividing one by the other at colouring time gives the
     // energy of whichever source dominates a pixel — so a struck blob

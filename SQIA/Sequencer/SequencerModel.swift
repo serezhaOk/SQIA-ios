@@ -111,8 +111,12 @@ final class SequencerModel {
     private(set) var lightBackground = false
     private static let lightBackgroundKey = "sqia.lightBackground"
 
-    /// The colours the screen is wearing.
-    var palette: SequencerPalette { lightBackground ? .light : .dark }
+    /// The colours the screen is wearing. The mixer stands on its own
+    /// ground, so the panels have something to lie on.
+    var palette: SequencerPalette {
+        let base: SequencerPalette = lightBackground ? .light : .dark
+        return showingMixer ? base.opened : base
+    }
 
     // ------------------------------------------------------------ the row --
     /// The project being played, and the thing that writes it. Every edit
@@ -372,6 +376,11 @@ final class SequencerModel {
 
             var layer = scenes[index].layer(
                 in: CGRect(x: panel.x, y: panel.y, width: panel.width, height: panel.height))
+            // A panel is a whole field squeezed into a card, so it keeps what
+            // it holds. Cut to the travelling rect rather than to the slot it
+            // is heading for: on the way in, the field is still most of the
+            // screen and it should be cut where it is, not where it will be.
+            layer.clipped = true
             layer.alpha = alpha
             layer.detail = MixerLayout.detail(active: isActive, eased: t)
             frame.layers.append(layer)

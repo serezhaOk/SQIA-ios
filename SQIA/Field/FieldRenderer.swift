@@ -24,6 +24,13 @@ struct FieldLayer {
     var grid: NoteGrid
     var animator: FieldAnimator
     var rect: CGRect
+    /// Whether the field is cut to its own rect. Off full screen, where
+    /// there is nothing to be inside; on in the mixer, where a blob at the
+    /// rim would otherwise hang over the panel's border and across its
+    /// neighbour.
+    var clipped = false
+    /// The corner it is cut to, and the one its border is drawn on.
+    var corner: Double = MixerLayout.corner
     /// Which row is sounding, or −1 when nothing is.
     var playhead: Int = -1
     var detail: Double = 1
@@ -38,6 +45,7 @@ struct FieldLayer {
 struct FieldOutline {
     var rect: CGRect
     var alpha: Double
+    var corner: Double = MixerLayout.corner
 }
 
 /// Everything one frame draws. The outlines are not part of any layer: they
@@ -58,7 +66,12 @@ private struct FieldInstance {
     var kind: UInt32
     /// Source only: how hot the flash under it still is.
     var energy: Float = 0
-    var padding: UInt32 = 0
+    /// The rounded rectangle this instance is kept inside. A half-size of
+    /// zero is no clip at all, which is what the full-screen field carries.
+    var clipCentre: SIMD2<Float> = .zero
+    var clipHalf: SIMD2<Float> = .zero
+    /// The corner: of that clip, or of the stroke itself on a slot outline.
+    var corner: Float = 0
 }
 
 /// Matches `HeatUniforms` in FieldShaders.metal.
@@ -449,11 +462,26 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                     alpha: layer.alpha,
                     into: &draws)
 
+                // The panel, as the shader wants it: a middle, a half-size
+                // and a corner. Nothing at all when the field has the screen
+                // to itself.
+                var clipCentre = SIMD2<Float>.zero
+                var clipHalf = SIMD2<Float>.zero
+                if layer.clipped {
+                    clipCentre = SIMD2(Float(layer.rect.midX), Float(layer.rect.midY))
+                    clipHalf = SIMD2(
+                        Float(layer.rect.width / 2), Float(layer.rect.height / 2))
+                }
+
                 for draw in draws {
+                    var made = instance(for: draw)
+                    made.clipCentre = clipCentre
+                    made.clipHalf = clipHalf
+                    made.corner = Float(layer.corner)
                     if draw.kind == .source {
-                        sources.append(instance(for: draw))
+                        sources.append(made)
                     } else if instances.count < Self.maxInstances {
-                        instances.append(instance(for: draw))
+                        instances.append(made)
                     }
                 }
             }
@@ -466,7 +494,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             center: SIMD2(Float(outline.rect.midX), Float(outline.rect.midY)),
             halfSize: SIMD2(Float(outline.rect.width / 2), Float(outline.rect.height / 2)),
             axis: SIMD2(1, 0),
-            kind: 3)
+            kind: 3,
+            corner: Float(outline.corner))
     }
 
     private func instance(for draw: FieldDraw) -> FieldInstance {
