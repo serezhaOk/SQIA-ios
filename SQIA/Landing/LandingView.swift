@@ -32,10 +32,11 @@ struct LandingView: View {
         static let promptToButtons: CGFloat = 24
         static let button = CGSize(width: 114, height: 52)
         static let betweenButtons: CGFloat = 10
-        /// The design's icon slot is 21.43, but both of its marks are SVGs
-        /// with their own padding inside it. Ours are drawn tight to their
-        /// boxes, so they are set to the size the mock actually shows.
-        static let mark: CGFloat = 18
+        /// The design's icon slot, straight from the frame. The Figma marks
+        /// carry their own padding inside it and ours are drawn tight to
+        /// their boxes, so at this size ours read a touch larger than the
+        /// mock's rendered glyph — which is the size the frame asks for.
+        static let mark: CGFloat = 21.43
 
         static let buttonsToTerms: CGFloat = 50
         static let bottomInset: CGFloat = 32
