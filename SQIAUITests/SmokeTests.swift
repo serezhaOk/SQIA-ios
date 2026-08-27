@@ -71,11 +71,17 @@ final class SmokeTests: XCTestCase {
         // name at all; `openAProject` fails if that regresses.
         openAProject()
 
-        // The controls the web has, by the labels VoiceOver reads.
+        // The controls, by the labels VoiceOver reads.
+        //
+        // These were ERASE and RNDM while the two of them were words on the
+        // screen. The design makes them icons, and an icon has no text to
+        // fall back on — so the label is the only name either one has now,
+        // and asserting on it is worth more than it was before, not less.
         XCTAssertTrue(named("Tempo").exists)
         XCTAssertTrue(named("Tracks").exists)
-        XCTAssertTrue(named("ERASE").exists)
-        XCTAssertTrue(named("RNDM").exists)
+        XCTAssertTrue(named("Erase").exists)
+        XCTAssertTrue(named("Shuffle").exists)
+        XCTAssertTrue(named("Sound").exists)
     }
 
     func testTheMixerOpensAndComesBackToTheLibrary() {

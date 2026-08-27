@@ -1,10 +1,18 @@
 // The bridge from the field's draw list to the GPU.
 //
-// SQIACore decides what to draw — where every dot sits on the dome, how big,
-// what colour, how bright — and this turns that list into instances and
-// hands it to Metal. It makes no visual decisions of its own, which is why
-// the field can be tested without a device.
+// SQIACore decides what to draw — where every dot sits, how big, what colour,
+// how bright — and this turns that list into instances and hands it to Metal.
+// It makes no visual decisions of its own, which is why the field can be
+// tested without a device.
+//
+// The heat field needs one thing the dot field never did: a pass of its own.
+// Sources have to be summed before anything can be coloured, because the
+// colour of a pixel depends on the total there and not on any one source. So
+// they are added up into an off-screen texture and a full-screen pass reads
+// that back. Half resolution — it is all soft gradients, and the upsample
+// smooths them rather than costing anything.
 
+import Foundation
 import Metal
 import MetalKit
 import SQIACore
@@ -16,10 +24,20 @@ struct FieldLayer {
     var grid: NoteGrid
     var animator: FieldAnimator
     var rect: CGRect
+    /// Whether the field is cut to its own rect. Off full screen, where
+    /// there is nothing to be inside; on in the mixer, where a blob at the
+    /// rim would otherwise hang over the panel's border and across its
+    /// neighbour.
+    var clipped = false
+    /// The corner it is cut to, and the one its border is drawn on.
+    var corner: Double = MixerLayout.corner
     /// Which row is sounding, or −1 when nothing is.
     var playhead: Int = -1
     var detail: Double = 1
     var alpha: Double = 1
+    /// Dome or flat, dots or heat. Hit-testing has to be given the same one,
+    /// or a finger lands in the wrong cell.
+    var style: FieldStyle = .heat
 }
 
 /// A slot's hairline border, which fades in as the mixer opens. It stays put
@@ -27,6 +45,7 @@ struct FieldLayer {
 struct FieldOutline {
     var rect: CGRect
     var alpha: Double
+    var corner: Double = MixerLayout.corner
 }
 
 /// Everything one frame draws. The outlines are not part of any layer: they
@@ -45,7 +64,66 @@ private struct FieldInstance {
     var halfSize: SIMD2<Float>
     var axis: SIMD2<Float>
     var kind: UInt32
-    var padding: UInt32 = 0
+    /// Source only: how hot the flash under it still is.
+    var energy: Float = 0
+    /// The rounded rectangle this instance is kept inside. A half-size of
+    /// zero is no clip at all, which is what the full-screen field carries.
+    var clipCentre: SIMD2<Float> = .zero
+    var clipHalf: SIMD2<Float> = .zero
+    /// The corner: of that clip, or of the stroke itself on a slot outline.
+    var corner: Float = 0
+}
+
+/// Matches `HeatUniforms` in FieldShaders.metal.
+///
+/// None of these is a fact and none can be judged anywhere but on a screen,
+/// so they are not written down here at all: they come off the `FieldTuning`
+/// riding on the layer, which is what the panel edits.
+private struct HeatUniforms {
+    var time: Float = 0
+    /// How far the sum is stretched across the ramp. A single brush stroke
+    /// sums to about 1.3 at its middle and a crowded corner to three or
+    /// four, so this is what decides that one note is cool and a cluster
+    /// burns.
+    var gain: Float = 0.26
+    /// The level the outline is drawn at.
+    var edge: Float = 0.12
+    /// How wide that outline is, in pixels.
+    var softness: Float = 0.9
+    var rippleFrequency: Float = 4.5
+    var rippleSpeed: Float = 1.6
+    var rippleAmplitude: Float = 0.16
+    /// Above zero the ramp is quantised into this many bands — the stepped
+    /// contour look. Off; the reference that settled the palette is smooth.
+    var bands: Float = 0
+
+    mutating func take(_ tuning: FieldTuning) {
+        gain = Float(tuning.gain)
+        edge = Float(tuning.edge)
+        softness = Float(tuning.softness)
+        rippleFrequency = Float(tuning.rippleFrequency)
+        rippleSpeed = Float(tuning.rippleSpeed)
+        rippleAmplitude = Float(tuning.rippleAmplitude)
+    }
+}
+
+/// The two ramps, flattened for the shader: rgb in xyz and the stop's place
+/// along the ramp in w, rest first and heat after it.
+private func rampStops(_ tuning: FieldTuning) -> [SIMD4<Float>] {
+    func packed(_ stops: [ColorStop], count: Int) -> [SIMD4<Float>] {
+        // The shader walks a fixed count. A panel mid-edit must not be able
+        // to hand it a short buffer.
+        let usable = stops.prefix(count)
+        var out = usable.map {
+            SIMD4<Float>(
+                Float($0.color.red / 255), Float($0.color.green / 255),
+                Float($0.color.blue / 255), Float($0.at))
+        }
+        while out.count < count { out.append(out.last ?? SIMD4<Float>(1, 1, 1, 1)) }
+        return out
+    }
+    return packed(tuning.rest, count: FieldTuning.restStops)
+        + packed(tuning.heat, count: FieldTuning.heatStops)
 }
 
 final class FieldRenderer: NSObject, MTKViewDelegate {
@@ -64,9 +142,28 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// apart over the third of a second they share.
     var frameProvider: (@MainActor (Double) -> FieldFrame)?
 
+    /// The accumulator is the size of the drawable.
+    ///
+    /// It used to be half that, which cost a quarter of the fill and blurred
+    /// the sum on the way back up — fine while the shapes ended in a long
+    /// gradient, and not fine now that they end in a contour a pixel or two
+    /// wide. A contour read out of a half-resolution field is reconstructed
+    /// from texels twice the size of the edge it is drawing, and it comes
+    /// out faceted. The fill is a cheap fragment either way.
+    private static let accumulationScale = 1.0
+
     private let device: MTLDevice
     private let commandQueue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    /// Sums sources into the accumulator; adds, and never blends.
+    private let sourcePipeline: MTLRenderPipelineState
+    /// Reads the sum back and maps it through the ramp.
+    private let heatPipeline: MTLRenderPipelineState
+    private var accumulation: MTLTexture?
+    private var uniforms = HeatUniforms()
+    private var stops = rampStops(.current)
+    private var tuning = FieldTuning.current
+    private var elapsed: Double = 0
     private var instanceBuffers: [MTLBuffer] = []
     private let inFlight = DispatchSemaphore(value: maxFramesInFlight)
     private var bufferIndex = 0
@@ -74,6 +171,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// Scratch, reused every frame so the render loop allocates nothing.
     private var draws: [FieldDraw] = []
     private var instances: [FieldInstance] = []
+    /// The sources, held apart because they are drawn into somewhere else.
+    private var sources: [FieldInstance] = []
 
     private var lastFrameTime: CFTimeInterval = 0
 
@@ -89,9 +188,13 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private var secondStarted: CFTimeInterval = 0
 
     #if DEBUG
-        /// The renderer currently on screen, so the debug readout can ask it
-        /// what a frame costs without the model having to own it. Debug
-        /// scaffolding for the crackle hunt; it goes when the readout does.
+        /// The renderer currently on screen, so anything that wants to know
+        /// what a frame costs can ask it without the model having to own it.
+        ///
+        /// Nothing reads this at the moment: the meter that used to float
+        /// over the field is gone, because it sat on top of the picture being
+        /// worked on. The measuring stays — it is the instrument for the next
+        /// time something crackles, and a readout is a small view away.
         @MainActor static weak var onScreen: FieldRenderer?
     #endif
 
@@ -100,31 +203,61 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             let queue = device.makeCommandQueue(),
             let library = device.makeDefaultLibrary(),
             let vertexFunction = library.makeFunction(name: "fieldVertex"),
-            let fragmentFunction = library.makeFunction(name: "fieldFragment")
+            let fragmentFunction = library.makeFunction(name: "fieldFragment"),
+            let sourceVertex = library.makeFunction(name: "sourceVertex"),
+            let sourceFragment = library.makeFunction(name: "sourceFragment"),
+            let heatVertex = library.makeFunction(name: "heatVertex"),
+            let heatFragment = library.makeFunction(name: "heatFragment")
         else { return nil }
 
+        // Source over rather than the web's `lighter`. The heat pass below
+        // already decides a pixel's colour from the whole sum, so adding
+        // its result to whatever the resting grid left there would only
+        // wash the ramp out at the exact places the sum is highest.
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = vertexFunction
         descriptor.fragmentFunction = fragmentFunction
-        // `lighter`: the source, scaled by its own alpha, added to what is
-        // already there. Overlapping halos build up instead of covering.
         let attachment = descriptor.colorAttachments[0]
         attachment?.pixelFormat = .bgra8Unorm
         attachment?.isBlendingEnabled = true
         attachment?.rgbBlendOperation = .add
         attachment?.alphaBlendOperation = .add
         attachment?.sourceRGBBlendFactor = .sourceAlpha
-        attachment?.destinationRGBBlendFactor = .one
+        attachment?.destinationRGBBlendFactor = .oneMinusSourceAlpha
         attachment?.sourceAlphaBlendFactor = .sourceAlpha
-        attachment?.destinationAlphaBlendFactor = .one
+        attachment?.destinationAlphaBlendFactor = .oneMinusSourceAlpha
 
         guard let state = try? device.makeRenderPipelineState(descriptor: descriptor) else {
+            return nil
+        }
+
+        // The full-screen pass that colours the sum. Same blending: it lies
+        // over the ground and fades into it at the bottom of the ramp.
+        descriptor.vertexFunction = heatVertex
+        descriptor.fragmentFunction = heatFragment
+        guard let heatState = try? device.makeRenderPipelineState(descriptor: descriptor) else {
+            return nil
+        }
+
+        // The accumulator. Two channels, floating point because the sum runs
+        // past one wherever notes crowd together — and running past one is
+        // the whole signal, not an overflow to be clamped away.
+        descriptor.vertexFunction = sourceVertex
+        descriptor.fragmentFunction = sourceFragment
+        attachment?.pixelFormat = .rg16Float
+        attachment?.sourceRGBBlendFactor = .one
+        attachment?.destinationRGBBlendFactor = .one
+        attachment?.sourceAlphaBlendFactor = .one
+        attachment?.destinationAlphaBlendFactor = .one
+        guard let sourceState = try? device.makeRenderPipelineState(descriptor: descriptor) else {
             return nil
         }
 
         self.device = device
         commandQueue = queue
         pipeline = state
+        sourcePipeline = sourceState
+        heatPipeline = heatState
         super.init()
 
         let length = MemoryLayout<FieldInstance>.stride * Self.maxInstances
@@ -134,12 +267,31 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             instanceBuffers.append(buffer)
         }
         instances.reserveCapacity(Self.maxInstances)
+        // Two fields are on screen at once while the mixer opens, and every
+        // drawn note in each of them is a source.
+        sources.reserveCapacity(NoteGrid.count * 2)
         draws.reserveCapacity(Self.maxInstances)
     }
 
     // ------------------------------------------------------------ MTKView --
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        resizeAccumulation(for: size)
+    }
+
+    private func resizeAccumulation(for size: CGSize) {
+        let width = max(1, Int(size.width * Self.accumulationScale))
+        let height = max(1, Int(size.height * Self.accumulationScale))
+        if let accumulation, accumulation.width == width, accumulation.height == height {
+            return
+        }
+
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rg16Float, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .private
+        accumulation = device.makeTexture(descriptor: descriptor)
+    }
 
     func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
@@ -150,15 +302,27 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
         build(dt: dt)
 
+        elapsed += dt
+        uniforms.time = Float(elapsed)
+
         inFlight.wait()
         bufferIndex = (bufferIndex + 1) % Self.maxFramesInFlight
         let buffer = instanceBuffers[bufferIndex]
+        let stride = MemoryLayout<FieldInstance>.stride
+        // One buffer, the drawn primitives first and the sources after them,
+        // so the accumulation pass is the same buffer read from an offset.
         let count = min(instances.count, Self.maxInstances)
+        let sourceCount = min(sources.count, Self.maxInstances - count)
         if count > 0 {
             instances.withUnsafeBytes { source in
                 buffer.contents().copyMemory(
-                    from: source.baseAddress!,
-                    byteCount: count * MemoryLayout<FieldInstance>.stride)
+                    from: source.baseAddress!, byteCount: count * stride)
+            }
+        }
+        if sourceCount > 0 {
+            sources.withUnsafeBytes { source in
+                buffer.contents().advanced(by: count * stride).copyMemory(
+                    from: source.baseAddress!, byteCount: sourceCount * stride)
             }
         }
 
@@ -169,17 +333,59 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         guard
             let drawable = view.currentDrawable,
             let descriptor = view.currentRenderPassDescriptor,
-            let commands = commandQueue.makeCommandBuffer(),
-            let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor)
+            let commands = commandQueue.makeCommandBuffer()
         else {
             inFlight.signal()
             return
         }
 
+        var viewport = SIMD2<Float>(
+            Float(view.drawableSize.width / view.contentScaleFactor),
+            Float(view.drawableSize.height / view.contentScaleFactor))
+
+        // First pass: add the sources up. Nothing is decided about colour
+        // here — this only works out how much field there is at each point,
+        // which is what lets two notes come out as one shape.
+        resizeAccumulation(for: view.drawableSize)
+        let summed = sourceCount > 0 ? accumulation : nil
+        if let summed {
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = summed
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+            pass.colorAttachments[0].storeAction = .store
+
+            if let accumulate = commands.makeRenderCommandEncoder(descriptor: pass) {
+                accumulate.setRenderPipelineState(sourcePipeline)
+                accumulate.setVertexBuffer(buffer, offset: count * stride, index: 0)
+                accumulate.setVertexBytes(
+                    &viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+                accumulate.drawPrimitives(
+                    type: .triangleStrip, vertexStart: 0, vertexCount: 4,
+                    instanceCount: sourceCount)
+                accumulate.endEncoding()
+            }
+        }
+
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else {
+            inFlight.signal()
+            return
+        }
+
+        // Second pass: read the sum back and colour it. Under the drawn
+        // primitives, so the resting grid and the slot outlines stay legible
+        // over a blob rather than beneath it.
+        if let summed {
+            encoder.setRenderPipelineState(heatPipeline)
+            encoder.setFragmentTexture(summed, index: 0)
+            encoder.setFragmentBytes(
+                &uniforms, length: MemoryLayout<HeatUniforms>.stride, index: 0)
+            encoder.setFragmentBytes(
+                stops, length: MemoryLayout<SIMD4<Float>>.stride * stops.count, index: 1)
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
+
         if count > 0 {
-            var viewport = SIMD2<Float>(
-                Float(view.drawableSize.width / view.contentScaleFactor),
-                Float(view.drawableSize.height / view.contentScaleFactor))
             encoder.setRenderPipelineState(pipeline)
             encoder.setVertexBuffer(buffer, offset: 0, index: 0)
             encoder.setVertexBytes(
@@ -216,6 +422,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
     private func build(dt: Double) {
         instances.removeAll(keepingCapacity: true)
+        sources.removeAll(keepingCapacity: true)
 
         // MTKView drives its delegate from the main run loop, so this is the
         // main thread; saying so lets the provider read main-actor state
@@ -236,7 +443,16 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                     x: Double(layer.rect.minX),
                     y: Double(layer.rect.minY),
                     width: Double(layer.rect.width),
-                    height: Double(layer.rect.height))
+                    height: Double(layer.rect.height),
+                    style: layer.style)
+
+                // Whatever the panel is holding. Every layer on screen is
+                // the same field, so the last one wins and they agree.
+                if layer.style.tuning != tuning {
+                    tuning = layer.style.tuning
+                    uniforms.take(tuning)
+                    stops = rampStops(tuning)
+                }
 
                 layer.animator.draws(
                     grid: layer.grid,
@@ -246,8 +462,27 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                     alpha: layer.alpha,
                     into: &draws)
 
-                for draw in draws where instances.count < Self.maxInstances {
-                    instances.append(instance(for: draw))
+                // The panel, as the shader wants it: a middle, a half-size
+                // and a corner. Nothing at all when the field has the screen
+                // to itself.
+                var clipCentre = SIMD2<Float>.zero
+                var clipHalf = SIMD2<Float>.zero
+                if layer.clipped {
+                    clipCentre = SIMD2(Float(layer.rect.midX), Float(layer.rect.midY))
+                    clipHalf = SIMD2(
+                        Float(layer.rect.width / 2), Float(layer.rect.height / 2))
+                }
+
+                for draw in draws {
+                    var made = instance(for: draw)
+                    made.clipCentre = clipCentre
+                    made.clipHalf = clipHalf
+                    made.corner = Float(layer.corner)
+                    if draw.kind == .source {
+                        sources.append(made)
+                    } else if instances.count < Self.maxInstances {
+                        instances.append(made)
+                    }
                 }
             }
         }
@@ -259,7 +494,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             center: SIMD2(Float(outline.rect.midX), Float(outline.rect.midY)),
             halfSize: SIMD2(Float(outline.rect.width / 2), Float(outline.rect.height / 2)),
             axis: SIMD2(1, 0),
-            kind: 3)
+            kind: 3,
+            corner: Float(outline.corner))
     }
 
     private func instance(for draw: FieldDraw) -> FieldInstance {
@@ -290,6 +526,17 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                 halfSize: SIMD2(half, half),
                 axis: SIMD2(1, 0),
                 kind: 1)
+
+        case .source:
+            // A square big enough to hold the falloff; the fragment shader
+            // throws away everything outside the circle inside it.
+            return FieldInstance(
+                color: SIMD4(0, 0, 0, Float(draw.alpha)),
+                center: SIMD2(Float(draw.x), Float(draw.y)),
+                halfSize: SIMD2(Float(draw.size), Float(draw.size)),
+                axis: SIMD2(1, 0),
+                kind: 4,
+                energy: Float(draw.energy))
 
         case .streak:
             let dx = draw.x1 - draw.x
