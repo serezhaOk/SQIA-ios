@@ -58,10 +58,12 @@ struct FieldView: UIViewRepresentable {
         let view = MTKView()
         view.device = MTLCreateSystemDefaultDevice()
         view.colorPixelFormat = .bgra8Unorm
-        // The ground the heat sits on: the same value the bars above and
-        // below the field use, so the screen reads as one surface rather
-        // than a picture pasted onto it. Which ground that is comes down the
-        // environment, and can be turned over while the field is running.
+        // The ground the heat sits on. With the mixer shut this is the same
+        // black the bars carry, so the screen reads as one surface; opening
+        // the mixer lifts the bars onto a lighter shade but the field keeps
+        // its own ground — the picture stays the black it plays on. Which
+        // ground that is comes down the environment and can be turned over
+        // while the field is running.
         ground(context.environment.sequencerPalette, on: view)
         view.isOpaque = true
         view.framebufferOnly = true
@@ -99,7 +101,7 @@ struct FieldView: UIViewRepresentable {
     /// the old ground for a frame in the strip that has not been drawn yet.
     private func ground(_ palette: SequencerPalette, on view: MTKView) {
         view.clearColor = palette.clearColor
-        view.backgroundColor = UIColor(palette.background)
+        view.backgroundColor = UIColor(palette.fieldBackground)
     }
 
     @MainActor
