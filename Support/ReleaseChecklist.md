@@ -2,100 +2,130 @@
 
 `AppStore.md` is what to paste into App Store Connect. This is the other
 half: what has to be true before there is anything to paste it against.
-Written from the state of the repository at `cc700e9` and the four open pull
-requests.
+
+Four questions this file used to ask have been answered by the owner, and
+their answers are recorded under "Decisions taken" at the end. What is left
+above is work.
 
 ---
 
-## The one thing a reviewer can refuse over
+## The blockers
 
-**Guideline 5.1.1(i) — nothing works without an account.** `RootView` shows
-`LandingView` and goes no further until there is a session, so the library,
-the sequencer and the sound are all behind a sign-in. Apple allows required
-registration only where the function of the app does not exist without an
-account. Syncing with sqia.serezhaok.com genuinely is account-based, and
-that argument holds; drawing on a grid and hearing it is not, and a reviewer
-sees that in under a minute.
+Everything here is done in somebody else's dashboard, on a device, or with a
+card in hand. None of it is code.
 
-Three ways out, cheapest first:
-
-- Supabase anonymous sign-in behind a "Try it" button; the anonymous user
-  links to Apple or Google on the first real sign-in, and the rows are the
-  same rows.
-- A local guest project with no store behind it, offering the sign-in at the
-  moment there is something worth saving.
-- Neither, and an explanation in the review notes. It works some of the time.
-
----
-
-## Blockers — none of them are code
-
-- [ ] **The branches are not merged, and there is no `main`.** The trunk is
-      `claude/ios-swift-port-gqpqmz`. PR #3 redesigns the sign-in screen and
-      **removes the email route** (and adds ~8 MB of film and audio to the
-      bundle); PR #5 rewrites the store metadata for search. Both edit
-      `Support/AppStore.md` and conflict, and #5's "What's New" promises the
-      email sign-in that #3 deletes. Decide whether the redesign ships in
-      1.0, merge #3 then #5, then cut a `main` from the result. PR #1 is an
-      old field experiment and PR #4 is editor settings.
-- [ ] **Supabase.** `sqia://auth` and `https://sqia.serezhaok.com/ios` in the
-      redirect allowlist; the Apple provider on with `com.serezhaok.sqia` in
-      its authorized client IDs; `supabase functions deploy delete-account`.
-      Until then every sign-in button reaches the server and is refused, and
-      "Delete account" fails — which is 5.1.1(v), not a nicety.
-- [ ] **Sign in with Apple on the App ID.** The entitlement is in
-      `Support/SQIA.entitlements`; the capability still has to be enabled on
-      `com.serezhaok.sqia` or the archive will not sign.
-- [ ] **The site's URLs are live.** `sqia.serezhaok.com` (support and
-      marketing), `/privacy.html` (a required field), `/terms.html` (the
-      sign-in screen links to it). A dead privacy URL is an automatic
-      rejection. `/ios` matters only if the email route survives — copy
-      `web/ios/` into `funny-steps/public/ios/`.
-- [ ] **A test account in the review notes.** The field in `AppStore.md` is
-      deliberately empty and has to be filled. If #3 lands, Apple and Google
-      are the only routes: the reviewer brings their own Apple ID, so what
-      you must prepare is a working Google account with a few projects in it.
+- [ ] **Supabase** — three switches, step by step below.
+- [ ] **Sign in with Apple on the App ID** — Apple Developer, below.
+- [ ] **The site's URLs answer** — below.
+- [ ] **A test account for the reviewer.** The field in `AppStore.md` is
+      deliberately empty. Apple and Google are the only two ways in, so the
+      reviewer brings their own Apple ID and what you must prepare is a
+      **Google account with two or three projects already in it**, signed in
+      once on a device to prove it works. Write it into the "Test account"
+      line before submitting.
 - [ ] **The device matrix.** The one part of M9 still open, and the part a
-      Linux container cannot close: iPhone SE (the small stage and
-      `fitCell`), ProMotion, iPad, a call arriving mid-playback, headphones
-      pulled, the Bluetooth bloom delay. Archive in Release and confirm by
-      eye that the tuning panel and the load meter are absent.
+      Linux container cannot close: an iPhone SE (the small stage and
+      `fitCell`), a ProMotion phone, a call arriving mid-playback, headphones
+      pulled out, the bloom delay over Bluetooth.
+- [ ] **A Release archive, checked by eye.** The tuning panel and the load
+      meter are behind `#if DEBUG`. Confirm they are absent from the archive
+      rather than trusting that they are.
 
 ---
 
-## iPad, which is one line of build settings
+## Supabase, click by click
 
-`TARGETED_DEVICE_FAMILY = "1,2"` claims a universal app, and there is not one
-`horizontalSizeClass` or idiom branch anywhere in `SQIA/` — the screens are
-vertical stacks that will simply stretch. It also costs a 13" screenshot set
-in Connect, and from iPadOS 26 the system gives windows arbitrary sizes
-regardless of `UISupportedInterfaceOrientations`.
+Open the dashboard for the project `iayngkirvbjlsmgtymnl` — the id in
+`SupabaseProjectStore.projectURL`, so it is the right one by definition.
 
-Setting it to `1` ships 1.0 as an iPhone app: no iPad screenshots, no iPad
-layout, and it still installs on an iPad in compatibility mode. Keeping "1,2"
-means shooting it on a real iPad first.
+**1. The redirect allowlist.** Authentication → URL Configuration → Redirect
+URLs → Add URL. Add, exactly:
+
+```
+sqia://auth
+https://sqia.serezhaok.com/ios
+```
+
+The first is where Google's browser hands the app its code; without it
+Google's sign-in ends on an error page. The second is the bridge for the
+email link, and it matters only while the email route exists — harmless to
+add either way.
+
+**2. The Apple provider.** Authentication → Providers → Apple → Enable.
+It asks for two things:
+
+- **Client IDs** — put `com.serezhaok.sqia` in. This is the whole check for
+  a native sign-in: GoTrue verifies that the identity token Apple signed was
+  issued for this bundle id. Nothing else in this section is used by the app.
+- **Secret Key**, built from a Service ID plus a `.p8` key from Apple
+  Developer → Keys. Supabase's own form on that screen generates it from the
+  four fields (Team ID `U6DN6CYY76`, Key ID, Service ID, the key's contents).
+  Only the web app needs it; a native `signInWithIdToken` does not. Fill it
+  in anyway so the web and the phone are the same account system.
+
+**3. The delete-account function.** From the repository root, with the
+Supabase CLI logged in:
+
+```sh
+supabase link --project-ref iayngkirvbjlsmgtymnl
+supabase functions deploy delete-account
+```
+
+It needs no secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are
+already in the function environment. Verify it afterwards — sign in on a
+device with an account you do not mind losing, tap the face icon → Delete
+account, and confirm the row is gone from `auth.users`. Guideline 5.1.1(v)
+is checked by a reviewer who will do exactly this.
 
 ---
 
-## Not blockers, but they will come back as reviews
+## Apple Developer, click by click
 
-- **There is no offline.** `SupabaseProjectStore` is the only store; the file
-  one was removed in M9. With no network the library is empty behind an error
-  banner. Worse is the quiet case in `AppModel.createNew()`: when the row
-  fails to write, the field still draws and sounds, and edits are silently
-  not saved. Make that failure loud for 1.0; cache the projects in 1.1.
-- **Nothing reports back.** No analytics and no crash reporting is a good
-  line in the privacy questionnaire and a blind spot after release. Check
-  that Xcode Organizer → Crashes opens for the account, and watch it for the
-  first week.
-- **"What is SQIA?" points at an Instagram reel.** When the reel goes, the
-  link goes. A page you control outlives it.
-- **The icon has no dark or tinted iOS 18 variants.** Optional, and cheap.
-- **English only.** A Russian metadata locale in Connect buys more reach than
-  anything else on this list.
-- **VoiceOver.** Labelled on the sequencer, the tempo, the sheets and the
-  library. The sign-in screen needs re-checking once #3 turns the wordmark
-  into an image.
+Certificates, Identifiers & Profiles → Identifiers → `com.serezhaok.sqia` →
+Capabilities → tick **Sign in with Apple** → Save. The entitlement is already
+in `Support/SQIA.entitlements`; without the capability on the identifier the
+archive fails to sign, and it fails at the end of a fifteen-minute build.
+
+While there: Keys → + → tick Sign in with Apple → download the `.p8` once
+(Apple will not offer it twice) — that is the key Supabase's Apple provider
+asks for above.
+
+---
+
+## The site's URLs
+
+Open each one in a browser and confirm it answers with a page, not a 404:
+
+- `https://sqia.serezhaok.com` — the Support URL and the Marketing URL.
+- `https://sqia.serezhaok.com/privacy.html` — a required field on the
+  listing, and a dead one is an automatic rejection.
+- `https://sqia.serezhaok.com/terms.html` — the sign-in screen links to it.
+- `https://sqia.serezhaok.com/ios` — only while the email route exists. Copy
+  `web/ios/` into `funny-steps/public/ios/` to serve it.
+
+---
+
+## Decisions taken
+
+**Signing in is required, and stays required.** Touching the grid does not
+open a document that is saved later — it creates a project on the first
+touch, and every edit after that is written to it as it happens. There is no
+save button and nothing to export, so without an account there would be
+nowhere to put the first note. The review notes in `AppStore.md` say this in
+those words, which is the mitigation: Guideline 5.1.1(i) allows required
+registration where the function is account-based, and here the work *is* the
+account.
+
+**iPhone only for 1.0.** `TARGETED_DEVICE_FAMILY` is `1`. No iPad layout, no
+iPad screenshots, and an iPad still runs it in compatibility mode. The
+`~ipad` orientation key is gone from `Info.plist` with it.
+
+**Online only.** No offline cache and no deferred writes. With no network the
+library is empty behind an error banner, which is what the web does too.
+
+**One trunk.** `main` is the branch to cut releases from; the sign-in
+redesign, the store metadata and the editor settings are merged into it, and
+the branches they came from can be deleted.
 
 ---
 
@@ -106,26 +136,24 @@ questionnaire that agrees with it word for word; account deletion in the app
 and the function behind it; Sign in with Apple first and no smaller than
 Google; `ITSAppUsesNonExemptEncryption`; a 1024 icon with no alpha; portrait,
 dark, the launch screen, four weights of Manrope with the OFL beside them;
-the `.playback` session and everything that interrupts it; one third-party
-component in the bundle and a `NOTICE.md` that says so; green CI across the
-parity suite in both configurations, the app build and the simulator smoke
-test; and not one TODO or stub in eighty-seven Swift files.
+the `.playback` session and everything that interrupts it, and the `.ambient`
+bed under the sign-in film that goes quiet with the ring switch; one
+third-party component in the bundle and a `NOTICE.md` that says so; green CI
+across the parity suite in both configurations, the app build and the
+simulator smoke test; and not one TODO or stub in the Swift sources.
 
 ---
 
 ## The order
 
-1. Decide 5.1.1(i) — it may change code, so it goes first.
-2. Turn on the outside: Supabase, the App ID capability, the site's URLs.
-3. Merge the branches, resolve `AppStore.md`, cut `main`.
-4. Decide iPad.
-5. Release archive; both sign-in routes and a real account deletion on a
+1. Supabase, the App ID capability, the site's URLs — the three above.
+2. Prepare the reviewer's Google account and put it in `AppStore.md`.
+3. A Release archive; both sign-in routes and a real account deletion on a
    device; no debug panels.
-6. Screenshots from a device — 6.9" (1320 × 2868), 6.5" (1242 × 2688), and
-   13" (2064 × 2752) if iPad stays. Metal draws the glow; the simulator
-   composites it differently.
-7. A 15–30 second screen recording with sound, attached to the submission.
-8. App Store Connect: the listing, Music / Entertainment, 4+, the privacy
+4. Screenshots from a device — 6.9" (1320 × 2868) and 6.5" (1242 × 2688).
+   Metal draws the glow; the simulator composites it differently.
+5. A 15–30 second screen recording with sound, attached to the submission.
+6. App Store Connect: the listing, Music / Entertainment, 4+, the privacy
    questionnaire, the test account.
-9. TestFlight, on somebody else's phone. Bump the build number every upload.
-10. Submit, and leave room for one round of notes.
+7. TestFlight, on somebody else's phone. Bump the build number every upload.
+8. Submit, and leave room for one round of notes.

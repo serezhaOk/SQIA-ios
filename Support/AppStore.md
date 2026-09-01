@@ -101,7 +101,7 @@ just won't be shown until the first update. Worth having ready:
 
 > First release. Draw a pattern on the grid and it plays — two tracks, five
 > synthesised voices (REVERIE, KALIMBA, RHODES, ACID, MACHINE), a key and a
-> tempo. Sign in with Apple, Google or email; projects sync with
+> tempo. Sign in with Apple or Google; projects sync with
 > sqia.serezhaok.com.
 
 ## Support and marketing URLs
@@ -144,10 +144,15 @@ has nothing to ask about.
 
 ## Notes for the review team
 
-> **Signing in.** The app needs an account, because a project is stored
-> against one and the same project opens in the browser at
-> sqia.serezhaok.com. There are two ways in and both work on a device:
-> Sign in with Apple, or Google. A test account is attached below.
+> **Signing in.** The app needs an account because the work is the account.
+> Touching the grid does not open a document that is later saved — it
+> creates a project, on the first touch, and every edit after that is
+> written to it as it happens. There is no save button and nothing to
+> export: the project is a row in the database, it opens in a browser at
+> sqia.serezhaok.com against the same account, and without one there would
+> be nowhere to put the first note and nothing to come back to. There are
+> two ways in and both work on a device: Sign in with Apple, or Google. A
+> test account is attached below.
 >
 > **Sign in with Apple** is offered first and is no less prominent than
 > Google, as Guideline 4.8 requires. It is a native sign-in — no browser is
@@ -179,13 +184,13 @@ screenshot of a grid of dots does not convey that it makes sound.
 
 ## Screenshots
 
-Required sizes: 6.9" (1320 × 2868) and 6.5" (1242 × 2688). iPad is optional
-unless the app is listed as iPad-compatible — it is, so 13" (2064 × 2752)
-is needed too.
+Required sizes: 6.9" (1320 × 2868) and 6.5" (1242 × 2688). No iPad set is
+needed: `TARGETED_DEVICE_FAMILY` is `1`, so 1.0 is listed as an iPhone app
+and installs on an iPad in compatibility mode.
 
 Five that tell the story in order:
 
-1. The sign-in screen — the mark, the wordmark, the tagline.
+1. The sign-in screen — the film, the wordmark, the two buttons.
 2. The library with three or four projects in it.
 3. The sequencer with a full pattern lit, mid-bloom.
 4. The mixer open, both panels showing, names and mute chips visible.
