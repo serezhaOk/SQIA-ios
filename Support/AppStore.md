@@ -6,13 +6,38 @@ written down here.
 
 ---
 
+## ASO strategy, in short
+
+Apple's search index weighs three fields, in this order: **App Name**,
+**Subtitle**, then the **Keywords** field. It builds its own index out of
+every individual word across all three — it does not need a word repeated,
+and a repeat just burns space that could carry a new word instead. So the
+three are written to cover different ground rather than restate each other:
+
+- **Name** carries the two highest-intent terms a music-sequencer app is
+  found by: *sequencer* and *synth*.
+- **Subtitle** carries the next tier: *drum machine* and *groovebox* — the
+  other names people search this category by.
+- **Keywords** picks up everything else: genre and technique terms
+  (*ambient*, *generative*, *lofi*, *techno*), and the words people search
+  next to those (*beatmaker*, *midi*, *jam*, *loop*, *arpeggiator*, *fm*,
+  *bass*, *chill*, *groove*, *pad*, *keys*) — one word each, singular,
+  un-plural, so Apple's own recombination does the work of matching
+  "beat maker", "beats", "midi grid" and so on without spending characters
+  on every variant.
+
+This trades a little of the pure `SQIA` mark for search surface — the app
+still opens with `SQIA` before the colon on every listing, and the
+one-word description below still leads with the plain sequencer story
+before any of this vocabulary shows up. If the trade isn't wanted, the
+previous name (`SQIA`) and subtitle (`Built for sound accidents`) are a
+straight drop-in; move their words into the Keywords field first so the
+budget isn't spent twice.
+
 ## Name and subtitle
 
-**Name:** `SQIA`
-**Subtitle** (30 characters, and this one is 26): `Built for sound accidents`
-
-The subtitle is the web app's tagline, unchanged. It fits, and it is the one
-line that already describes the thing.
+**Name** (30 characters, this one is 29): `SQIA: Music Sequencer & Synth`
+**Subtitle** (30 characters, this one is 24): `Drum Machine & Groovebox`
 
 ## Promotional text (170 characters, changeable without review)
 
@@ -21,7 +46,12 @@ line that already describes the thing.
 
 ## Description
 
-> SQIA is a sequencer you draw on.
+The first three lines show before "more" is tapped, so they carry the pitch
+and the category words on their own; the rest is unchanged from before.
+
+> A sequencer you draw on. Touch the grid and it plays — a generative music
+> maker, drum machine and synth in one, built for sound accidents rather
+> than right answers.
 >
 > There is a grid of dots. Touch one and it lights, and from then on it plays
 > every time the pattern comes round. Drag across the grid and you have drawn
@@ -35,10 +65,12 @@ line that already describes the thing.
 > itself wanders once a bar. It is built to be played with rather than
 > programmed.
 >
-> Five voices. REVERIE is a pad that drifts. KALIMBA is a plucked string.
-> RHODES is an electric piano with a slow stereo tremolo. ACID is a bassline
-> whose filter opens on every note. MACHINE is a drum kit laid out across the
-> grid, one instrument per column.
+> FIVE VOICES
+> • REVERIE — a drifting pad
+> • KALIMBA — a plucked string
+> • RHODES — an FM electric piano with a slow stereo tremolo
+> • ACID — a 303-style bassline whose filter opens on every note
+> • MACHINE — a drum kit laid out across the grid, one instrument per column
 >
 > Two tracks play at once. Open the mixer and the one you are playing flies
 > into its own panel with the other beside it, each with its name and a mute
@@ -55,8 +87,22 @@ line that already describes the thing.
 ## Keywords (100 characters)
 
 ```
-sequencer,synth,drum machine,beat,music maker,groovebox,ambient,generative,midi grid,jam
+beatmaker,midi,jam,loop,ambient,generative,arpeggiator,lofi,techno,bass,chill,groove,pad,fm,keys
 ```
+
+`sequencer`, `synth`, `music`, `drum`, `machine` and `groovebox` are already
+carried by the Name and Subtitle above — repeating them here would spend
+characters Apple's index already has for free.
+
+## What's New (first submission)
+
+App Store Connect requires this field on every version, including 1.0; it
+just won't be shown until the first update. Worth having ready:
+
+> First release. Draw a pattern on the grid and it plays — two tracks, five
+> synthesised voices (REVERIE, KALIMBA, RHODES, ACID, MACHINE), a key and a
+> tempo. Sign in with Apple, Google or email; projects sync with
+> sqia.serezhaok.com.
 
 ## Support and marketing URLs
 
