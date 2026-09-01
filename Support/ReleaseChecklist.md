@@ -52,27 +52,44 @@ email link, and it matters only while the email route exists — harmless to
 add either way.
 
 **2. The Apple provider.** Authentication → Providers → Apple → Enable.
-It asks for two things:
 
 - **Client IDs** — put `com.serezhaok.sqia` in. This is the whole check for
   a native sign-in: GoTrue verifies that the identity token Apple signed was
   issued for this bundle id. Nothing else in this section is used by the app.
-- **Secret Key**, built from a Service ID plus a `.p8` key from Apple
-  Developer → Keys. Supabase's own form on that screen generates it from the
-  four fields (Team ID `U6DN6CYY76`, Key ID, Service ID, the key's contents).
-  Only the web app needs it; a native `signInWithIdToken` does not. Fill it
-  in anyway so the web and the phone are the same account system.
+- **Secret Key — leave it blank.** That field is a JWT built from a Services
+  ID and a `.p8` key, and it exists for the OAuth code flow (a browser
+  redirect through `appleid.apple.com`). `AuthController.handleApple` never
+  takes that path: it hands GoTrue an identity token Apple already signed on
+  the device, over the `id_token` grant, and Supabase's own docs say a
+  native-only app does not configure the OAuth settings at all. Save with
+  Client IDs filled and Secret Key empty. The `.p8` you downloaded is not
+  needed for this — keep it filed away in case a browser-based Apple
+  sign-in (web or the email bridge) is ever added, since that is the one
+  case this key would be for.
 
-**3. The delete-account function.** From the repository root, with the
-Supabase CLI logged in:
+**3. The delete-account function.** The CLI needs installing and logging in
+first — `supabase` is not a command any shell has by default:
+
+```sh
+brew install supabase/tap/supabase
+supabase login
+```
+
+`login` opens a browser to authorise the CLI against your account; confirm
+there and it hands the terminal a token. Then, from the repository root:
 
 ```sh
 supabase link --project-ref iayngkirvbjlsmgtymnl
 supabase functions deploy delete-account
 ```
 
-It needs no secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are
-already in the function environment. Verify it afterwards — sign in on a
+No Homebrew, no problem: the Dashboard's Edge Functions page has a "Deploy a
+new function" editor that takes pasted code directly — paste in the contents
+of `supabase/functions/delete-account/index.ts` and deploy from there, no CLI
+at all.
+
+Either way it needs no secrets: `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+are already in the function environment. Verify it afterwards — sign in on a
 device with an account you do not mind losing, tap the face icon → Delete
 account, and confirm the row is gone from `auth.users`. Guideline 5.1.1(v)
 is checked by a reviewer who will do exactly this.
@@ -87,8 +104,9 @@ in `Support/SQIA.entitlements`; without the capability on the identifier the
 archive fails to sign, and it fails at the end of a fifteen-minute build.
 
 While there: Keys → + → tick Sign in with Apple → download the `.p8` once
-(Apple will not offer it twice) — that is the key Supabase's Apple provider
-asks for above.
+(Apple will not offer it twice). Nothing in this checklist consumes it right
+now — see the note on Secret Key above — but it cannot be re-downloaded, so
+keep the file rather than regenerating the key later.
 
 ---
 
