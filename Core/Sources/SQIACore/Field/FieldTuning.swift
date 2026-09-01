@@ -122,19 +122,20 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// Where the field stands now.
     ///
     /// Arrived at on a screen and copied back out of the panel, which is the
-    /// only way any of it could have been decided. Two things in here are
-    /// worth knowing rather than reading off:
+    /// only way any of it could have been decided. Worth knowing rather than
+    /// reading off:
     ///
-    /// A drawn note is white at every stop — the rest ramp carries no colour
-    /// at all, so the field at rest is a white grid and every colour on
-    /// screen belongs to a note that is sounding.
+    /// A drawn note is white at every stop but one — at 0.78 it takes the
+    /// same pink the hot end of the heat ramp ends on, so a mid-loud note
+    /// sitting at rest still carries a trace of the colour it would burn if
+    /// it were struck. Every other stop stays white, and blank still means
+    /// nothing is there.
     ///
-    /// The taper is severe: four tenths at the rim against nearly one and a
-    /// half in the middle, so the grid falls away hard toward the edges.
-    ///
-    /// The blobs do not take that taper — `sourceTaper` is zero, so they are
-    /// all drawn at the size the middle would give them and notes close up
-    /// the same wherever they are on the field.
+    /// The taper is gentler than it was: four and a half tenths at the rim
+    /// against a bit over a tenth added in the middle. The blobs do not take
+    /// it either way — `sourceTaper` is zero, so they are all drawn at the
+    /// size the middle would give them and notes close up the same wherever
+    /// they are on the field.
     ///
     /// One number here is not the one that came out of the panel. `edge` was
     /// 0.42 when it meant the top of a fade running up from nothing; it now
@@ -142,17 +143,17 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// so the shapes keep the size they read at, with an edge instead of a
     /// gradient.
     public static let current = FieldTuning(
-        rimScale: 0.3987588852643967,
-        centreLift: 0.9969604969024658,
+        rimScale: 0.4503124177455902,
+        centreLift: 0.7611599922180176,
         sourceTaper: 0,
         dotScale: 0.7437907487154006,
-        blobScale: 0.44638523608446123,
-        returnSeconds: 1.1477322801947596,
-        spread: 0.6575244069099426,
-        rippleFrequency: 7.269474625587463,
+        blobScale: 0.3790015555918217,
+        returnSeconds: 1.1537100106477738,
+        spread: 0.9145621061325073,
+        rippleFrequency: 4.092169761657715,
         rippleSpeed: 6.574946403503418,
-        rippleAmplitude: 0.3058905959129333,
-        gain: 0.6700709116458893,
+        rippleAmplitude: 0.22103413939476013,
+        gain: 0.574427540898323,
         edge: 0.21,
         softness: 0.9,
         hint: RGB(255, 255, 255),
@@ -160,7 +161,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
             ColorStop(at: 0, RGB(255, 255, 255)),
             ColorStop(at: 0.30, RGB(255, 255, 255)),
             ColorStop(at: 0.55, RGB(255, 255, 255)),
-            ColorStop(at: 0.78, RGB(255, 255, 255)),
+            ColorStop(at: 0.7799999713897705, RGB(255, 112, 226)),
             ColorStop(at: 1, RGB(255, 255, 255)),
         ],
         heat: [
