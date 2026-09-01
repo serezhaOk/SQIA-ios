@@ -46,39 +46,38 @@ budget isn't spent twice.
 
 ## Description
 
-The first three lines show before "more" is tapped, so they carry the pitch
-and the category words on their own; the rest is unchanged from before.
+The first line carries the whole pitch on its own: not a musician's tool,
+a tool for anyone. The rest builds toward the other half of the
+positioning, that this is built to be lost in rather than gotten right.
 
-> A sequencer you draw on. Touch the grid and it plays — a generative music
-> maker, drum machine and synth in one, built for sound accidents rather
-> than right answers.
+> SQIA is a sequencer you draw on, and you don't need to know music to use
+> it.
 >
-> There is a grid of dots. Touch one and it lights, and from then on it plays
-> every time the pattern comes round. Drag across the grid and you have drawn
-> a phrase — the notes nearest your finger come up brightest, the ones it
-> passed through more faintly, so a gesture becomes a shape rather than a row
-> of switches.
+> There is a grid of dots. Touch one and it lights, and from then on it
+> plays every time the pattern comes round. Drag across the grid and
+> you've drawn a phrase: the notes nearest your finger come up brightest,
+> the ones it passed through more faintly, so a gesture becomes a shape
+> instead of a row of switches.
 >
-> Nothing here is quantised to a right answer. The grid is already in a key,
-> so the notes belong together whichever ones you choose; every hit is rolled
-> fresh, so a repeated pattern is never quite the same twice; and the patch
-> itself wanders once a bar. It is built to be played with rather than
-> programmed.
+> Nothing here needs the right notes. The grid is already in a key, so
+> whatever you touch belongs together in it. Every hit is rolled fresh, so
+> a pattern is never quite the same twice, and the patch itself wanders
+> once a bar. Shake it and hear something you didn't plan. This is built
+> to lose an afternoon in, not to get right on the first try.
 >
-> FIVE VOICES
-> • REVERIE — a drifting pad
-> • KALIMBA — a plucked string
-> • RHODES — an FM electric piano with a slow stereo tremolo
-> • ACID — a 303-style bassline whose filter opens on every note
-> • MACHINE — a drum kit laid out across the grid, one instrument per column
+> Five voices, synthesised rather than sampled. REVERIE is a pad that
+> drifts. KALIMBA is a plucked string. RHODES is an electric piano with a
+> slow stereo tremolo. ACID is a bassline whose filter opens on every
+> note. MACHINE is a drum kit laid out across the grid, one instrument
+> per column. Switch voices mid-pattern and the same drawing sounds new.
 >
-> Two tracks play at once. Open the mixer and the one you are playing flies
-> into its own panel with the other beside it, each with its name and a mute
-> button — tap either to go back to it full screen.
+> Two tracks play at once. Mute one to redraw it while the other keeps
+> going, then bring it back and hear how the two sit together.
 >
-> Projects are saved as you draw them, and they are the same projects as on
-> sqia.serezhaok.com. Start something on a phone and finish it in a browser,
-> or the other way round.
+> Projects save themselves as you draw, and they're the same projects as
+> on sqia.serezhaok.com, so a pattern started on a phone opens in a
+> browser and back again. Come back to it an hour later, or next week;
+> it's exactly how you left it.
 >
 > No accounts to configure beyond signing in, no subscriptions, no adverts,
 > no analytics, and nothing collected but the email you sign in with and the
