@@ -27,29 +27,17 @@ struct TempoWheel: View {
     @Environment(\.sequencerPalette) private var palette
 
     var body: some View {
-        VStack(spacing: 0) {
-            Text("Set tempo")
-                .manrope(.medium, 15)
-                .foregroundStyle(palette.label)
-                .padding(.top, 42)
-
-            rule
-                .padding(.top, 38)
-
+        // Bare content, no card of its own: the sheet the platform slides up
+        // is the surface now, and the drum sits on it — a big readout over
+        // the rule you drag under the marker.
+        VStack(spacing: 30) {
             Text("\(Int(bpm.rounded())) bpm")
-                .manrope(.bold, 20, tracking: -0.02)
+                .manrope(.bold, 34, tracking: -0.02)
                 .foregroundStyle(palette.label)
                 .monospacedDigit()
-                .padding(.top, 27)
 
-            Spacer(minLength: 0)
+            rule
         }
-        .frame(width: 355, height: 184)
-        .background(palette.surface, in: card)
-        .overlay { card.strokeBorder(palette.cardEdge, lineWidth: 1) }
-        // The card's glow is the controls' glow, further out — it is a
-        // bigger object and the design opens the shadow up to match.
-        .innerBloom(palette.bloom, blur: 14.3)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Tempo")
         .accessibilityValue("\(Int(bpm.rounded())) beats per minute")
@@ -60,10 +48,6 @@ struct TempoWheel: View {
             @unknown default: break
             }
         }
-    }
-
-    private var card: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 34, style: .continuous)
     }
 
     // ---------------------------------------------------------------- rule --
@@ -126,27 +110,34 @@ struct TempoWheel: View {
     }
 }
 
-/// The card, the scrim behind it, and the way out.
-struct TempoWheelOverlay: View {
+/// The tempo drum in a sheet the platform slides up from the bottom — the
+/// same shape the key and sound pickers take, with the rule kept inside it
+/// rather than a list of choices. A tap on the tempo pill opens this; the
+/// drag on the pill itself still scrubs without it.
+struct TempoSheet: View {
     let bpm: Double
     let onChange: (Double) -> Void
-    let onClose: () -> Void
+    /// The sequencer's ground, carried in by hand: a sheet is presented
+    /// beside the screen rather than inside it, so the environment the field
+    /// travels in does not always reach here on its own.
+    var palette: SequencerPalette
+
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        ZStack(alignment: .top) {
-            // Anywhere off the card closes it. No visible scrim: the design
-            // leaves the field showing, and the card is legible over it.
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    Haptics.tap()
-                    onClose()
-                }
-
+        NavigationStack {
             TempoWheel(bpm: bpm, onChange: onChange)
-                .padding(.top, 10)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .navigationTitle("Tempo")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
         }
-        .transition(.move(edge: .top).combined(with: .opacity))
+        .environment(\.sequencerPalette, palette)
+        .presentationDetents([.height(260)])
+        .presentationDragIndicator(.visible)
     }
 }

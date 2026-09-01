@@ -39,16 +39,13 @@ struct SequencerView: View {
             footer
         }
         .background(palette.background.ignoresSafeArea())
-        .overlay(alignment: .top) {
-            if showingTempo {
-                TempoWheelOverlay(
-                    bpm: model.state.bpm,
-                    onChange: { model.selectTempo($0) },
-                    onClose: { showingTempo = false }
-                )
-            }
+        .sheet(isPresented: $showingTempo) {
+            TempoSheet(
+                bpm: model.state.bpm,
+                onChange: { model.selectTempo($0) },
+                palette: palette
+            )
         }
-        .animation(.easeOut(duration: 0.22), value: showingTempo)
         .sheet(isPresented: $showingVoices) {
             VoiceSheet(
                 model: model,
@@ -87,9 +84,9 @@ struct SequencerView: View {
                     .padding(12)
             }
         }
-        // Last, so it wraps the overlays too: the environment travels
-        // inward, and the tempo card is placed over this screen rather than
-        // inside it.
+        // Last, so it wraps the field and its overlays. The tempo sheet is
+        // presented beside the screen rather than inside it, so it is handed
+        // the ground by hand instead — this only has to reach the field.
         .environment(\.sequencerPalette, palette)
     }
 
@@ -140,17 +137,34 @@ struct SequencerView: View {
         }
     }
 
+    /// The scale name that renders widest, so the pill can be cut to it once
+    /// and never resize as the key changes.
+    private static let widestScaleName =
+        Music.scales.map(\.name).max(by: { $0.count < $1.count }) ?? "phrygian"
+
     private var keyPill: some View {
         Button {
             Haptics.tap()
             showingKey = true
         } label: {
-            ControlPill(width: 90) {
-                Text("\(model.state.rootName) \(model.state.scale.name)")
-                    .manrope(.medium, 15, tracking: 0)
-                    .foregroundStyle(palette.label)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+            // No fixed width and no shrinking: the pill is cut to the widest
+            // label it can ever show — every root against the longest scale
+            // — so "A# phrygian" fits at full size and a shorter key sits
+            // centred in the same width rather than the box breathing in and
+            // out under the finger.
+            ControlPill {
+                ZStack {
+                    ForEach(Music.noteNames.indices, id: \.self) { pc in
+                        Text("\(Music.noteNames[pc]) \(Self.widestScaleName)")
+                            .manrope(.medium, 15, tracking: 0)
+                            .lineLimit(1)
+                            .hidden()
+                    }
+                    Text("\(model.state.rootName) \(model.state.scale.name)")
+                        .manrope(.medium, 15, tracking: 0)
+                        .foregroundStyle(palette.label)
+                        .lineLimit(1)
+                }
             }
         }
         .buttonStyle(PressFade())
@@ -275,9 +289,9 @@ struct SequencerView: View {
                     .manrope(.regular, 16, tracking: 0)
                     .foregroundStyle(palette.background)
                     .lineLimit(1)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 14)
                     .frame(height: height)
-                    .background(palette.label)
+                    .background(palette.label, in: Capsule())
             }
             .buttonStyle(PressFade())
             .accessibilityLabel("Open \(model.voiceLabel(index))")
@@ -297,7 +311,8 @@ struct SequencerView: View {
                     .frame(width: height, height: height)
                     .background(
                         model.isMuted(index)
-                            ? palette.label : palette.label.opacity(0.1)
+                            ? palette.label : palette.label.opacity(0.1),
+                        in: Capsule()
                     )
             }
             .buttonStyle(PressFade())
