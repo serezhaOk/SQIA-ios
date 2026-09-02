@@ -88,18 +88,26 @@ struct MixerLayoutTests {
 
     // ------------------------------------------------------------ travel --
 
-    @Test("The ease is the web's cubic, both halves of it")
+    @Test("The ease is the transition's one curve, weighted towards the end")
     func easing() {
         #expect(MixerLayout.ease(0) == 0)
         #expect(MixerLayout.ease(1) == 1)
-        #expect(abs(MixerLayout.ease(0.5) - 0.5) < 1e-12)
-        // Slow away from either end, quick through the middle.
-        #expect(MixerLayout.ease(0.25) < 0.25)
-        #expect(MixerLayout.ease(0.75) > 0.75)
-        // Symmetric about the middle, which is what makes opening and
-        // closing feel like the same move.
-        for t in stride(from: 0.0, through: 1.0, by: 0.05) {
-            #expect(abs(MixerLayout.ease(t) + MixerLayout.ease(1 - t) - 1) < 1e-12)
+
+        // It holds back for the first third and is most of the way home
+        // before three fifths of the time has gone, which leaves the rest of
+        // it to settle rather than to travel.
+        #expect(MixerLayout.ease(0.25) < 0.1)
+        #expect(MixerLayout.ease(0.5) > 0.5)
+        #expect(MixerLayout.ease(0.6) > 0.8)
+        #expect(MixerLayout.ease(0.9) > 0.97)
+
+        // Never backwards, or a panel would arrive, retreat and arrive again.
+        var last = 0.0
+        for step in 0...1000 {
+            let here = MixerLayout.ease(Double(step) / 1000)
+            #expect(here >= last - 1e-12)
+            #expect(here >= 0 && here <= 1)
+            last = here
         }
     }
 

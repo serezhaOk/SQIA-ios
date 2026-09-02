@@ -41,15 +41,13 @@ struct SequencerView: View {
         .background {
             // The bars stand on whatever the stage between them stands on:
             // the field's own black while the sequencer has the screen, the
-            // mixer's grey once the panels are cards on it. They take the
-            // same third of a second the panels take to fly, so the card
-            // growing back into a screen and the ground going out from under
-            // it happen as one move rather than as a switch and then a move.
+            // mixer's grey once the panels are cards on it. On the mixer's
+            // own clock and curve, so the card growing back into a screen and
+            // the ground going out from under it are one move rather than a
+            // switch and then a move.
             palette.background
                 .ignoresSafeArea()
-                .animation(
-                    .easeInOut(duration: MixerLayout.transition),
-                    value: model.showingMixer)
+                .animation(.mixer, value: model.showingMixer)
         }
         .overlay(alignment: .top) {
             if showingTempo {
@@ -213,7 +211,7 @@ struct SequencerView: View {
         .accessibilityLabel("Tracks")
         .opacity(model.showingMixer ? 0 : 1)
         .disabled(model.showingMixer)
-        .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
+        .animation(.mixer, value: model.showingMixer)
     }
 
     // --------------------------------------------------------------- stage --
@@ -254,9 +252,10 @@ struct SequencerView: View {
     /// The name and mute chips, one pair per panel, pinned inside the panel
     /// over its last rows of dots.
     ///
-    /// They fade on their own 0.18-second curve rather than travelling with
-    /// the panels, which is what the web's CSS transition does — the field
-    /// flies, the controls simply arrive.
+    /// They fade rather than travel: the panel flies and its chips are
+    /// simply there by the time it lands. On the same clock and the same
+    /// curve as the flight, though, so the arriving and the landing are the
+    /// one move.
     private var chips: some View {
         ZStack(alignment: .topLeading) {
             ForEach(0..<SequencerState.trackCount, id: \.self) { index in
@@ -273,7 +272,7 @@ struct SequencerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .opacity(model.showingMixer ? 1 : 0)
         .allowsHitTesting(model.showingMixer)
-        .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
+        .animation(.mixer, value: model.showingMixer)
     }
 
     private func chipRow(_ index: Int, height: CGFloat) -> some View {
@@ -328,7 +327,7 @@ struct SequencerView: View {
             .opacity(model.showingMixer ? 0 : 1)
             .disabled(model.showingMixer)
             .overlay { backTile }
-            .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
+            .animation(.mixer, value: model.showingMixer)
     }
 
     private var backTile: some View {
@@ -436,6 +435,20 @@ struct SequencerView: View {
             announcement = nil
         }
     }
+}
+
+/// The mixer's move, for the parts of it SwiftUI draws: the ground under the
+/// bars, the chips inside the panels, the track dots and the tile that leaves.
+///
+/// The same clock and the same curve the field travels on. The field is not
+/// animated by SwiftUI at all — it advances a number per frame on the display
+/// link — so there is no animation for these to share with it, only the four
+/// numbers and the duration `MixerLayout` states once.
+extension Animation {
+    static let mixer = Animation.timingCurve(
+        MixerLayout.curve.x1, MixerLayout.curve.y1,
+        MixerLayout.curve.x2, MixerLayout.curve.y2,
+        duration: MixerLayout.transition)
 }
 
 /// The web dims a label while it is held rather than tinting it.

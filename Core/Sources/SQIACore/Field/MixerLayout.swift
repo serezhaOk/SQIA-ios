@@ -8,6 +8,11 @@
 //
 // None of it touches a view, so all of it can be checked against the web's
 // own arithmetic.
+//
+// The timing is no longer the web's. Everything on this transition — the
+// panels, the ground they lie on, the controls that come and go with them —
+// is given the one duration and the one curve below, so that it reads as a
+// single move rather than as several that happen to start together.
 
 import Foundation
 
@@ -51,7 +56,23 @@ public enum MixerLayout {
     public static let corner = 26.0
 
     /// How long the view takes to travel between full screen and the mixer.
-    public static let transition = 0.35
+    ///
+    /// One number for the whole move: the panels flying, the ground turning
+    /// over under them, the chips and the tile fading in and out. Anything on
+    /// this transition that took its own time would arrive on its own, and
+    /// four things arriving one after another is four moves rather than one.
+    public static let transition = 0.4
+
+    /// And one curve, for the same reason. Written as CSS writes it —
+    /// `cubic-bezier(0.79, 0.14, 0.15, 0.86)` — which holds nearly still for
+    /// the first third, goes most of the way through the middle of the move,
+    /// and eases out of the last of it.
+    ///
+    /// It is stated here rather than in the view because the field is not
+    /// animated by SwiftUI: the travel is advanced per frame on the display
+    /// link, and the only way the two halves of the screen can agree is by
+    /// reading the same four numbers.
+    public static let curve = UnitBezier(0.79, 0.14, 0.15, 0.86)
 
     /// The chip strip — name on the left, mute on the right — sits inside
     /// the panel over its last rows of dots, so the field keeps the whole
@@ -104,10 +125,13 @@ public enum MixerLayout {
 
     // ---------------------------------------------------------- the travel --
 
-    /// The web's ease, which is the cubic one: slow away, quick through the
-    /// middle, slow in.
+    /// Where the move has got to, a fraction `t` of the way through its time.
+    ///
+    /// Not the web's cubic ease any more: the web eased in and out evenly
+    /// about the middle, and this one is weighted, so that the panels are
+    /// most of the way home while there is still time left to settle into it.
     public static func ease(_ t: Double) -> Double {
-        t < 0.5 ? 4 * t * t * t : 1 - pow(-2 * t + 2, 3) / 2
+        curve.value(at: t)
     }
 
     public static func lerp(_ a: Panel, _ b: Panel, _ t: Double) -> Panel {
@@ -118,7 +142,10 @@ public enum MixerLayout {
             height: a.height + (b.height - a.height) * t)
     }
 
-    /// Move the animation on by one frame, at the web's rate.
+    /// Move the animation on by one frame, at the rate `transition` sets.
+    /// Linear: the curve is applied to the result by `ease`, not to the
+    /// travel, so that the number itself stays something a frame can be
+    /// counted against.
     public static func advance(_ value: Double, toward target: Double, dt: Double) -> Double {
         let speed = dt / transition
         return target > value
