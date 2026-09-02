@@ -23,6 +23,8 @@ constant uint kindDot = 0;
 constant uint kindGlow = 1;
 constant uint kindStreak = 2;
 constant uint kindOutline = 3;
+/// A panel's own ground, filled before anything is drawn on it.
+constant uint kindPanel = 5;
 
 /// A slot outline is a hairline, the way the web strokes one.
 constant float kOutlineWidth = 1.0;
@@ -154,6 +156,19 @@ fragment float4 fieldFragment(VertexOut in [[stage_in]]) {
         alpha *= 1.0
             - smoothstep(
                 kOutlineWidth * 0.5 - feather, kOutlineWidth * 0.5 + feather, ring);
+    } else if (in.kind == kindPanel) {
+        // A panel's ground: a filled rounded rectangle, and the shape the
+        // whole mixer transition is cut out of.
+        //
+        // Coverage rather than a smoothstep across the edge. Half a pixel
+        // inside a straight edge has to come out fully opaque, and a
+        // smoothstep leaves it at three quarters — which nobody would see on
+        // a card in the middle of the screen, and everybody would see along
+        // the sides of the card that has grown until it is the screen, as a
+        // hairline of the ground it came from.
+        const float d = roundedBox(in.uv * in.halfSize, in.halfSize, in.corner);
+        const float feather = max(fwidth(d), 1e-4);
+        alpha *= clamp(0.5 - d / feather, 0.0, 1.0);
     } else {
         // A round-capped line: distance to the segment running along local
         // x, and a linear fade from the dot to the tip.
@@ -168,8 +183,9 @@ fragment float4 fieldFragment(VertexOut in [[stage_in]]) {
         alpha *= (1.0 - along) * across;
     }
 
-    // A slot's own border is the shape, not something inside it.
-    if (in.kind != kindOutline) {
+    // A slot's own border is the shape, not something inside it, and a
+    // panel's ground is the thing being clipped to.
+    if (in.kind != kindOutline && in.kind != kindPanel) {
         alpha *= clipMask(in.point, in.clipCentre, in.clipHalf, in.corner);
     }
     return float4(in.color.rgb, alpha);

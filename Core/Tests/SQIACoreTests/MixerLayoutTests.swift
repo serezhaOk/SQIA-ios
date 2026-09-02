@@ -182,4 +182,31 @@ struct MixerLayoutTests {
         #expect(MixerLayout.outlineAlpha(eased: 0) == 0)
         #expect(MixerLayout.outlineAlpha(eased: 1) == 0.7)
     }
+
+    @Test("A panel's ground travels with it, and squares off as it grows")
+    func theGround() {
+        // The track being looked at is standing on its ground the whole way:
+        // it is the screen it flew out of, and the screen it becomes again.
+        #expect(MixerLayout.fillAlpha(active: true, eased: 0) == 1)
+        #expect(MixerLayout.fillAlpha(active: true, eased: 1) == 1)
+        // The other cards arrive with the mixer, like their outlines.
+        #expect(MixerLayout.fillAlpha(active: false, eased: 0) == 0)
+        #expect(MixerLayout.fillAlpha(active: false, eased: 1) == 1)
+        #expect(abs(MixerLayout.fillAlpha(active: false, eased: 0.5) - 0.5) < 1e-12)
+
+        // Square while the track is the screen, a card's corner by the time
+        // it is a card. Anything else would cut four notches of the mixer's
+        // ground out of a field that still fills the screen.
+        #expect(MixerLayout.travellingCorner(active: true, eased: 0) == 0)
+        #expect(MixerLayout.travellingCorner(active: true, eased: 1) == MixerLayout.corner)
+        #expect(
+            abs(
+                MixerLayout.travellingCorner(active: true, eased: 0.5)
+                    - MixerLayout.corner / 2) < 1e-12)
+
+        // A slot is a card the whole way through, so its corner never moves.
+        for t in [0.0, 0.5, 1.0] {
+            #expect(MixerLayout.travellingCorner(active: false, eased: t) == MixerLayout.corner)
+        }
+    }
 }

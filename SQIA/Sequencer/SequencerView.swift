@@ -38,7 +38,19 @@ struct SequencerView: View {
             stage
             footer
         }
-        .background(palette.background.ignoresSafeArea())
+        .background {
+            // The bars stand on whatever the stage between them stands on:
+            // the field's own black while the sequencer has the screen, the
+            // mixer's grey once the panels are cards on it. They take the
+            // same third of a second the panels take to fly, so the card
+            // growing back into a screen and the ground going out from under
+            // it happen as one move rather than as a switch and then a move.
+            palette.background
+                .ignoresSafeArea()
+                .animation(
+                    .easeInOut(duration: MixerLayout.transition),
+                    value: model.showingMixer)
+        }
         .overlay(alignment: .top) {
             if showingTempo {
                 TempoWheelOverlay(

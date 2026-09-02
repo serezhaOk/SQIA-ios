@@ -143,11 +143,34 @@ public enum MixerLayout {
         return lerp(full(width: width, height: height), slot, t)
     }
 
+    /// The corner the travelling panel is cut to, and filled on.
+    ///
+    /// Square while the track is the whole screen and the panel's own by the
+    /// time it has become a card. A fixed radius would cut four notches out of
+    /// the ground the moment the mixer began to open, and the screen would
+    /// show the mixer's grey through the corners of a field that still fills
+    /// it. The slots the other tracks wait in are cards the whole way, so
+    /// theirs never changes.
+    public static func travellingCorner(active: Bool, eased t: Double) -> Double {
+        active ? corner * t : corner
+    }
+
     /// The active track is always visible; the rest fade in with the mixer,
     /// and a muted track is dimmed wherever it is.
     public static func alpha(active: Bool, eased t: Double, muted: Bool) -> Double {
         let base = active ? 1 : t
         return muted ? base * 0.35 : base
+    }
+
+    /// A panel's own ground — the black a card is filled with.
+    ///
+    /// The track being looked at carries it the whole way, because that
+    /// ground is the screen it is flying out of; the others arrive with the
+    /// mixer, like their outlines. Muting does not come into it: a muted
+    /// track's notes are dimmed, but the card they are drawn on is a card
+    /// like any other.
+    public static func fillAlpha(active: Bool, eased t: Double) -> Double {
+        active ? 1 : t
     }
 
     /// The extras — halos and streaks — are scaled back in a panel, and the

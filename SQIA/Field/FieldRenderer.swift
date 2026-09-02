@@ -48,12 +48,36 @@ struct FieldOutline {
     var corner: Double = MixerLayout.corner
 }
 
+/// The ground a panel stands on, filled before anything is drawn in it.
+///
+/// The mixer is black cards on a grey ground, and the card being opened
+/// carries its black out to the edges of the screen as it grows. So the ground
+/// is not something the screen is painted with and the panels are cut out of —
+/// it is the panels, and the whole transition is that shape travelling.
+struct FieldFill {
+    var rect: CGRect
+    var alpha: Double
+    /// The corner it is filled on, which is the one the field inside it is
+    /// cut to. Zero while the panel is the screen.
+    var corner: Double = MixerLayout.corner
+    /// 0xRRGGBB, the form the palette is written in.
+    var color: UInt32
+}
+
 /// Everything one frame draws. The outlines are not part of any layer: they
 /// belong to the slots, and the track on its way into a slot is somewhere
 /// else while it travels.
 struct FieldFrame {
     var layers: [FieldLayer] = []
     var outlines: [FieldOutline] = []
+    /// The panels' own ground, filled under everything else.
+    var fills: [FieldFill] = []
+    /// What is left showing between them: the ground the cards lie on while
+    /// the mixer is open, and the field's own once a card has grown into the
+    /// screen. Chosen per frame rather than by the palette, because during
+    /// the travel it is not a question about which screen is up — it is a
+    /// question about what the panels have not covered yet.
+    var ground: UInt32 = 0x000000
 }
 
 /// Matches `FieldInstance` in FieldShaders.metal. The colour comes first so
@@ -173,6 +197,11 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private var instances: [FieldInstance] = []
     /// The sources, held apart because they are drawn into somewhere else.
     private var sources: [FieldInstance] = []
+    /// The panel grounds, held apart because they are drawn first — under the
+    /// heat, which everything in `instances` is drawn over.
+    private var fills: [FieldInstance] = []
+    /// What the stage is cleared to this frame, as the last one asked for.
+    private var ground = SequencerPalette.clearColor(0x000000)
 
     private var lastFrameTime: CFTimeInterval = 0
 
@@ -271,6 +300,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         // drawn note in each of them is a source.
         sources.reserveCapacity(NoteGrid.count * 2)
         draws.reserveCapacity(Self.maxInstances)
+        // One ground per track, and never more.
+        fills.reserveCapacity(SequencerState.trackCount)
     }
 
     // ------------------------------------------------------------ MTKView --
@@ -309,22 +340,26 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         bufferIndex = (bufferIndex + 1) % Self.maxFramesInFlight
         let buffer = instanceBuffers[bufferIndex]
         let stride = MemoryLayout<FieldInstance>.stride
-        // One buffer, the drawn primitives first and the sources after them,
-        // so the accumulation pass is the same buffer read from an offset.
-        let count = min(instances.count, Self.maxInstances)
-        let sourceCount = min(sources.count, Self.maxInstances - count)
-        if count > 0 {
-            instances.withUnsafeBytes { source in
-                buffer.contents().copyMemory(
+        // One buffer, in the order the passes want it: the panel grounds
+        // first, the drawn primitives after them, the sources last. Each pass
+        // is then the same buffer read from an offset.
+        let fillCount = min(fills.count, Self.maxInstances)
+        let count = min(instances.count, Self.maxInstances - fillCount)
+        let sourceCount = min(sources.count, Self.maxInstances - fillCount - count)
+        func copy(_ from: [FieldInstance], count: Int, after offset: Int) {
+            guard count > 0 else { return }
+            from.withUnsafeBytes { source in
+                buffer.contents().advanced(by: offset * stride).copyMemory(
                     from: source.baseAddress!, byteCount: count * stride)
             }
         }
-        if sourceCount > 0 {
-            sources.withUnsafeBytes { source in
-                buffer.contents().advanced(by: count * stride).copyMemory(
-                    from: source.baseAddress!, byteCount: sourceCount * stride)
-            }
-        }
+        copy(fills, count: fillCount, after: 0)
+        copy(instances, count: count, after: fillCount)
+        copy(sources, count: sourceCount, after: fillCount + count)
+
+        // The ground under all of it, which the last frame worked out along
+        // with the panels that are lying on it.
+        view.clearColor = ground
 
         // The drawable is taken here rather than at the top of the frame:
         // asking for one blocks until the GPU frees it, and blocking before
@@ -357,7 +392,8 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
             if let accumulate = commands.makeRenderCommandEncoder(descriptor: pass) {
                 accumulate.setRenderPipelineState(sourcePipeline)
-                accumulate.setVertexBuffer(buffer, offset: count * stride, index: 0)
+                accumulate.setVertexBuffer(
+                    buffer, offset: (fillCount + count) * stride, index: 0)
                 accumulate.setVertexBytes(
                     &viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
                 accumulate.drawPrimitives(
@@ -370,6 +406,20 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         guard let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else {
             inFlight.signal()
             return
+        }
+
+        // The panels' own ground, before anything else and in particular
+        // before the heat: a card is what the field inside it is drawn on,
+        // and the one flying out of the mixer covers the cards it passes over
+        // rather than showing them through itself.
+        if fillCount > 0 {
+            encoder.setRenderPipelineState(pipeline)
+            encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+            encoder.setVertexBytes(
+                &viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+            encoder.drawPrimitives(
+                type: .triangleStrip, vertexStart: 0, vertexCount: 4,
+                instanceCount: fillCount)
         }
 
         // Second pass: read the sum back and colour it. Under the drawn
@@ -387,7 +437,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
         if count > 0 {
             encoder.setRenderPipelineState(pipeline)
-            encoder.setVertexBuffer(buffer, offset: 0, index: 0)
+            encoder.setVertexBuffer(buffer, offset: fillCount * stride, index: 0)
             encoder.setVertexBytes(
                 &viewport, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
             encoder.drawPrimitives(
@@ -423,6 +473,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private func build(dt: Double) {
         instances.removeAll(keepingCapacity: true)
         sources.removeAll(keepingCapacity: true)
+        fills.removeAll(keepingCapacity: true)
 
         // MTKView drives its delegate from the main run loop, so this is the
         // main thread; saying so lets the provider read main-actor state
@@ -430,6 +481,11 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         // inside, so nothing has to cross the boundary on the way out.
         MainActor.assumeIsolated {
             guard let frame = frameProvider?(dt) else { return }
+
+            ground = SequencerPalette.clearColor(frame.ground)
+            for fill in frame.fills where fill.alpha > 0.004 {
+                fills.append(instance(for: fill))
+            }
 
             // Outlines first, so a panel's border sits under its dots the
             // way a stroke drawn before them does.
@@ -486,6 +542,22 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                 }
             }
         }
+    }
+
+    private func instance(for fill: FieldFill) -> FieldInstance {
+        FieldInstance(
+            color: SIMD4(
+                Float((fill.color >> 16) & 0xFF) / 255,
+                Float((fill.color >> 8) & 0xFF) / 255,
+                Float(fill.color & 0xFF) / 255,
+                Float(fill.alpha)),
+            center: SIMD2(Float(fill.rect.midX), Float(fill.rect.midY)),
+            halfSize: SIMD2(Float(fill.rect.width / 2), Float(fill.rect.height / 2)),
+            axis: SIMD2(1, 0),
+            // `kindPanel` in FieldShaders.metal, which is the only place the
+            // numbers mean anything.
+            kind: 5,
+            corner: Float(fill.corner))
     }
 
     private func instance(for outline: FieldOutline) -> FieldInstance {

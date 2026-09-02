@@ -371,29 +371,57 @@ final class SequencerModel {
         let width = Double(rect.width)
         let height = Double(rect.height)
 
-        // Shut, and nothing to animate: the sequencer as it was.
+        // The two grounds this screen stands on: the field's own, which is
+        // what a panel is filled with wherever it is on its way, and the
+        // mixer's, which is whatever the panels have left showing.
+        let colours = palette
+
+        // Shut, and nothing to animate: the sequencer as it was. The panel
+        // has grown until it is the screen, so the screen is cleared to the
+        // panel's ground and the card itself is not drawn at all — a
+        // full-screen quad of the colour already underneath it, once a frame
+        // at the display's rate, for nothing.
         if t <= 0.0001 {
-            return FieldFrame(layers: [scenes[state.activeTrackIndex].layer(in: rect)])
+            var frame = FieldFrame(layers: [scenes[state.activeTrackIndex].layer(in: rect)])
+            frame.ground = colours.fieldGround
+            return frame
         }
 
         var frame = FieldFrame()
+        frame.ground = colours.mixerGround
         for index in state.tracks.indices where scenes.indices.contains(index) {
             let isActive = index == state.activeTrackIndex
+            let panel = MixerLayout.rect(
+                forTrack: index, active: state.activeTrackIndex,
+                count: state.tracks.count, width: width, height: height, eased: t)
+            let card = CGRect(
+                x: panel.x, y: panel.y, width: panel.width, height: panel.height)
+            // Square while the track is the screen and a card's by the time it
+            // is one — the fill and the clip take the same one, or the field
+            // would be cut on a different curve from the ground under it.
+            let corner = MixerLayout.travellingCorner(active: isActive, eased: t)
+
+            // The card's own ground, which the track being opened already
+            // has and the others take on as the mixer arrives.
+            let filled = MixerLayout.fillAlpha(active: isActive, eased: t)
+            if filled > 0.004 {
+                frame.fills.append(
+                    FieldFill(
+                        rect: card, alpha: filled, corner: corner,
+                        color: colours.fieldGround))
+            }
+
             let alpha = MixerLayout.alpha(
                 active: isActive, eased: t, muted: state.tracks[index].muted)
             if alpha <= 0.01 { continue }
 
-            let panel = MixerLayout.rect(
-                forTrack: index, active: state.activeTrackIndex,
-                count: state.tracks.count, width: width, height: height, eased: t)
-
-            var layer = scenes[index].layer(
-                in: CGRect(x: panel.x, y: panel.y, width: panel.width, height: panel.height))
+            var layer = scenes[index].layer(in: card)
             // A panel is a whole field squeezed into a card, so it keeps what
             // it holds. Cut to the travelling rect rather than to the slot it
             // is heading for: on the way in, the field is still most of the
             // screen and it should be cut where it is, not where it will be.
             layer.clipped = true
+            layer.corner = corner
             layer.alpha = alpha
             layer.detail = MixerLayout.detail(active: isActive, eased: t)
             frame.layers.append(layer)

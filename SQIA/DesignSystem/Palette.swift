@@ -64,10 +64,10 @@ enum Palette {
 /// screen in the environment, so no control has to be told which ground it is
 /// standing on.
 struct SequencerPalette: Equatable {
-    /// The ground, as one number. SwiftUI paints the bars with it and Metal
-    /// clears the field to it, and the screen only reads as a single surface
-    /// for as long as those two agree — so they are given the same value
-    /// rather than two that were chosen to match.
+    /// The ground the bars above and below the field are painted with. It is
+    /// `fieldGround` while the sequencer has the screen and `mixerGround`
+    /// while the mixer does, so that the bars are always standing on whatever
+    /// the stage between them is standing on.
     var ground: UInt32
     /// Raised: pills, and the tempo card.
     var surface: Color
@@ -96,6 +96,12 @@ struct SequencerPalette: Equatable {
     /// something to be lying on, or they read as holes cut in it.
     var mixerGround: UInt32
 
+    /// The ground the field itself stands on: what a panel is filled with,
+    /// and what covers the screen once a track has been opened. `opened`
+    /// leaves it where it is — when the mixer opens it is the bars that
+    /// change ground, and the cards keep this one and shrink.
+    var fieldGround: UInt32
+
     var background: Color { Color(hex: ground) }
 
     /// The same palette, standing on the mixer's ground.
@@ -109,11 +115,17 @@ struct SequencerPalette: Equatable {
     /// which is shown as written, so these are the sRGB values themselves and
     /// not a linear conversion of them — convert, and the field would sit a
     /// visibly different shade from the bars above and below it.
-    var clearColor: MTLClearColor {
+    var clearColor: MTLClearColor { Self.clearColor(ground) }
+
+    /// Any of these grounds, in the same terms. The renderer picks which one
+    /// the stage is cleared to per frame, because during the travel that is
+    /// not a question the palette can answer: it is whichever the panels have
+    /// left uncovered.
+    static func clearColor(_ hex: UInt32) -> MTLClearColor {
         MTLClearColor(
-            red: Double((ground >> 16) & 0xFF) / 255,
-            green: Double((ground >> 8) & 0xFF) / 255,
-            blue: Double(ground & 0xFF) / 255,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
             alpha: 1)
     }
 
@@ -130,7 +142,8 @@ struct SequencerPalette: Equatable {
         eraseBloom: .red,
         shuffleBloom: Color(hex: 0xFF66E0),
         dimmed: 0.3,
-        mixerGround: 0x1C1C1C
+        mixerGround: 0x1C1C1C,
+        fieldGround: 0x000000
     )
 
     /// The same screen turned over, for looking at the field on paper rather
@@ -151,7 +164,8 @@ struct SequencerPalette: Equatable {
         eraseBloom: .red,
         shuffleBloom: Color(hex: 0xFF66E0),
         dimmed: 0.3,
-        mixerGround: 0xE7E4E1
+        mixerGround: 0xE7E4E1,
+        fieldGround: 0xF2F0EE
     )
 }
 
