@@ -112,6 +112,13 @@ final class AppModel {
         if auth.isSignedIn {
             wasSignedIn = true
             screen = .library
+        } else {
+            // The cached sign-in `peek()` trusted did not survive
+            // confirmation — the refresh was turned down, or there was
+            // nothing to confirm. Show the sign-in screen (where the reason
+            // is waiting) rather than leaving a library up that cannot load.
+            wasSignedIn = false
+            screen = .landing
         }
     }
 

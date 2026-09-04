@@ -321,6 +321,37 @@ private func keeper(
         waiting: { _ in })
 }
 
+/// Counts refreshes and parks the first one mid-flight, so a test can hold
+/// the actor's refresh door open and see whether a second caller walks
+/// through it. Only the first parks; a second — which a working single-flight
+/// never makes — returns at once, so a regression fails the count rather than
+/// hanging.
+private actor RefreshCounter {
+    private(set) var count = 0
+    private var arrived: [CheckedContinuation<Void, Never>] = []
+    private var gate: CheckedContinuation<Void, Never>?
+    private var parked = false
+
+    func hit() async {
+        count += 1
+        guard count == 1 else { return }
+        parked = true
+        for waiter in arrived { waiter.resume() }
+        arrived = []
+        await withCheckedContinuation { gate = $0 }
+    }
+
+    func waitForFirst() async {
+        if parked { return }
+        await withCheckedContinuation { arrived.append($0) }
+    }
+
+    func release() {
+        gate?.resume()
+        gate = nil
+    }
+}
+
 @Suite("Holding the sign-in")
 struct SessionKeeperTests {
     @Test("A cached sign-in is seen without asking the network")
@@ -357,6 +388,35 @@ struct SessionKeeperTests {
         let token = await subject.accessToken()
         #expect(token == "at-1")
         // And the new one is what a relaunch would find.
+        let saved = await storage.load()
+        #expect(saved?.refreshToken == "rt-1")
+    }
+
+    @Test("Two callers racing at launch spend the refresh token once")
+    func refreshIsSingleFlight() async throws {
+        // The launch race, in a test: a stale session, and two callers —
+        // `restore` confirming it and `accessToken` fetching a token for the
+        // first project load — arriving together. The refresh parks the first
+        // one in the middle of its round trip, which is the exact gap the
+        // actor used to let the second in through to spend the same rotated
+        // token a second time. Once, or the sign-in is revoked.
+        let storage = InMemorySessionStorage(session: session(expiresIn: 10))
+        let counter = RefreshCounter()
+        let base = reply(200, sessionJSON)
+        let subject = keeper(storage, transport: { request in
+            await counter.hit()
+            return try await base(request)
+        })
+
+        async let restored = subject.restore()
+        async let token = subject.accessToken()
+
+        await counter.waitForFirst()
+        await counter.release()
+
+        #expect(await restored)
+        #expect(await token == "at-1")
+        #expect(await counter.count == 1, "the refresh token was spent more than once")
         let saved = await storage.load()
         #expect(saved?.refreshToken == "rt-1")
     }
