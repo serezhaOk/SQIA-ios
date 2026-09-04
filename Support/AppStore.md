@@ -100,9 +100,8 @@ has nothing to ask about.
 
 > **Signing in.** The app needs an account, because a project is stored
 > against one and the same project opens in the browser at
-> sqia.serezhaok.com. There are three ways in and all three work on a device:
-> Sign in with Apple, Google, or an email link. A test account is attached
-> below.
+> sqia.serezhaok.com. There are two ways in and both work on a device:
+> Sign in with Apple, or Google. A test account is attached below.
 >
 > **Sign in with Apple** is offered first and is no less prominent than
 > Google, as Guideline 4.8 requires. It is a native sign-in — no browser is
@@ -116,13 +115,16 @@ has nothing to ask about.
 > the audio session uses the `.playback` category. Please try it with the
 > volume up: the screen alone does not show what the app is.
 >
+> The sign-in screen is the exception. Its film loop is muted and the quiet
+> bed under it is `.ambient`, so it goes silent with the ring switch and
+> never interrupts whatever the phone was already playing.
+>
 > **How to see it working in about a minute.** Sign in → tap
 > "+ Create first project" → drag a finger across the grid of dots. It starts
 > playing at once. The two dots at the top of the screen open the mixer,
 > where "Back to projects" returns to the library.
 
-**Test account:** _fill in the email and password (or the address the sign-in
-link should go to) before submitting._
+**Test account:** _fill in the account to sign in with before submitting._
 
 **Attachment:** a short screen recording helps here, because a still
 screenshot of a grid of dots does not convey that it makes sound.
@@ -161,9 +163,7 @@ bump it for each TestFlight build rather than reusing one.
 - [ ] Supabase: `sqia://auth` and the bridge page are in the redirect
       allowlist, the Apple provider is on with `com.serezhaok.sqia` in its
       authorized client IDs, and `delete-account` is deployed.
-- [ ] `sqia.serezhaok.com/ios` is live, or the email sign-in link goes
-      nowhere.
 - [ ] Archive is a Release build — the tuning panel and the load meter are
       `#if DEBUG` and must not appear.
-- [ ] All three sign-in routes tried on a real device, and account deletion
+- [ ] Both sign-in routes tried on a real device, and account deletion
       tried once on an account you do not mind losing.

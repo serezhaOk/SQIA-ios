@@ -25,6 +25,13 @@ final class AppModel {
     }
 
     private(set) var screen = Screen.landing
+    /// False until `start()` has said which screen this is. Nothing is drawn
+    /// before then, because the starting value is a guess and the guess is
+    /// not free any more: the sign-in screen opens a film and a sound file,
+    /// and building both for somebody who is already signed in costs a
+    /// launch. A frame of black is the honest thing to show while the
+    /// Keychain is read.
+    private(set) var hasStarted = false
     let auth: AuthController
     let library: LibraryModel
     /// Nil until a project has been opened for the first time.
@@ -87,13 +94,31 @@ final class AppModel {
             if Self.isUITesting {
                 wasSignedIn = true
                 screen = .library
+                hasStarted = true
                 return
             }
         #endif
+        // The Keychain answers now and the network may take a round trip, so
+        // the screen is chosen on the cached answer and the confirmation
+        // lands behind it. Waiting for the round trip would hold the app on
+        // black for as long as the network felt like taking.
+        if await auth.peek() {
+            wasSignedIn = true
+            screen = .library
+        }
+        hasStarted = true
+
         await auth.start()
         if auth.isSignedIn {
             wasSignedIn = true
             screen = .library
+        } else {
+            // The cached sign-in `peek()` trusted did not survive
+            // confirmation — the refresh was turned down, or there was
+            // nothing to confirm. Show the sign-in screen (where the reason
+            // is waiting) rather than leaving a library up that cannot load.
+            wasSignedIn = false
+            screen = .landing
         }
     }
 

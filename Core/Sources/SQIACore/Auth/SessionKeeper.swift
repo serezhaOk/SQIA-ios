@@ -75,6 +75,15 @@ public actor SessionKeeper {
     /// down as a session that ended on its own.
     private var signingOut = false
     private var retrying = false
+    /// A refresh already on the wire. Two callers arrive together at launch —
+    /// `restore` confirming the cached sign-in, and the first project load
+    /// asking for a token — and a refresh has an `await` in the middle, which
+    /// is a door the actor lets the second caller in through. If both spent
+    /// the stored refresh token the second spend would be "Already Used", and
+    /// GoTrue answers that by revoking the whole session: signed out while
+    /// holding a good sign-in. So whoever is second joins the first refresh
+    /// instead of starting another.
+    private var refreshing: Task<Void, Error>?
 
     public init(
         client: AuthClient,
@@ -203,7 +212,29 @@ public actor SessionKeeper {
 
     // ------------------------------------------------------------ the work --
 
+    /// Refresh the session, once, however many callers ask at the same time.
+    /// The first one through does the work; the rest wait on it and come back
+    /// to a session already renewed. A refresh token is spent exactly once,
+    /// which is the whole point — see `refreshing`.
     private func renew(_ refreshToken: String) async throws {
+        if let refreshing {
+            try await refreshing.value
+            return
+        }
+        let task = Task { try await self.performRefresh(refreshToken) }
+        refreshing = task
+        do {
+            try await task.value
+            refreshing = nil
+        } catch {
+            refreshing = nil
+            throw error
+        }
+    }
+
+    /// The refresh itself. Runs on the actor, so the session it writes is the
+    /// one every joined caller reads when the task returns.
+    private func performRefresh(_ refreshToken: String) async throws {
         let fresh = try await client.refresh(refreshToken)
         session = fresh
         await storage.save(fresh)

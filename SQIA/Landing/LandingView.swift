@@ -1,189 +1,172 @@
 // The front door.
 //
-// Metrics are the web app's: the mark at 132, the wordmark at 2.6rem, the
-// buttons 54 tall and fully rounded, 38 points of air above the first one
-// and 12 between the rest, and the whole column capped at 340 and centred.
+// Built from the Figma frame (281:8721) rather than from the web app: a
+// looping film, the wordmark a quarter of the way down, and two round
+// buttons near the bottom. Every number in `Metrics` is that frame's, on the
+// 393x852 canvas it was drawn on. The only one that is a fraction rather
+// than a distance is the wordmark's top, so the composition still holds on a
+// phone shorter than the one it was drawn for; the bottom cluster hangs off
+// the bottom edge, which is where the design measures it from too.
 //
-// One button the web does not have. Guideline 4.8 requires Apple sign-in
-// wherever Google is offered, and requires it be no less prominent — so it
-// goes first, in Apple's own button, at the same size as the rest.
+// Two ways in, not three. Email is gone for now. Apple goes first because
+// Guideline 4.8 asks for it wherever Google is offered, and at the same
+// size, which the design already gives it.
 
-import AuthenticationServices
 import SQIACore
 import SwiftUI
 
 struct LandingView: View {
     let auth: AuthController
 
-    @State private var showingEmail = false
-    @State private var email = ""
-    @FocusState private var emailFocused: Bool
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var ambience = LoginAmbience()
 
-    private static let buttonHeight: CGFloat = 54
-    private static let column: CGFloat = 340
+    private enum Metrics {
+        /// The canvas everything below was measured on.
+        static let canvas: CGFloat = 852
+
+        static let wordmarkTop: CGFloat = 211 / canvas
+        static let wordmark = CGSize(width: 230.54, height: 121.85)
+        static let wordmarkToTagline: CGFloat = 21
+
+        static let promptToButtons: CGFloat = 24
+        static let button = CGSize(width: 114, height: 52)
+        static let betweenButtons: CGFloat = 10
+        /// The design's icon slot, straight from the frame. The Figma marks
+        /// carry their own padding inside it and ours are drawn tight to
+        /// their boxes, so at this size ours read a touch larger than the
+        /// mock's rendered glyph — which is the size the frame asks for.
+        static let mark: CGFloat = 21.43
+
+        static let buttonsToTerms: CGFloat = 50
+        static let bottomInset: CGFloat = 32
+        static let bannerToPrompt: CGFloat = 20
+    }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                SQIALogo()
-                    .frame(width: 132, height: 132)
-                    .padding(.bottom, 26)
+        GeometryReader { proxy in
+            ZStack {
+                LoginBackdrop(isPlaying: scenePhase == .active)
 
-                Text("SQIA")
-                    .manrope(.bold, TextStyle.wordmarkSize, tracking: -0.02)
-                    .foregroundStyle(Palette.ui)
+                wordmark
+                    .padding(.top, proxy.size.height * Metrics.wordmarkTop)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                Text("Built for sound accidents")
-                    .manrope(.regular, TextStyle.taglineSize)
-                    .foregroundStyle(Palette.tagline)
-                    .padding(.top, 10)
-
-                appleButton.padding(.top, 38)
-                googleButton.padding(.top, 12)
-                emailButton.padding(.top, 12)
-                if showingEmail { emailForm.padding(.top, 12) }
-
-                terms.padding(.top, 18)
-                if let message = auth.message { banner(message).padding(.top, 16) }
-
-                Link("What is SQIA?", destination: Self.about)
-                    .manrope(.regular, TextStyle.aboutSize)
-                    .foregroundStyle(Palette.logoDot)
-                    .underline()
-                    .padding(.top, 46)
-
-                Text("© 2026 Sergei Diuzhev. All rights reserved.")
-                    .manrope(.regular, TextStyle.copyrightSize)
-                    .foregroundStyle(Palette.copyright)
-                    .padding(.top, 28)
+                doors
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, Metrics.bottomInset)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
-            .frame(maxWidth: Self.column)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 24)
-            .padding(.top, 32)
-            .padding(.bottom, 24)
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .background(Palette.background.ignoresSafeArea())
-    }
-
-    // ------------------------------------------------------------- buttons --
-
-    private var appleButton: some View {
-        SignInWithAppleButton(
-            .continue,
-            onRequest: { auth.prepareAppleRequest($0) },
-            onCompletion: { auth.handleApple($0) }
-        )
-        .signInWithAppleButtonStyle(.white)
-        .frame(height: Self.buttonHeight)
-        .clipShape(Capsule())
-        .disabled(auth.isWorking)
-    }
-
-    private var googleButton: some View {
-        Button {
-            auth.signInWithGoogle()
-        } label: {
-            HStack(spacing: 10) {
-                GoogleMark().frame(width: 20, height: 20)
-                Text("Continue with Google")
-                    .manrope(.semibold, TextStyle.buttonSize)
+        .background(Palette.background)
+        .ignoresSafeArea()
+        .onAppear { ambience.start() }
+        .onDisappear { ambience.stop() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                ambience.start()
+            } else {
+                ambience.stop()
             }
-            .foregroundStyle(Color(hex: 0x111111))
-            .frame(maxWidth: .infinity)
-            .frame(height: Self.buttonHeight)
-            .background(Palette.ui, in: Capsule())
+        }
+    }
+
+    // --------------------------------------------------------- the wordmark --
+
+    private var wordmark: some View {
+        VStack(spacing: Metrics.wordmarkToTagline) {
+            Image(.loginWordmark)
+                .resizable()
+                .scaledToFit()
+                .frame(width: Metrics.wordmark.width, height: Metrics.wordmark.height)
+                .accessibilityLabel("SQIA")
+
+            Text("Built for sound accidents")
+                .manrope(.regular, TextStyle.taglineSize, tracking: 0)
+                .foregroundStyle(Palette.loginTagline)
+                .multilineTextAlignment(.center)
+        }
+    }
+
+    // ------------------------------------------------------------- the doors --
+
+    private var doors: some View {
+        // Bottom-anchored, so a message that appears grows the column
+        // upwards and every distance the design measures from the bottom
+        // edge stays what it was.
+        VStack(spacing: 0) {
+            if let message = auth.message {
+                banner(message)
+                    .padding(.bottom, Metrics.bannerToPrompt)
+            }
+
+            Text("Continue with")
+                .manrope(.medium, TextStyle.promptSize, tracking: 0)
+                .foregroundStyle(.white)
+
+            HStack(spacing: Metrics.betweenButtons) {
+                appleDoor
+                googleDoor
+            }
+            .padding(.top, Metrics.promptToButtons)
+
+            terms
+                .padding(.top, Metrics.buttonsToTerms)
+        }
+    }
+
+    private var appleDoor: some View {
+        door({ auth.signInWithApple() }) {
+            // Apple's own glyph, from the system, which is the only mark
+            // Apple allows on a button that signs somebody in with it.
+            Image(systemName: "apple.logo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: Metrics.mark, height: Metrics.mark)
+                .foregroundStyle(.black)
+        }
+        .accessibilityLabel("Continue with Apple")
+    }
+
+    private var googleDoor: some View {
+        door({ auth.signInWithGoogle() }) {
+            GoogleMark().frame(width: Metrics.mark, height: Metrics.mark)
+        }
+        .accessibilityLabel("Continue with Google")
+    }
+
+    /// The white pill both ways in are drawn on. `Capsule` rather than a
+    /// 100-point radius, which is what the design's `corner-radius/l` means
+    /// on a shape 52 tall.
+    private func door<Mark: View>(
+        _ act: @escaping () -> Void, @ViewBuilder mark: () -> Mark
+    ) -> some View {
+        Button(action: act) {
+            mark()
+                .frame(width: Metrics.button.width, height: Metrics.button.height)
+                .background(.white, in: Capsule())
         }
         .buttonStyle(PillPress())
         .opacity(auth.isWorking ? 0.6 : 1)
         .disabled(auth.isWorking)
     }
 
-    /// The dark one: its label sits left, not centred, as the CSS has it.
-    private var emailButton: some View {
-        Button {
-            showingEmail = true
-            emailFocused = true
-        } label: {
-            Text("Continue with email")
-                .manrope(.semibold, TextStyle.buttonSize)
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.leading, 24)
-                .frame(height: Self.buttonHeight)
-                .background(Palette.fieldBackground, in: Capsule())
-                .overlay(Capsule().stroke(Palette.fieldBorder, lineWidth: 1))
-        }
-        .buttonStyle(PressFade())
-        .disabled(auth.isWorking)
-    }
-
-    private var emailForm: some View {
-        VStack(spacing: 10) {
-            TextField("", text: $email, prompt: placeholder)
-                .textContentType(.emailAddress)
-                .keyboardType(.emailAddress)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .submitLabel(.send)
-                .focused($emailFocused)
-                .manrope(.regular, TextStyle.buttonSize)
-                .foregroundStyle(Palette.ui)
-                .padding(.horizontal, 24)
-                .frame(height: Self.buttonHeight)
-                .background(Palette.fieldBackground, in: Capsule())
-                .overlay(
-                    Capsule().stroke(
-                        emailFocused ? Palette.fieldBorderFocused : Palette.fieldBorder,
-                        lineWidth: 1)
-                )
-                .onSubmit(send)
-
-            Button(action: send) {
-                Text("Send sign-in link")
-                    .manrope(.semibold, TextStyle.buttonSize)
-                    .foregroundStyle(Color(hex: 0x111111))
-                    .frame(maxWidth: .infinity)
-                    .frame(height: Self.buttonHeight)
-                    .background(Palette.ui, in: Capsule())
-            }
-            .buttonStyle(PillPress())
-            .opacity(auth.isWorking ? 0.6 : 1)
-            .disabled(auth.isWorking)
-        }
-    }
-
-    private var placeholder: Text {
-        Text("example@email.com")
-            .font(Manrope.regular.font(TextStyle.buttonSize))
-            .foregroundColor(Palette.placeholder)
-    }
-
-    private func send() {
-        emailFocused = false
-        auth.sendMagicLink(to: email)
-    }
-
     // -------------------------------------------------------------- the rest --
 
-    private static let about = URL(
-        string: "https://www.instagram.com/reel/Dbh7eVJAed7/?igsh=MTJ2MzQxaGZtNm81dw==")!
-
     private var terms: some View {
-        // One run of text with two links inside it, which is what the web
-        // has — not three views pretending to be a sentence. The markdown
-        // is a literal because an interpolated one is not parsed.
+        // One run of text with two links inside it, the way the design draws
+        // it — not three views pretending to be a sentence. The markdown is
+        // a literal because an interpolated one is not parsed.
         Text(
             """
-            By continuing, you agree to our \
+            by continuing you agree to our \
             [Terms](https://sqia.serezhaok.com/terms.html) and \
-            [Privacy Policy](https://sqia.serezhaok.com/privacy.html).
+            [Privacy Policy](https://sqia.serezhaok.com/privacy.html)
             """
         )
-        .manrope(.regular, TextStyle.termsSize)
-        .foregroundStyle(Palette.muted)
-        .tint(Palette.link)
+        .manrope(.regular, TextStyle.termsSize, tracking: 0)
+        .foregroundStyle(Palette.loginTerms)
+        .tint(.white)
         .multilineTextAlignment(.center)
     }
 
@@ -192,6 +175,8 @@ struct LandingView: View {
             .manrope(.regular, TextStyle.messageSize)
             .foregroundStyle(message.isError ? Palette.failure : Palette.success)
             .multilineTextAlignment(.center)
+            // Legible over whatever frame of the film is underneath it.
+            .shadow(color: .black.opacity(0.6), radius: 6, y: 1)
     }
 }
 

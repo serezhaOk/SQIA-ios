@@ -21,15 +21,11 @@ enum Palette {
     /// `--accent`
     static let accent = Color.white
 
-    // Landing
-    static let tagline = Color(hex: 0xCFCFCF)
-    static let muted = Color(hex: 0x8A8A8A)
-    static let link = Color(hex: 0xB9B9B9)
-    static let copyright = Color(hex: 0x6A6A6A)
-    static let fieldBackground = Color(hex: 0x0F0F0F)
-    static let fieldBorder = Color(hex: 0x3A3A3A)
-    static let fieldBorderFocused = Color(hex: 0x8A8A8A)
-    static let placeholder = Color(hex: 0x6F6F6F)
+    // Sign-in. Everything on that screen sits over a film rather than over
+    // the black, so its ink is plain white at the weights the design gives
+    // it and not one of the greys above.
+    static let loginTagline = Color.white.opacity(0.7)
+    static let loginTerms = Color.white.opacity(0.6)
     static let success = Color(hex: 0x9AD3A6)
     static let failure = Color(hex: 0xE08A80)
 
@@ -47,9 +43,8 @@ enum Palette {
     static let sheetGrip = Color(hex: 0x4A4A4A)
     static let scrim = Color.black.opacity(0.55)
 
-    // Landing logo
+    // The mark
     static let logoStroke = Color(hex: 0x4A4A4A)
-    static let logoDot = Color(hex: 0xD9D9D9)
 }
 
 /// The sequencer screen, from the Figma. Black, like the rest of the app — a
@@ -96,9 +91,18 @@ struct SequencerPalette: Equatable {
     /// something to be lying on, or they read as holes cut in it.
     var mixerGround: UInt32
 
+    /// What the field itself clears to — the "preview" behind the dots. It is
+    /// held apart from `ground` so that opening the mixer can lift the bars
+    /// off the sequencer's black onto `mixerGround` without dragging the
+    /// field up with them: the picture stays the black it plays on while the
+    /// screen around it changes shade. Set to the base ground and left there
+    /// by `opened`, which only touches `ground`.
+    var fieldGround: UInt32
+
     var background: Color { Color(hex: ground) }
 
-    /// The same palette, standing on the mixer's ground.
+    /// The same palette, standing on the mixer's ground. The field keeps its
+    /// own ground; only the bars move.
     var opened: SequencerPalette {
         var copy = self
         copy.ground = mixerGround
@@ -110,10 +114,18 @@ struct SequencerPalette: Equatable {
     /// not a linear conversion of them — convert, and the field would sit a
     /// visibly different shade from the bars above and below it.
     var clearColor: MTLClearColor {
+        Self.clear(fieldGround)
+    }
+
+    /// The field's ground as a SwiftUI colour, for the UIKit layer behind the
+    /// Metal one — both, or a resize shows the old ground for a frame.
+    var fieldBackground: Color { Color(hex: fieldGround) }
+
+    private static func clear(_ hex: UInt32) -> MTLClearColor {
         MTLClearColor(
-            red: Double((ground >> 16) & 0xFF) / 255,
-            green: Double((ground >> 8) & 0xFF) / 255,
-            blue: Double(ground & 0xFF) / 255,
+            red: Double((hex >> 16) & 0xFF) / 255,
+            green: Double((hex >> 8) & 0xFF) / 255,
+            blue: Double(hex & 0xFF) / 255,
             alpha: 1)
     }
 
@@ -130,7 +142,8 @@ struct SequencerPalette: Equatable {
         eraseBloom: .red,
         shuffleBloom: Color(hex: 0xFF66E0),
         dimmed: 0.3,
-        mixerGround: 0x1C1C1C
+        mixerGround: 0x1C1C1C,
+        fieldGround: 0x000000
     )
 
     /// The same screen turned over, for looking at the field on paper rather
@@ -151,7 +164,8 @@ struct SequencerPalette: Equatable {
         eraseBloom: .red,
         shuffleBloom: Color(hex: 0xFF66E0),
         dimmed: 0.3,
-        mixerGround: 0xE7E4E1
+        mixerGround: 0xE7E4E1,
+        fieldGround: 0xF2F0EE
     )
 }
 
