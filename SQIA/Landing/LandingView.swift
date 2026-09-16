@@ -19,6 +19,7 @@ struct LandingView: View {
     let auth: AuthController
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var ambience = LoginAmbience()
 
     private enum Metrics {
@@ -98,6 +99,7 @@ struct LandingView: View {
             if let message = auth.message {
                 banner(message)
                     .padding(.bottom, Metrics.bannerToPrompt)
+                    .transition(.opacity)
             }
 
             Text("Continue with")
@@ -113,6 +115,11 @@ struct LandingView: View {
             terms
                 .padding(.top, Metrics.buttonsToTerms)
         }
+        // The message is usually a refusal, and one that lands between two
+        // frames looks like the screen breaking rather than the screen
+        // saying something. The column lifting to make room goes with it.
+        .animation(Motion.settle(reduced: reduceMotion), value: auth.message)
+        .animation(Motion.fade, value: auth.isWorking)
     }
 
     private var appleDoor: some View {
