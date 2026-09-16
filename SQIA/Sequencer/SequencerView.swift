@@ -1,15 +1,20 @@
-// The sequencer screen.
+// The sequencer: the mixer, and a track opened out of it.
 //
-// Tempo and key across the top, the field in the middle, the eraser, the
-// sound and the randomiser along the bottom — laid out and styled from the
-// Figma rather than from the web's style.css, which is where this screen
-// stops being a port.
+// Two screens in a stack. The mixer is the root — every track in its panel,
+// side by side — and a track is a screen pushed over it that zooms out of
+// its own panel and shrinks back into it, cut to the panel's corners the
+// whole way, as a photo does out of a grid. It used to be one screen that
+// flew its field between full size and a slot on a clock of its own; the
+// system's zoom is the gesture a phone already knows, and it can be dragged
+// shut halfway and let go.
 //
-// Everything raised is one part wearing different colours: `ControlPill` and
-// `BloomButtonStyle` in SequencerControls.swift. The two icon buttons light
-// for different reasons and that difference is the design's, not an
-// accident — the eraser is a mode and stays lit, the shuffle is an action
-// and lights only under the finger.
+// Opening a project lands on its track with the mixer already underneath, so
+// the first thing on screen is still something to draw on.
+//
+// Tempo and key across the top of both, the field in the middle, the eraser,
+// the sound and the randomiser along the bottom of a track — laid out and
+// styled from the Figma. Everything raised is one part wearing different
+// colours: `ControlPill` and `BloomButtonStyle` in SequencerControls.swift.
 
 import SQIACore
 import SwiftUI
@@ -19,6 +24,11 @@ struct SequencerView: View {
     /// Flush what is owed and go back to the library.
     var onLeave: @MainActor () async -> Void
 
+    /// Empty is the mixer; one index is that track, opened over it.
+    @State private var path: [Int]
+    /// Whether the mixer's field is drawing at full rate. It slows once a
+    /// track has covered it and speeds up the moment one begins to leave.
+    @State private var mixerLive: Bool
     @State private var showingVoices = false
     @State private var showingKey = false
     @State private var showingTempo = false
@@ -26,19 +36,26 @@ struct SequencerView: View {
     @State private var announcement: String?
     @State private var announcing: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
+    @Namespace private var zoom
 
-    /// Which ground the screen is standing on. Read from the model here and
-    /// handed to everything below in the environment, so a control never has
-    /// to be told twice.
+    init(model: SequencerModel, onLeave: @escaping @MainActor () async -> Void) {
+        self.model = model
+        self.onLeave = onLeave
+        _path = State(initialValue: [model.state.activeTrackIndex])
+        _mixerLive = State(initialValue: false)
+    }
+
+    /// The ground a track stands on. The mixer wears `opened`.
     private var palette: SequencerPalette { model.palette }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            stage
-            footer
+        NavigationStack(path: $path) {
+            mixer
+                .navigationDestination(for: Int.self) { index in
+                    track
+                        .zoomsOut(of: index, in: zoom)
+                }
         }
-        .background(palette.background.ignoresSafeArea())
         .sheet(isPresented: $showingTempo) {
             TempoSheet(
                 bpm: model.state.bpm,
@@ -76,29 +93,80 @@ struct SequencerView: View {
                 model.stop()
             }
         }
+        .task(id: path.isEmpty) {
+            if path.isEmpty {
+                mixerLive = true
+                return
+            }
+            // Not at once: the mixer is still in view around the track for
+            // as long as the zoom takes to fill the screen.
+            try? await Task.sleep(for: .seconds(0.6))
+            guard !Task.isCancelled else { return }
+            mixerLive = false
+        }
         .overlay(alignment: .bottom) {
             if let failure = model.failure {
                 Text(failure)
                     .manrope(.regular, TextStyle.messageSize)
                     .foregroundStyle(Palette.failure)
                     .padding(12)
+                    .transition(.opacity)
             }
         }
-        // Last, so it wraps the field and its overlays. The tempo sheet is
-        // presented beside the screen rather than inside it, so it is handed
-        // the ground by hand instead — this only has to reach the field.
+        .animation(Motion.fade, value: model.failure)
+    }
+
+    private func open(_ index: Int) {
+        guard path.isEmpty else { return }
+        Haptics.toggle()
+        model.selectTrack(index)
+        path = [index]
+    }
+
+    // ------------------------------------------------------------- screens --
+
+    private var mixer: some View {
+        VStack(spacing: 0) {
+            header(middle: false)
+            mixerStage
+            // The toolbar is kept, invisibly, so the stage is exactly the
+            // size it is on a track and the panels sit where the track
+            // shrinks back to. The tile takes the band it leaves.
+            toolbar
+                .hidden()
+                .overlay { backTile }
+        }
+        .background(palette.opened.background.ignoresSafeArea())
+        .environment(\.sequencerPalette, palette.opened)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private var track: some View {
+        VStack(spacing: 0) {
+            header(middle: true)
+            trackStage
+            toolbar
+                // The eraser's own bloom fades on, and the line above the
+                // field fades in; the two tools it switches off have to go
+                // at the same pace or the mode arrives in three pieces.
+                .animation(Motion.fade, value: model.eraseMode)
+        }
+        .background(palette.background.ignoresSafeArea())
         .environment(\.sequencerPalette, palette)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     // -------------------------------------------------------------- header --
 
-    private var header: some View {
+    private func header(middle: Bool) -> some View {
         HStack(spacing: 0) {
             tempoPill
             Spacer(minLength: 8)
-            middleSlot
-                .animation(.easeInOut(duration: 0.2), value: currentAnnouncement)
-            Spacer(minLength: 8)
+            if middle {
+                middleSlot
+                    .animation(Motion.fade, value: currentAnnouncement)
+                Spacer(minLength: 8)
+            }
             keyPill
         }
         .padding(.horizontal, 20)
@@ -193,13 +261,12 @@ struct SequencerView: View {
         model.eraseMode ? "Eraser is on" : announcement
     }
 
-    /// One dot per track, the active one bright. Tapping opens the mixer,
-    /// as in the web — and the control goes away while it is open, because
-    /// there is nothing left for it to do.
+    /// One dot per track, the active one bright. Tapping goes back out to
+    /// the mixer — the track shrinks into its panel.
     private var trackDots: some View {
         Button {
             Haptics.toggle()
-            model.openMixer()
+            path.removeAll()
         } label: {
             HStack(spacing: 7) {
                 ForEach(0..<SequencerState.trackCount, id: \.self) { index in
@@ -213,85 +280,94 @@ struct SequencerView: View {
         }
         .buttonStyle(PressFade())
         .accessibilityLabel("Tracks")
-        .opacity(model.showingMixer ? 0 : 1)
-        .disabled(model.showingMixer)
-        .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
     }
 
     // --------------------------------------------------------------- stage --
 
-    private var stage: some View {
+    private var trackStage: some View {
+        FieldView(
+            frame: { rect, dt in model.trackFrame(in: rect, dt: dt) },
+            onTouch: { model.touch(at: $0) }
+        )
+        // The largest thing on the screen, and without this it is an
+        // unnamed rectangle. Painting is a drag, which VoiceOver does not
+        // have — so the hint says what it is for rather than pretending it
+        // can be operated.
+        .accessibilityElement()
+        .accessibilityLabel("Note field")
+        .accessibilityHint("Drag to draw notes. Use Shuffle below to fill it.")
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Every track in its panel, drawn by one field, with a tap target over
+    /// each panel that the track zooms out of.
+    private var mixerStage: some View {
         GeometryReader { geometry in
-            FieldView { rect, dt in model.frame(in: rect, dt: dt) }
-                .contentShape(Rectangle())
-                .gesture(
-                    // No minimum distance, so a tap paints as surely as a
-                    // drag does. With the mixer open the same gesture picks
-                    // a panel instead of painting.
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { model.touch(at: $0.location) }
-                        .onEnded { _ in model.endTouch() }
+            ZStack(alignment: .topLeading) {
+                FieldView(
+                    frame: { rect, dt in model.mixerFrame(in: rect, dt: dt) },
+                    isResting: !mixerLive
                 )
-                // The largest thing on the screen, and without this it is
-                // an unnamed rectangle. Painting is a drag, which VoiceOver
-                // does not have — so the hint says what it is for rather
-                // than pretending it can be operated.
-                //
-                // Before the overlay, not after: collapsing the field into
-                // one element after it would take the mixer's chips with it.
-                .accessibilityElement()
-                .accessibilityLabel(model.showingMixer ? "Tracks" : "Note field")
-                .accessibilityHint(
-                    model.showingMixer
-                        ? "Double-tap a panel to open that track."
-                        : "Drag to draw notes. Use Shuffle below to fill it.")
-                .frame(width: geometry.size.width, height: geometry.size.height)
-                .overlay(alignment: .topLeading) { chips }
+                .accessibilityHidden(true)
+
+                ForEach(0..<SequencerState.trackCount, id: \.self) { index in
+                    let panel = CGRect(model.mixerPanel(index, in: geometry.size))
+                    if panel.width > 0 {
+                        tile(index, in: panel)
+                    }
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // --------------------------------------------------------------- mixer --
+    /// A panel, as something to press. The field under it is Metal and
+    /// cannot be the zoom's source itself, so this is: a shape exactly the
+    /// panel's size and corner, clear except while it is held.
+    private func tile(_ index: Int, in panel: CGRect) -> some View {
+        ZStack(alignment: .bottom) {
+            Button {
+                open(index)
+            } label: {
+                Color.clear
+                    .contentShape(panelShape)
+            }
+            .buttonStyle(TilePress(shape: panelShape))
+            .zoomSource(index, in: zoom, shape: panelShape)
+            .accessibilityLabel("Track \(index + 1)")
+            .accessibilityValue(model.voiceLabel(index))
+            .accessibilityHint("Opens this track.")
 
-    /// The name and mute chips, one pair per panel, pinned inside the panel
-    /// over its last rows of dots.
-    ///
-    /// They fade on their own 0.18-second curve rather than travelling with
-    /// the panels, which is what the web's CSS transition does — the field
-    /// flies, the controls simply arrive.
-    private var chips: some View {
-        ZStack(alignment: .topLeading) {
-            ForEach(0..<SequencerState.trackCount, id: \.self) { index in
-                // The strip is worked out from the stage's size, which is
-                // not known until the first frame has been drawn.
-                let strip = model.chipStrip(index)
-                if model.hasPart(index) && strip.width > 0 {
-                    chipRow(index, height: strip.height)
-                        .frame(width: strip.width, height: strip.height, alignment: .leading)
-                        .offset(x: strip.minX, y: strip.minY)
-                }
+            if model.hasPart(index) {
+                chipRow(index)
+                    .padding(MixerLayout.chipInset)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .opacity(model.showingMixer ? 1 : 0)
-        .allowsHitTesting(model.showingMixer)
-        .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
+        .frame(width: panel.width, height: panel.height)
+        .position(x: panel.midX, y: panel.midY)
     }
 
-    private func chipRow(_ index: Int, height: CGFloat) -> some View {
-        HStack(spacing: 0) {
+    private var panelShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: MixerLayout.corner, style: .circular)
+    }
+
+    /// The name and mute chips, pinned inside the panel over its last rows
+    /// of dots.
+    private func chipRow(_ index: Int) -> some View {
+        let height = MixerLayout.chipHeight
+        let chip = palette.opened
+        return HStack(spacing: 0) {
             Button {
-                Haptics.toggle()
-                model.openTrack(index)
+                open(index)
             } label: {
                 Text(model.voiceLabel(index))
                     // The chip sets its tracking to zero, unlike the labels.
                     .manrope(.regular, 16, tracking: 0)
-                    .foregroundStyle(palette.background)
+                    .foregroundStyle(chip.background)
                     .lineLimit(1)
                     .padding(.horizontal, 14)
                     .frame(height: height)
-                    .background(palette.label, in: Capsule())
+                    .background(chip.label, in: Capsule())
             }
             .buttonStyle(PressFade())
             .accessibilityLabel("Open \(model.voiceLabel(index))")
@@ -306,14 +382,15 @@ struct SequencerView: View {
                     .font(.system(size: 15))
                     .foregroundStyle(
                         model.isMuted(index)
-                            ? palette.background : palette.label
+                            ? chip.background : chip.label
                     )
                     .frame(width: height, height: height)
                     .background(
                         model.isMuted(index)
-                            ? palette.label : palette.label.opacity(0.1),
+                            ? chip.label : chip.label.opacity(0.1),
                         in: Capsule()
                     )
+                    .animation(Motion.fade, value: model.isMuted(index))
             }
             .buttonStyle(PressFade())
             .accessibilityLabel(model.isMuted(index) ? "Unmute" : "Mute")
@@ -322,17 +399,6 @@ struct SequencerView: View {
     }
 
     // -------------------------------------------------------------- footer --
-
-    /// The tools belong to a track, so they go while the mixer is open —
-    /// and the tile that leaves the mixer takes their place, across the same
-    /// band, as the mockup has it.
-    private var footer: some View {
-        toolbar
-            .opacity(model.showingMixer ? 0 : 1)
-            .disabled(model.showingMixer)
-            .overlay { backTile }
-            .animation(.easeInOut(duration: 0.18), value: model.showingMixer)
-    }
 
     private var backTile: some View {
         Button {
@@ -347,9 +413,6 @@ struct SequencerView: View {
             }
         }
         .buttonStyle(PressFade())
-        .opacity(model.showingMixer ? 1 : 0)
-        .disabled(!model.showingMixer)
-        .allowsHitTesting(model.showingMixer)
     }
 
     private var toolbar: some View {
@@ -447,6 +510,49 @@ struct PressFade: ButtonStyle {
         configuration.label
             .opacity(configuration.isPressed ? 0.55 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+/// A panel under the finger. What it holds is drawn by Metal beneath, so
+/// the press cannot dim it — it lays a faint wash over it instead.
+private struct TilePress: ButtonStyle {
+    let shape: RoundedRectangle
+    @Environment(\.sequencerPalette) private var palette
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                shape.fill(palette.label.opacity(configuration.isPressed ? 0.08 : 0))
+            }
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+// ------------------------------------------------------------------ zoom --
+
+/// The system's zoom is iOS 18. Before it, a track is pushed the ordinary
+/// way — still a screen of its own, just sliding rather than growing.
+private extension View {
+    @ViewBuilder
+    func zoomSource(_ id: Int, in namespace: Namespace.ID, shape: RoundedRectangle)
+        -> some View
+    {
+        if #available(iOS 18, *) {
+            matchedTransitionSource(id: id, in: namespace) { source in
+                source.clipShape(shape)
+            }
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func zoomsOut(of id: Int, in namespace: Namespace.ID) -> some View {
+        if #available(iOS 18, *) {
+            navigationTransition(.zoom(sourceID: id, in: namespace))
+        } else {
+            self
+        }
     }
 }
 
