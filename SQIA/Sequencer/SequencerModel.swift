@@ -8,6 +8,7 @@ import Foundation
 import Observation
 import SQIACore
 import SwiftUI
+import UIKit
 
 /// What the transport needs in order to voice a step. Read on the transport
 /// queue, written on the main thread after every edit.
@@ -58,7 +59,19 @@ final class SequencerModel {
     private(set) var state: SequencerState
     /// The eraser clears a 2×2 block per touch instead of painting.
     private(set) var eraseMode = false
-    private(set) var isRunning = false
+    /// Whether the pattern is playing — and so whether the screen may sleep.
+    ///
+    /// Somebody playing a pattern is listening, not touching, and a phone
+    /// that goes dark thirty seconds into it takes the field with it. Held
+    /// here rather than by the screen, because every way the sound stops —
+    /// leaving, backgrounding, the engine giving up on a route change —
+    /// comes through this one flag.
+    private(set) var isRunning = false {
+        didSet {
+            guard isRunning != oldValue else { return }
+            UIApplication.shared.isIdleTimerDisabled = isRunning
+        }
+    }
     private(set) var failure: String?
 
     /// One per track: each keeps its own blooms and ripples, so a track that
