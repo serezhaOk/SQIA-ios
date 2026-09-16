@@ -50,15 +50,12 @@
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
-	<!-- The web app's manifest pins portrait; the layout is built for it. -->
+	<!-- The web app's manifest pins portrait; the layout is built for it.
+	     No ~ipad variant: TARGETED_DEVICE_FAMILY is 1, so the app is an
+	     iPhone app and an iPad runs it in compatibility mode. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 	</array>
 	<!-- There is no light mode: the app is black, always. -->
 	<key>UIUserInterfaceStyle</key>

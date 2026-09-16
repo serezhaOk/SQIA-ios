@@ -1,808 +1,838 @@
-# SQIA для iOS — план портирования 1:1
+# SQIA for iOS — the 1:1 porting plan
 
-Порт веб-приложения **SQIA** (https://sqia.serezhaok.com, репозиторий
-`serezhaOk/funny-steps`) в нативное iOS-приложение на Swift. Цель — полная
-копия: те же экраны, та же механика, тот же звук, тот же бэкенд. Проект,
-сохранённый в вебе, открывается на iPhone и наоборот — аккаунт и библиотека
-общие.
+A port of the **SQIA** web app (https://sqia.serezhaok.com, repository
+`serezhaOk/funny-steps`) to a native iOS app in Swift. The goal is a complete
+copy: the same screens, the same mechanics, the same sound, the same backend.
+A project saved in a browser opens on an iPhone and the other way round — the
+account and the library are shared.
 
-Этот документ — одновременно план работ и спецификация паритета: раздел 2
-фиксирует, что именно делает веб-версия (по коду, не по README — README
-местами устарел), разделы 4–6 — как это переносится, раздел 7 — вехи
-и оценки.
+This document is both the plan of work and the parity specification: section 2
+pins down what the web version actually does (read from the code, not the
+README — the README is out of date in places), sections 4–6 are how that
+carries over, section 7 is the milestones and the estimates.
 
 ---
 
-## 1. Ключевые решения
+## 1. Key decisions
 
-| Область | Веб | iOS | Обоснование |
+| Area | Web | iOS | Why |
 | --- | --- | --- | --- |
-| Язык / UI | TypeScript + DOM | Swift 5.10+, SwiftUI (оболочка, все экраны кроме сцены) | Стандарт платформы |
-| Сцена (поле точек) | Canvas 2D, аддитивный блендинг | **Metal (MTKView)**: инстансированные квадры, атлас glow-спрайтов, additive blending | Точное соответствие `lighter`-композиту и гарантированные 60/120 fps на ProMotion; CoreGraphics на ~400 спрайтах с глоу — на грани |
-| Аудио-граф | Web Audio API | **AVAudioEngine = один `AVAudioSourceNode`**, весь тракт внутри — в `SQIACore` (см. ниже) | Sample-accurate планирование + весь DSP тестируется вне устройства |
-| Синтез (5 пресетов) | Tone.js | Собственные DSP-голоса в том же рендерере | Точный контроль огибающих и рандомизации «как в Tone» |
-| Эффекты | Tone.Filter/Chorus/PingPongDelay/Reverb/Distortion | Свой DSP там же; ревербератор — см. риск R3 | Без внешних зависимостей |
-| Транспорт | setTimeout-лукахед 25 мс / 120 мс | Тот же лукахед-паттерн: `DispatchSourceTimer` против времени рендера движка, триггеры с сэмпловыми таймстампами | Прямой порт архитектуры; джиттер станет только меньше |
-| Бэкенд | Supabase (auth + PostgREST + RLS) | **Тот же проект Supabase**, официальный `supabase-swift` | Ноль работ по бэкенду; кроссплатформенные проекты |
-| Auth | Google OAuth, magic-link на email | То же через ASWebAuthenticationSession + deep link; **плюс Sign in with Apple** (обязателен, см. §6) | |
-| Хранение сессии | localStorage (`sqia-auth`) | Keychain | |
-| Шрифты | Manrope, Material Symbols (Google Fonts, рантайм) | Бандлим Manrope (OFL 1.1), четыре статических начертания. Material Symbols **не бандлим**: иконки — SF Symbols | См. ниже |
-| Минимальная iOS | — | **iOS 17** (портрет, iPhone; адаптация iPad = веб-раскладка ≥768) | Observation, зрелый SwiftUI |
-| Зависимости | supabase-js, tone | **Ни одной.** Звук свой, Supabase — обычные HTTPS-запросы | См. ниже |
+| Language / UI | TypeScript + DOM | Swift 5.10+, SwiftUI (the shell, every screen but the scene) | The platform's default |
+| The scene (the field of dots) | Canvas 2D, additive blending | **Metal (MTKView)**: instanced quads, an atlas of glow sprites, additive blending | An exact match for the `lighter` composite and a guaranteed 60/120 fps on ProMotion; CoreGraphics over ~400 sprites with glow is on the edge |
+| Audio graph | Web Audio API | **AVAudioEngine = one `AVAudioSourceNode`**, the whole path inside it — in `SQIACore` (see below) | Sample-accurate scheduling, and all the DSP testable off a device |
+| Synthesis (5 presets) | Tone.js | Our own DSP voices in the same renderer | Precise control over the envelopes and over randomisation "the way Tone does it" |
+| Effects | Tone.Filter/Chorus/PingPongDelay/Reverb/Distortion | Our own DSP in the same place; the reverb — see risk R3 | No external dependencies |
+| Transport | setTimeout lookahead, 25 ms / 120 ms | The same lookahead pattern: a `DispatchSourceTimer` against the engine's render time, triggers carrying sample timestamps | A direct port of the architecture; the jitter only goes down |
+| Backend | Supabase (auth + PostgREST + RLS) | **The same Supabase project**, the official `supabase-swift` | No backend work at all; cross-platform projects |
+| Auth | Google OAuth, a magic link by email | The same, through ASWebAuthenticationSession and a deep link; **plus Sign in with Apple** (required, see §6) | |
+| Session storage | localStorage (`sqia-auth`) | Keychain | |
+| Fonts | Manrope, Material Symbols (Google Fonts, at runtime) | Manrope bundled (OFL 1.1), four static instances. Material Symbols **not bundled**: the icons are SF Symbols | See below |
+| Minimum iOS | — | **iOS 17** (portrait, iPhone; the iPad adaptation is the web's ≥768 layout) | Observation, and a mature SwiftUI |
+| Dependencies | supabase-js, tone | **None at all.** The sound is ours, Supabase is plain HTTPS requests | See below |
 
-### Две правки к таблице, сделанные по факту (M9)
+### Two corrections to the table, made after the fact (M9)
 
-**Иконки — SF Symbols, а не Material Symbols.** План обещал забандлить
-сабсет с глифами `more_vert`, `volume_off`, `check`, `emoticon`. По факту
-после решения владельца от 20.08 (нативные модалки и кнопки) все иконки
-стали системными: `ellipsis` вместо `more_vert`, `speaker.slash.fill`
-вместо `volume_off`, `face.smiling` вместо `emoticon`, галочки рисует
-сам `List`. SF Symbols не поставляются с приложением — их рисует
-система, и лицензия Apple разрешает ровно такое использование. Один
-шрифт вместо двух, и на одну лицензию в NOTICE меньше.
+**The icons are SF Symbols, not Material Symbols.** The plan promised a
+bundled subset with the `more_vert`, `volume_off`, `check` and `emoticon`
+glyphs. What happened instead is that after the owner's decision of 20.08
+(native modals and buttons) every icon became a system one: `ellipsis` for
+`more_vert`, `speaker.slash.fill` for `volume_off`, `face.smiling` for
+`emoticon`, and `List` draws its own ticks. SF Symbols do not ship with the
+app — the system draws them, and Apple's licence permits exactly that use.
+One font instead of two, and one licence fewer in NOTICE.
 
-**Зависимостей нет ни одной.** `supabase-swift` в M8 не понадобился:
-PostgREST — это пять эндпоинтов без состояния, а auth оказался проще
-написать поверх `ASWebAuthenticationSession` и `AuthenticationServices`,
-чем тащить ради него клиент с realtime-сокетом и storage. Итог:
-`Package.swift` без единого `.package(url:)`, и SBOM приложения — это
-Manrope.
+**There are no dependencies.** `supabase-swift` was not needed in M8:
+PostgREST is five stateless endpoints, and auth turned out to be easier to
+write over `ASWebAuthenticationSession` and `AuthenticationServices` than to
+pull in a client with a realtime socket and a storage layer for it. The
+result: a `Package.swift` without a single `.package(url:)`, and an app SBOM
+that reads "Manrope".
 
-### Почему рендерер свой, а не набор AVAudioNode
+### Why the renderer is ours rather than a rack of AVAudioNodes
 
-Уточнение к плану, сделанное в M2 по факту замера. Веб создаёт узел
-Web Audio на каждую ноту и выбрасывает после хвоста — при двух плотных
-треках это ~30 узлов в секунду, и браузеру это ничего не стоит. Узлы
-AVAudioEngine так не работают: attach/detach перестраивает граф и не
-безопасен во время воспроизведения. Поэтому граф на iOS — **один
-source-узел**, а всё внутри (голоса, слап-дилей, лимитер, суммирование)
-живёт в `SQIACore`.
+A correction to the plan, made in M2 after measuring. The web creates a Web
+Audio node per note and throws it away after the tail — with two dense tracks
+that is ~30 nodes a second, and it costs a browser nothing. AVAudioEngine's
+nodes do not work that way: attach/detach rebuilds the graph and is not safe
+during playback. So the graph on iOS is **one source node**, and everything
+inside it — the voices, the slap delay, the limiter, the summing — lives in
+`SQIACore`.
 
-Выигрыш двойной: пять пресетов из M5 с их «синт на ноту» ложатся ровно в
-эту схему, а DSP, написанный обычным кодом, проверяется тестами вне
-устройства — что уже и происходит (отклик фильтра, шаг эха, колено
-лимитера, форма огибающей).
+The gain is double: the five presets from M5, with their synth-per-note, fit
+this scheme exactly, and DSP written as ordinary code is checked by tests off
+a device — which is already happening (filter response, echo spacing, the
+limiter's knee, the shape of an envelope).
 
-Цена: атомарная очередь между потоком транспорта и рендером написана на
-своих acquire/release из крошечного C-таргета — `Synchronization.Atomic`
-требует iOS 18, а поднимать минимальную версию ради одной очереди
-незачем.
+The price: the atomic queue between the transport thread and the render
+thread is written on our own acquire/release out of a tiny C target —
+`Synchronization.Atomic` needs iOS 18, and raising the minimum version for
+one queue is not worth it.
 
-Решения по умолчанию (меняются в одну строку, если захочется иначе):
-фоновое воспроизведение — как в вебе, при сворачивании пауза; хаптика —
-не добавляем (в вебе её нет, «1 в 1»); ориентация — только портрет
-(как в manifest.webmanifest).
+Defaults (each changeable in one line, if a different answer is wanted):
+background playback — as on the web, it pauses when the app goes away;
+haptics — not added (the web has none, "1:1"); orientation — portrait only
+(as in manifest.webmanifest).
 
 ---
 
-## 2. Инвентаризация веб-версии (спецификация паритета)
+## 2. An inventory of the web version (the parity specification)
 
-Снято с исходников `funny-steps@main` (src/*.ts, index.html, style.css,
-supabase/schema.sql). Числа — нормативные: юнит-тесты порта сверяются
-с ними.
+Taken from the sources of `funny-steps@main` (src/*.ts, index.html,
+style.css, supabase/schema.sql). The numbers are normative: the port's unit
+tests are checked against them.
 
-### 2.1 Экраны и переходы
+### 2.1 Screens and transitions
 
-1. **Landing (вход)** — показывается только без сессии: логотип (сетка
-   точек в скруглённом квадрате), wordmark «SQIA», слоган «Built for sound
-   accidents», кнопка «Continue with Google» (белая пилюля с G-иконкой),
-   «Continue with email» → раскрывается форма (валидация
-   `\S+@\S+\.\S+`, отправка magic-link, статус «Check … for your sign-in
-   link», ошибки красным `#e08a80`, статусы зелёным `#9ad3a6`), ссылки
-   Terms / Privacy (открываем hosted-страницы сайта), ссылка «What is
-   SQIA?» (Instagram reel), копирайт. Сообщение о причине разлогина
-   (см. 2.6).
-2. **Projects (библиотека)** — сразу после входа (и мгновенно для
-   вернувшегося пользователя по кэшированной сессии, без ожидания сети):
-   шапка (лого из 4 точек, кнопка профиля 52×39 пилюля с иконкой
-   `emoticon`), заголовок «Projects» (44 pt, по центру), сетка карточек
-   2 колонки, квадратные, радиус 20, фон `#383838`, имя внизу слева
-   (15 pt, 2 строки максимум), `more_vert` сверху справа → контекстное
-   меню Rename (prompt) / Delete (confirm, красный `#ff6b6b`); пустое
-   состояние — одна карточка высотой 602 pt «+ Create first project»;
-   фиксированная кнопка «+ Create new» (белая пилюля, скрыта при пустом
-   списке); меню аккаунта: email + «Log out». Сортировка по `updated_at`
-   desc. На ширине ≥768 — фиксированные тайлы 200×200 от центра.
-3. **Sequencer** — открытие проекта = жест разблокировки аудио,
-   транспорт стартует сразу:
-   - шапка: `120 BPM` (драг по горизонтали ±0.4 BPM/px, диапазон 40–240;
-     тап без движения: +10, с ≥200 сброс на 60), индикатор треков
-     (2 точки, активная яркая; тап → микшер), тональность: корень
-     (тап → +1 полутон по кругу) и лад (тап → цикл MINOR / MAJOR /
-     DORIAN / PENTA / PHRYGIAN);
-   - сцена: канвас-поле (см. 2.3), рисование пальцем, стирание;
-   - футер: `ERASE` (тумблер, активный — белый), метка голоса (тап →
-     шторка Sound, состояние loading — opacity 0.4), `RNDM`
-     (рандомизация паттерна активного трека).
-4. **Микшер** (внутри секвенсора): анимация 0.35 с (кубический
-   ease-in-out) — активный трек «слетает» из фулскрина в свою панель,
-   второй проявляется в своей; панели: внешние поля 10, жёлоб 17,
-   пропорция 270:168.75 (1:1.6), верх на 10.8 % высоты сцены, снизу
-   100 pt под кнопку; белая обводка 1 px с альфой 0.7·t; на панели чипы:
-   имя голоса (белая плашка, тап → открыть трек) и mute (30×30,
-   `volume_off`, вкл — белый фон), чипы видны только если в треке есть
-   ноты; заглушенный трек рисуется с альфой 0.35; неактивные панели —
-   detail 0.4 (без стриков/глоу); тап по панели → открыть трек; внизу
-   тайл «Back to projects» (высота 126, белый 20 %, радиус 32) —
-   флашит сейв и возвращает в библиотеку. Футер и точки-индикатор в
-   режиме микшера скрыты.
-5. **Шторка Sound** — снизу, максимум 76 % высоты, гриф, заголовок
-   «Sound», список голосов: имя + подсказка, галочка у текущего; выбор:
-   для синта — мгновенно, для сэмпла — загрузка буфера с индикатором;
-   закрытие тапом по подложке (55 % чёрного). На ≥768 — ширина 375.
+1. **Landing (sign-in)** — shown only when there is no session: the logo (a
+   grid of dots in a rounded square), the "SQIA" wordmark, the tagline "Built
+   for sound accidents", a "Continue with Google" button (a white pill with
+   the G mark), "Continue with email" → unfolds a form (validation
+   `\S+@\S+\.\S+`, the magic link sent, the status "Check … for your sign-in
+   link", errors in red `#e08a80`, statuses in green `#9ad3a6`), Terms /
+   Privacy links (we open the site's hosted pages), a "What is SQIA?" link
+   (an Instagram reel), the copyright. Plus the note saying why a session
+   ended (see 2.6).
+2. **Projects (the library)** — straight after signing in (and instantly for
+   a returning user, off the cached session, without waiting for the
+   network): the header (the four-dot logo, a profile button — a 52×39 pill
+   with the `emoticon` glyph), the "Projects" title (44 pt, centred), a grid
+   of cards two columns wide, square, corner radius 20, background `#383838`,
+   the name bottom left (15 pt, two lines at most), `more_vert` top right →
+   a context menu of Rename (prompt) / Delete (confirm, red `#ff6b6b`); the
+   empty state is a single 602 pt card, "+ Create first project"; a fixed
+   "+ Create new" button (a white pill, hidden while the list is empty); the
+   account menu: the email and "Log out". Sorted by `updated_at` descending.
+   At widths ≥768 the tiles are fixed at 200×200 from the centre.
+3. **Sequencer** — opening a project is the gesture that unlocks audio, and
+   the transport starts at once:
+   - the header: `120 BPM` (drag horizontally, ±0.4 BPM/px, range 40–240; a
+     tap without movement: +10, and from ≥200 back to 60), the track
+     indicator (two dots, the active one bright; a tap opens the mixer), the
+     key: the root (a tap steps up a semitone, wrapping) and the scale (a tap
+     cycles MINOR / MAJOR / DORIAN / PENTA / PHRYGIAN);
+   - the stage: the canvas field (see 2.3), drawing with a finger, erasing;
+   - the footer: `ERASE` (a toggle, white when on), the voice label (a tap
+     opens the Sound sheet; the loading state is opacity 0.4), `RNDM`
+     (randomises the active track's pattern).
+4. **The mixer** (inside the sequencer): a 0.35 s animation (cubic
+   ease-in-out) — the active track flies out of full screen into its own
+   panel while the second fades up in its own; the panels: 10 outside, a
+   17-wide gutter, the proportion 270:168.75 (1:1.6), the top at 10.8 % of
+   the stage's height, 100 pt at the bottom left for the button; a 1 px white
+   stroke at alpha 0.7·t; the chips on a panel: the voice name (a white
+   plate, a tap opens the track) and mute (30×30, `volume_off`, white
+   background when on), and the chips are visible only where the track has
+   notes; a muted track is drawn at alpha 0.35; inactive panels get detail
+   0.4 (no streaks, no glow); a tap on a panel opens that track; at the
+   bottom, a "Back to projects" tile (height 126, white at 20 %, radius 32) —
+   it flushes the save and returns to the library. The footer and the
+   indicator dots are hidden in mixer mode.
+5. **The Sound sheet** — from the bottom, 76 % of the height at most, a grip,
+   the "Sound" title, the list of voices: a name and a hint, a tick against
+   the current one; choosing: instant for a synth, a buffer load with an
+   indicator for a sample; dismissed by tapping the scrim (black at 55 %). At
+   ≥768 it is 375 wide.
 
-### 2.2 Модель данных и музыкальная математика
+### 2.2 The data model and the musical arithmetic
 
-- Сетка: **12 колонок × 16 шагов** (в README «10» — устарело, код
-  `COLS = 12`). Ячейка — интенсивность 0…1 (`Float32Array`).
-- Треков **2**, дефолтные голоса `reverie` и `machine`.
-- Лады: minor `[0,2,3,5,7,8,10]`, major `[0,2,4,5,7,9,11]`, dorian
-  `[0,2,3,5,7,9,10]`, penta `[0,3,5,7,10]`, phrygian `[0,1,3,5,7,8,10]`.
-  Ноты C…B; дефолт: корень A (pc 9), minor, 120 BPM.
-- `columnMidi(col) = 48 + rootPc + 12·⌊col/L⌋ + steps[col mod L]`;
-  rate сэмпла `= 2^((midi−baseMidi)/12)`, кламп 0.25…4, baseMidi по
-  умолчанию 60 (C4).
-- Кисть: ячейка под пальцем = 1; сосед по X/Y/диагонали bleed
-  `w·0.9` по дробному смещению пальца (направленный след). Штамп
-  рандомизатора: центр 1, крест 0.45. Ластик: блок 2×2 с клампом к
-  краям. RNDM: очистка, затем на каждый ряд с p=0.42 штамп в случайной
-  колонке, с p=0.25 — второй.
-- Снапшот проекта (JSON в `projects.tracks`, **значения в точности как в
-  вебе** — иначе сломаем кроссплатформенность):
-  `{bpm, root_pc, scale, tracks:[{voiceIdx, muted, cells[192]}]}`,
-  cells округлены до 2 знаков. Сверять именно значения, а не байты:
-  Postgres хранит это как `jsonb` и всё равно нормализует текст.
-- Имена проектов: 37 «микробных» существ + 15 модификаторов, модификатор
-  с p=0.45 («Wild Amoeba»).
+- The grid: **12 columns × 16 steps** (the README says "10" — out of date,
+  the code says `COLS = 12`). A cell is an intensity, 0…1
+  (`Float32Array`).
+- **2** tracks, defaulting to the `reverie` and `machine` voices.
+- The scales: minor `[0,2,3,5,7,8,10]`, major `[0,2,4,5,7,9,11]`, dorian
+  `[0,2,3,5,7,9,10]`, penta `[0,3,5,7,10]`, phrygian `[0,1,3,5,7,8,10]`. The
+  notes C…B; the defaults: root A (pc 9), minor, 120 BPM.
+- `columnMidi(col) = 48 + rootPc + 12·⌊col/L⌋ + steps[col mod L]`; a
+  sample's rate `= 2^((midi−baseMidi)/12)`, clamped to 0.25…4, with
+  baseMidi defaulting to 60 (C4).
+- The brush: the cell under the finger is 1; a neighbour along X/Y/diagonal
+  bleeds `w·0.9` by the finger's fractional offset (a directional trail).
+  The randomiser's stamp: 1 at the centre, 0.45 on the cross. The eraser: a
+  2×2 block clamped to the edges. RNDM: clear, then for each row with p=0.42
+  stamp in a random column, and with p=0.25 a second one.
+- The project snapshot (JSON in `projects.tracks`, **the values exactly as
+  the web writes them** — otherwise cross-platform breaks):
+  `{bpm, root_pc, scale, tracks:[{voiceIdx, muted, cells[192]}]}`, cells
+  rounded to two decimal places. Compare the values rather than the bytes:
+  Postgres stores this as `jsonb` and normalises the text anyway.
+- Project names: 37 microbial creatures and 15 modifiers, a modifier with
+  p=0.45 ("Wild Amoeba").
 
-### 2.3 Рендер поля (порт grid.ts дословно)
+### 2.3 Rendering the field (a literal port of grid.ts)
 
-Константы: LENS_K 0.19 (бочкообразный «купол», края на месте), PUSH 0.62,
-PUSH_RADIUS 2.4 клетки, DECAY 3.1/с; цветовые волны: радиус 4 клетки,
-0.05 с/кольцо, 0.09 с/цвет, жёсткие ступени жёлтый `(255,214,0)` →
-зелёный `(80,255,130)` → фиолетовый `(176,107,255)` со строб-мерцанием
-(62 % такта — 1.0, остаток — 0.4), максимум 48 волн; вспышка ноты:
-энергия `0.55+0.45·vel`, экспоненциальный спад, соседи выталкиваются
-наружу («желе»), радиальный стрик от центра, glow-спрайт 64×64
-(радиальный градиент, кэш по квантованному цвету /32); «дыхание» поля
-`0.86+0.14·sin(t·1.5 + r·0.9 + c·0.6)`; ряд плейхеда подсвечен (пустые
-точки альфа 0.5 против 0.2); обратное преобразование купола — Ньютон,
-6 итераций; подбор размера клетки — 3 прохода по периметру с паддингом
-0.3 клетки; dt клампится 50 мс; альфа/detail — параметры для микшера.
-Бэкинг-стор в вебе ограничен 8 Мпикс — на Metal неактуально, но
-запомнить как прецедент (большие экраны iPad).
+The constants: LENS_K 0.19 (the barrel "dome", the edges staying put), PUSH
+0.62, PUSH_RADIUS 2.4 cells, DECAY 3.1/s; the colour waves: radius 4 cells,
+0.05 s per ring, 0.09 s per colour, hard steps from yellow `(255,214,0)` to
+green `(80,255,130)` to violet `(176,107,255)` with a strobe (1.0 for 62 % of
+the beat, 0.4 for the rest), 48 waves at most; a note's flash: energy
+`0.55+0.45·vel`, an exponential decay, the neighbours pushed outward
+("jelly"), a radial streak from the centre, a 64×64 glow sprite (a radial
+gradient, cached by colour quantised to /32); the field's "breathing"
+`0.86+0.14·sin(t·1.5 + r·0.9 + c·0.6)`; the playhead's row lit (empty dots at
+alpha 0.5 against 0.2); the inverse of the dome by Newton, six iterations;
+the cell size found in three passes around the perimeter with 0.3 cells of
+padding; dt clamped at 50 ms; alpha and detail are parameters, for the mixer.
+The web caps its backing store at 8 Mpx — not relevant on Metal, but worth
+remembering as a precedent (large iPad screens).
 
-### 2.4 Секвенсор и триггеры
+### 2.4 The sequencer and its triggers
 
-- Шаг = 1/16 такта; лукахед: тик 25 мс, горизонт 0.12 с.
-- На шаге: акцент (v=1) играет всегда; мягкая ячейка (v<1) — с
-  вероятностью `0.35+0.65·v`; велосити `v·rnd(0.72,0.98)`; сэмпл
-  дополнительно детюнится ±15 центов и получает случайный relScale
-  0.1–0.9. Вспышки точек и смена ряда плейхеда — с задержкой до
-  фактического звучания (`time − now`).
-- `tick()` пресета — раз в такт (step 0) на каждый используемый
-  синт-голос, без дублей, если оба трека на одном пресете.
+- A step is a 1/16 of a bar; the lookahead: a 25 ms tick, a 0.12 s horizon.
+- On a step: an accent (v=1) always plays; a soft cell (v<1) plays with
+  probability `0.35+0.65·v`; the velocity is `v·rnd(0.72,0.98)`; a sample is
+  additionally detuned ±15 cents and gets a random relScale of 0.1–0.9. The
+  dots' flashes and the playhead's change of row are delayed to when the
+  sound actually lands (`time − now`).
+- A preset's `tick()` runs once a bar (step 0) for each synth voice in use,
+  with no duplicates when both tracks are on the same preset.
 
-### 2.5 Звук (порт audio.ts + synths.ts)
+### 2.5 The sound (a port of audio.ts + synths.ts)
 
-**Мастер-шина:** gain 0.9 → лимитер (компрессор: порог −8 дБ, ratio 12:1,
-атака 3 мс, релиз 180 мс) → выход. **Слап-дилей сэмплов:** send 0.16 →
-delay 0.17 с → LPF 2400 Гц → feedback 0.28, в мастер. Сэмплы: one-shot
-c огибающей (атака 6 мс, экспоненциальный релиз `clamp(0.08, 1.5,
-duration/rate)·relScale`), 16 WAV (≈12 МБ) кладём в бандл; список
-голосов сейчас «synths-first», сэмплы запаркованы комментарием —
-переносим и парковку, и рабочий путь воспроизведения.
+**The master bus:** gain 0.9 → the limiter (a compressor: threshold −8 dB,
+ratio 12:1, attack 3 ms, release 180 ms) → out. **The samples' slap delay:**
+send 0.16 → delay 0.17 s → LPF 2400 Hz → feedback 0.28, into the master. The
+samples: one-shots under an envelope (attack 6 ms, an exponential release of
+`clamp(0.08, 1.5, duration/rate)·relScale`), 16 WAVs (≈12 MB) to go into the
+bundle; the voice list is "synths-first" at the moment and the samples are
+parked behind a comment — we carry over both the parking and the working
+playback path.
 
-**Пять синтов** («случайность в рамке»: питчи из лада, тембр
-переролливается на каждой ноте, патч дрейфует раз в такт; каждый голос —
-одноразовый, диспоуз после хвоста, общий бюджет **40 голосов**):
+**Five synths** (randomness inside a frame: pitches from the scale, the
+timbre re-rolled on every note, the patch drifting once a bar; every voice is
+one-shot, disposed after its tail, on a shared budget of **40 voices**):
 
-| Пресет | Суть | Ключевые параметры на ноту |
+| Preset | What it is | The per-note parameters |
 | --- | --- | --- |
-| REVERIE | дрейфующий пад | осциллятор из 8 типов (sine, triangle, fatsaw, fattriangle, fmsine, fmtriangle, amsine, square), релиз = 10–90 % от 3.2 с, атака 30 % долгая 0.04–0.35, детюн ±14 c, дух-октава p=0.22, суб p=0.10, −12 дБ |
-| KALIMBA | Karplus-Strong | resonance 0.55–0.94, dampening 900–4500, attackNoise 0.4–1.8, per-note LPF 1200–5200 → рамп к 500–1600 за 0.3–1.1 с, октавный «призрак» p=0.18, велосити через гейн (dB-формула) |
-| RHODES | FM-пиано | harmonicity {1,2,3,3.01,4}, modIndex 3–11, тремоло 2.5–7 Гц / глубина 0.15–0.55 / stereo spread, квинта/октава p=0.16 |
-| ACID | 303-бас | пила/меандр → резонансный LPF −24 дБ/окт с собственной огибающей (base 90–260 Гц, 1.6–4.6 октав, exponent 2, Q 4–15, акцент при vel>0.7 качает и фильтр, и амп), играет на 2 октавы ниже, −18 дБ, drive 0.08 в цепи |
-| MACHINE | драм-синтез по регистрам | `midi mod 12`: <3 кик (мембрана, freq/4), <6 том (freq/2), <9 снейр (шум+bandpass 1200–3600 + тело), <11 клэп (2–4 слэпа с интервалом 8–20 мс), иначе метал/хэты (FM-стек, open p=0.25) |
+| REVERIE | a drifting pad | an oscillator out of 8 types (sine, triangle, fatsaw, fattriangle, fmsine, fmtriangle, amsine, square), release 10–90 % of 3.2 s, the attack long 30 % of the time at 0.04–0.35, detune ±14 c, a ghost octave at p=0.22, a sub at p=0.10, −12 dB |
+| KALIMBA | Karplus-Strong | resonance 0.55–0.94, dampening 900–4500, attackNoise 0.4–1.8, a per-note LPF at 1200–5200 ramping to 500–1600 over 0.3–1.1 s, an octave "ghost" at p=0.18, velocity through the gain (the dB formula) |
+| RHODES | an FM piano | harmonicity {1,2,3,3.01,4}, modIndex 3–11, tremolo 2.5–7 Hz / depth 0.15–0.55 / stereo spread, a fifth or an octave at p=0.16 |
+| ACID | a 303 bass | saw or square → a resonant LPF at −24 dB/oct with its own envelope (base 90–260 Hz, 1.6–4.6 octaves, exponent 2, Q 4–15, an accent at vel>0.7 driving both the filter and the amp), played two octaves down, −18 dB, drive 0.08 in the chain |
+| MACHINE | drum synthesis by register | `midi mod 12`: <3 a kick (a membrane, freq/4), <6 a tom (freq/2), <9 a snare (noise + a bandpass at 1200–3600 plus a body), <11 a clap (2–4 slaps 8–20 ms apart), otherwise metal and hats (an FM stack, open at p=0.25) |
 
-**Цепь пресета:** LPF (Q 1.2) → [Distortion 0.08 только у acid] → хорус
-(0.45 Гц, 6 мс, depth 0.55, wet по пресету) → пинг-понг-дилей (0.32 с,
-fb 0.38, wet по пресету) → сухой выход + send в **общий ревербератор**
-(decay 7 с, preDelay 20 мс). Диапазоны cutoff/reverbWet по пресету — из
-`TONE_SETTINGS` (перенести таблицу дословно).
+**The preset chain:** LPF (Q 1.2) → [Distortion 0.08, acid only] → chorus
+(0.45 Hz, 6 ms, depth 0.55, wet per preset) → ping-pong delay (0.32 s, fb
+0.38, wet per preset) → the dry output plus a send into the **shared reverb**
+(decay 7 s, preDelay 20 ms). The cutoff and reverbWet ranges per preset come
+from `TONE_SETTINGS` (carry the table over literally).
 
-**Дрейф раз в такт:** cutoff → случайная точка диапазона рампом
-0.4–2.5 с, feedback → 0.2–0.55 за 0.5 с, reverb-send → диапазон за 1 с,
-depth хоруса ±0.09 (кламп 0.2–0.8, без рампа — иначе щёлкает),
-переброс эха на новую долю {2,3,4,6}×шаг с p=0.25 — с «даком» wet до
-нуля через смену delayTime (иначе питч-варп хвоста, «бульканье»);
-все рампы якорить к запланированному времени такта, не к «сейчас».
+**The drift, once a bar:** cutoff → a random point in its range, ramped over
+0.4–2.5 s; feedback → 0.2–0.55 over 0.5 s; the reverb send → its range over
+1 s; the chorus depth ±0.09 (clamped 0.2–0.8, and not ramped — ramping
+clicks); the echo thrown onto a new division {2,3,4,6}×step at p=0.25 — with
+the wet ducked to zero across the change of delayTime (otherwise the tail
+pitch-warps and burbles); every ramp anchored to the bar's scheduled time
+rather than to "now".
 
-### 2.6 Auth и устойчивость сессии (порт auth.ts)
+### 2.6 Auth and holding on to a session (a port of auth.ts)
 
-- Supabase URL/publishable key зашиты в клиент (это норма — RLS).
-- `peekSession()`: мгновенный вход в библиотеку по кэшу сессии до
-  сетевого подтверждения (Keychain вместо localStorage).
-- Причины разлогина: перехват ответа `/auth/v1/token` (текст отказа
-  сервера), заметка с таймстампом (TTL 24 ч), показ на лендинге
-  «Session ended N min ago: …».
-- Оффлайн: отказ рефреша без сети ≠ разлогин — держим сессию, ретрай по
-  восстановлению связи (NWPathMonitor вместо `online`-события) + через
-  5 с и 20 с.
-- Sign out строго локальный (не гасит другие устройства).
-- OAuth-ошибки провайдера показываются на лендинге, а не молча.
+- The Supabase URL and publishable key are baked into the client (which is
+  normal — RLS is what protects the rows).
+- `peekSession()`: the library opens instantly off the cached session,
+  before the network confirms anything (Keychain rather than localStorage).
+- Why a session ended: the response from `/auth/v1/token` is intercepted (the
+  server's own refusal text), written down with a timestamp (TTL 24 h), and
+  shown on the landing screen as "Session ended N min ago: …".
+- Offline: a refresh that failed for want of a network is not a sign-out — we
+  keep the session and retry when connectivity returns (NWPathMonitor rather
+  than the `online` event), plus after 5 s and 20 s.
+- Signing out is strictly local (it does not kill the other devices).
+- A provider's OAuth errors are shown on the landing screen rather than
+  swallowed.
 
-### 2.7 Бэкенд (без изменений)
+### 2.7 The backend (unchanged)
 
-`supabase/schema.sql` уже в проде: `profiles` (автосоздание триггером),
-`projects` (RLS «только свои», индекс `user_id, updated_at desc`,
-триггер `updated_at`). iOS ходит в те же таблицы через PostgREST.
-Автосейв: дебаунс 1.2 с, коалесценция + очередь «не больше одного
-запроса в полёте», молчаливое проглатывание сетевых ошибок (следующая
-правка повторит сейв).
+`supabase/schema.sql` is already in production: `profiles` (created by a
+trigger), `projects` (RLS "yours only", an index on `user_id, updated_at
+desc`, an `updated_at` trigger). iOS goes to the same tables through
+PostgREST. Autosave: a 1.2 s debounce, coalescing, and a queue of no more
+than one
+request in flight, and network errors swallowed quietly (the next edit will
+repeat the save).
 
 ---
 
-## 3. Архитектура и структура репозитория
+## 3. The architecture and the shape of the repository
 
 ```
 SQIA-ios/
-├─ PLAN.md                      ← этот документ
+├─ PLAN.md                      ← this document
 ├─ SQIA.xcodeproj
 ├─ SQIA/
-│  ├─ App/                      SQIAApp, AppState (маршрут landing/projects/sequencer)
+│  ├─ App/                      SQIAApp, AppState (the landing/projects/sequencer route)
 │  ├─ Core/
 │  │  ├─ Music/                 Scales, GridModel, RandomNames, ProjectSnapshot (Codable)
 │  │  ├─ Audio/
-│  │  │  ├─ EngineCore          граф, мастер, лимитер, слап-дилей
-│  │  │  ├─ StepTransport       лукахед-клок
+│  │  │  ├─ EngineCore          the graph, the master, the limiter, the slap delay
+│  │  │  ├─ StepTransport       the lookahead clock
 │  │  │  ├─ Voices/             Reverie, Kalimba, Rhodes, Acid, Machine, SamplePlayer
 │  │  │  └─ Chains/             PresetChain, ReverbBus, BarDrift
-│  │  └─ Support/               RandomSource (сидируемый), Debouncer
+│  │  └─ Support/               RandomSource (seedable), Debouncer
 │  ├─ Services/                 SupabaseClient, AuthService, ProjectsService
 │  ├─ Features/
 │  │  ├─ Landing/
 │  │  ├─ Projects/
 │  │  └─ Sequencer/             SequencerView, MixerOverlay, VoiceSheet,
-│  │                            StageView (MTKView-обёртка), GridRenderer
-│  ├─ Shaders/                  Grid.metal (инстансы: точка, глоу, стрик)
-│  └─ Resources/                Samples/ (16 wav), Fonts/, Assets.xcassets (иконки из public/)
-├─ SQIATests/                   + Fixtures/ (golden-JSON из веба)
+│  │                            StageView (the MTKView wrapper), GridRenderer
+│  ├─ Shaders/                  Grid.metal (instances: the dot, the glow, the streak)
+│  └─ Resources/                Samples/ (16 wav), Fonts/, Assets.xcassets (icons from public/)
+├─ SQIATests/                   + Fixtures/ (golden JSON from the web)
 ├─ SQIAUITests/
-├─ tools/gen-fixtures/          node-скрипт: гоняет функции веба, дампит эталоны
-└─ supabase/functions/delete-account/   (см. §6)
+├─ tools/gen-fixtures/          a node script: runs the web's functions, dumps the references
+└─ supabase/functions/delete-account/   (see §6)
 ```
 
-Принципы: вся «музыкальная математика» — чистые функции без UI и без
-`Math.random` внутри (RNG инжектится → детерминированные тесты); аудио —
-без аллокаций и локов в рендер-потоке (события в lock-free очередь,
-голоса из пула); UI-состояние — Observable-модель, один источник правды,
-как `main.ts`.
+The principles: all the "musical arithmetic" is pure functions with no UI and
+no `Math.random` inside them (the RNG is injected → deterministic tests); the
+audio allocates nothing and locks nothing on the render thread (events go
+through a lock-free queue, voices come from a pool); the UI state is an
+Observable model, one source of truth, the way `main.ts` is.
 
 ---
 
-## 4. Контроль паритета: golden-фикстуры
+## 4. Proving parity: golden fixtures
 
-Скрипт `tools/gen-fixtures` запускает **реальный веб-код** (импортом из
-`funny-steps`) и выгружает эталоны:
+The `tools/gen-fixtures` script runs the **real web code** (imported from
+`funny-steps`) and dumps the references:
 
-- таблицы `columnMidi` / `rateTable` для всех 12 корней × 5 ладов;
-- результаты `brush/stamp/erase/random` (с зафиксированным RNG);
-- warp/unwarp/fitCell для набора точек и вьюпортов;
-- пример снапшота проекта (сравнение значений);
-- корпус случайных имён.
+- the `columnMidi` / `rateTable` tables for all 12 roots × 5 scales;
+- the results of `brush/stamp/erase/random` (with the RNG pinned);
+- warp/unwarp/fitCell over a set of points and viewports;
+- a sample project snapshot (compared by value);
+- the corpus of random names.
 
-Swift-тесты читают те же файлы. Это единственный надёжный способ
-доказать «1 в 1» по математике, не сравнивая на глаз.
+The Swift tests read the same files. It is the only reliable way to prove
+"1:1" on the arithmetic without comparing by eye.
 
-Ключевая деталь, без которой ничего не работает: веб рандомит через
-`Math.random`, поэтому генератор подменяет его сидируемым **Mulberry32**,
-а `SQIACore` везёт тот же PRNG побитово (вся арифметика в UInt32 — JS
-`^`, `>>>`, `|` и `Math.imul` и так считают mod 2³²). Фикстура
-`prng.json` проверяет это первой; на ней стоит всё остальное.
+The detail without which none of it works: the web randomises through
+`Math.random`, so the generator replaces it with a seedable **Mulberry32**,
+and `SQIACore` carries the same PRNG bit for bit (all the arithmetic in
+UInt32 — JS's `^`, `>>>`, `|` and `Math.imul` compute mod 2³² anyway). The
+`prng.json` fixture checks that first; everything else stands on it.
 
-Паритет звука — отдельно (веб уже имеет методику `scripts/balance.mjs`):
-оффлайн-рендер каждого пресета на обеих платформах на одном паттерне
-с одним сидом → сравнение RMS/спектра + слепое A/B на слух. Критерий:
-уровни в пределах ±1.5 дБ, характер «неотличим в миксе».
-
----
-
-## 5. UI-детали, которые легко потерять
-
-- Шрифт Manrope, letter-spacing −0.01em общий, 0.14em на метках
-  секвенсора; палитра `--ui #f5f3f3`, `--card #383838`, `--ink #d4cccc`,
-  фон чистый чёрный; статус-бар чёрный, safe-area как в CSS.
-- Точки-метки не системные кнопки: нажатие — opacity 0.55.
-- Чипы имён в микшере ложатся **поверх нижних рядов точек** (панель
-  целиком отдана сетке).
-- Шторка: анимация 0.22 с cubic-bezier(0.22,1,0.36,1), подложка 0.18 с.
-- Меню карточки позиционируется у точки тапа с клампом к краям экрана.
-- Empty-state карточка — кликабельна вся.
-- Ошибка старта показывается на экране (у веба `#boot-err`; в iOS —
-  аналогичная плашка, лог мобильному пользователю недоступен так же).
+Sound parity is separate (the web already has a method in
+`scripts/balance.mjs`): an offline render of each preset on both platforms
+over one pattern with one seed → a comparison of RMS and spectrum, plus a
+blind A/B by ear. The criterion: levels within ±1.5 dB, and a character that
+is "indistinguishable in the mix".
 
 ---
 
-## 6. Обязательные отличия от веба (App Store)
+## 5. The UI details that are easy to lose
 
-Ровно три, все вынужденные — остальное 1:1:
-
-1. **Sign in with Apple** (Guideline 4.8: раз есть Google-вход, Apple-вход
-   обязателен). Supabase поддерживает нативный `signInWithIdToken`.
-   Кнопка на лендинге по гайдлайнам Apple (чёрная/белая пилюля — впишется
-   в стиль).
-2. **Удаление аккаунта из приложения** (Guideline 5.1.1(v)). В вебе его
-   нет. Минимум: Edge Function `delete-account` (service-role,
-   `admin.deleteUser` по JWT; каскад снесёт profiles/projects) + пункт
-   «Delete account» с подтверждением в меню аккаунта. Стоит потом
-   добавить и в веб.
-3. **Privacy-манифест и анкета конфиденциальности** (email для входа,
-   пользовательский контент-проекты; трекинга нет).
-
-**Шестое, по решению владельца (22.08):** **барабаны не следуют
-тональности, и только в приложении.** MACHINE выбирает инструмент по
-классу высоты ноты, поэтому транспонирование сдвигает всю установку по
-колонкам — нарисованные кики становятся томами. В приложении колонка
-всегда один и тот же инструмент (`Music.drumTable`), в вебе оставляем
-как есть.
-
-Цена названа прямо: **проект с MACHINE, сделанный в вебе, на iPhone
-прозвучит иначе.** Это принятое расхождение, а не баг, и в чек-листе M9
-оно проходит как «известное». Ноты, сетка, темп и тональность
-совпадают — расходится только то, какой барабан играет в какой колонке.
-Если когда-нибудь захочется свести — чинить надо в вебе, потому что
-правильное поведение здесь.
-
-**Пятое, по решению владельца (21.08):** звук настроен на слух и
-отличается от веба. `Tuning.web` — числа веба, остаются эталоном и под
-тестами; `Tuning.tuned` — то, на чём открывается приложение. Панель
-настройки (шторка звука → Tuning) даёт ползунки по 29 параметрам и умеет
-вернуть либо к дефолтам сборки, либо к числам веба — послушать, от чего
-ушли. **С 22.08 она только в Debug-сборках** (решение владельца): это
-верстак, на котором звук делали, а не фича — 29 ползунков без
-объяснений не то, что показывают человеку, открывшему музыкальное
-приложение. Числа, которые она произвела, живут в `Tuning.tuned` и
-уезжают в релиз; сама панель — нет.
-
-Что сдвинуто и зачем: у RHODES модуляция срезана почти вдвое и колокол
-замедлен (было слишком «диджитально»); у MACHINE кик стартует ниже и
-громче (нужен вес, а не питч); у ACID резонанс разведён от нуля до 14.5 дБ
-(сквелч стал событием, а не фоном) и свип замедлен. Полный список — в
-`Tuning.tuned`.
-
-**Про комнату здесь было написано неверно, исправлено в M9.** Стояло
-«вдвое короче и ярче» — это читалось из того, что веб просит `decay: 7`,
-а на слух подобралось 2.92. Но Tone не понимает `decay` как секунды: он
-превращает число в постоянную времени `ln(decay+1)/ln(200)`, и комната
-веба звучит **2.71 секунды**. То есть подобранная на слух длина
-разошлась с вебом на восемь процентов — притом что подбирали, не зная
-эталона, — а настоящее отличие ровно одно и обратное написанному:
-демпфирование. У веба его нет вовсе (импульс — белый шум под огибающей,
-яркий до конца), у нас 6870 Гц, то есть комната **темнее**, а не ярче.
-
-Для M9 это значит, что A/B с вебом делается на `Tuning.web`, а не на
-дефолтах сборки.
-
-**Четвёртое, по решению владельца (20.08):** модальные окна и кнопки —
-нативные iOS, а не порт вебовских. Это относится и к уже сделанному, и ко
-всему дальнейшему.
-
-- Выбор звука, тональности и ноты — системные шторки (`NavigationStack`
-  + `List`, детенты, Done в тулбаре), а не стилизованные панели.
-- Тональность и лад теперь **выбираются**, а не перелистываются по тапу:
-  в вебе тап по лейблу шагает на одну ноту вперёд, и чтобы добраться до
-  двенадцатой нужно одиннадцать тапов. На телефоне это не тот жест.
-  `SequencerState.setRoot/setScale` рядом с `cycleRoot/cycleScale` —
-  перелистывание осталось в ядре, им пользуется тест паритета.
-- Кнопки внутри модалок — системные (`.bordered`, `.plain`, тулбар).
-- Сам секвенсор — по-прежнему дословный порт веба: поле, BPM-драг,
-  ERASE/RNDM, метки. Нативное относится к модалкам и кнопкам, не к
-  сцене.
-
-Что это даёт помимо вида: VoiceOver, Dynamic Type, поведение прокрутки и
-жест закрытия — всё системное и бесплатное.
-
-Инфраструктурная мелочь: для magic-link из письма нужен мост в
-приложение. Рекомендация — статическая страница
-`sqia.serezhaok.com/ios` (GitHub Pages уже есть), которая пересылает
-токен в `sqia://auth`; `emailRedirectTo` при отправке с iOS указывает
-на неё. Надёжнее, чем AASA/Universal Links на Pages, и не требует новой
-инфраструктуры. Google OAuth: `ASWebAuthenticationSession` + redirect
-`sqia://auth` (системный браузер — Google такое разрешает). В Supabase
-dashboard добавить эти redirect-URL в allowlist и включить Apple
-provider.
+- Manrope, letter-spacing −0.01em throughout and 0.14em on the sequencer's
+  labels; the palette `--ui #f5f3f3`, `--card #383838`, `--ink #d4cccc`, the
+  background pure black; a black status bar, the safe area as the CSS has it.
+- The dot labels are not system buttons: a press is opacity 0.55.
+- The mixer's name chips sit **over the lower rows of dots** (the panel is
+  given over entirely to the grid).
+- The sheet: a 0.22 s animation on cubic-bezier(0.22,1,0.36,1), the scrim
+  0.18 s.
+- A card's menu is positioned at the point of the tap, clamped to the screen
+  edges.
+- The empty-state card is clickable across the whole of it.
+- A failure to start is shown on screen (the web has `#boot-err`; iOS gets an
+  equivalent plate — a log is just as unreachable to a phone's user).
 
 ---
 
-## 7. Вехи, задачи, оценки
+## 6. The required departures from the web (App Store)
 
-Оценки — чистые дни разработки (диапазон: уверенно — с запасом на
-отладку). Порядок выбран так, чтобы **играбельный вертикальный срез**
-(рисуешь — звучит — красиво) появился после M4, до полного паритета.
+Exactly three, all of them forced — everything else is 1:1:
 
-### M0 — Бутстрап ✅ сделано
-Xcode-проект (Xcode 16+, синхронизированные группы — новые файлы не
-требуют правок проекта), таргет iOS 17, только портрет, тёмная тема;
-иконка отрисована из `icon.svg` в 1024 (`tools/make-icon.py`); Manrope
-нарезан на 4 статических начертания (`tools/make-fonts.py` — у
-переменного файла дефолтный инстанс ExtraLight, которого в дизайне нет);
-палитра и типографика из `style.css`; CI на GitHub Actions (ядро — в
-Linux-контейнере Swift, приложение — на macos-runner).
-**Приёмка:** каркас показывает поле точек через настоящую геометрию
-купола, в настоящей палитре и шрифте. Сэмплы (12 МБ) переедут в M2,
-supabase-swift — в M7.
+1. **Sign in with Apple** (Guideline 4.8: once Google sign-in is offered,
+   Apple's is required). Supabase supports the native `signInWithIdToken`.
+   The button on the landing screen follows Apple's guidelines (a black or
+   white pill — it fits the style).
+2. **Deleting an account from inside the app** (Guideline 5.1.1(v)). The web
+   has none. The minimum: a `delete-account` Edge Function (service role,
+   `admin.deleteUser` by JWT; the cascade takes profiles/projects with it)
+   and a "Delete account" item with a confirmation in the account menu. Worth
+   adding to the web afterwards too.
+3. **A privacy manifest and the privacy questionnaire** (the email you sign
+   in with, and the user content that is the projects; no tracking).
 
-### M1 — Музыкальное ядро + фикстуры ✅ сделано
-`Core/` = SwiftPM-пакет `SQIACore` без Apple-фреймворков: `Music`
-(лады/MIDI/rate), `NoteGrid` (модель без рендера — имя изменено, `Grid`
-конфликтует с контейнером SwiftUI), `Field` (геометрия купола),
-`ProjectNames`, `ProjectSnapshot`/`Project` (Codable с ключами БД),
-`Mulberry32`. Генератор `tools/gen-fixtures` импортирует **живые
-исходники веба** (резолвер расширений + заглушка `auth`), 6 фикстур.
-**Приёмка:** 20 тестов зелёные. Раскладка, warp и все правки сетки
-совпадают **побитово**; расходятся только `exp2` (1.6e-16) и обратный
-Ньютон (1.2e-13) — допуски выставлены по факту, а не «с запасом».
+**The sixth, by the owner's decision (22.08):** **the drums do not follow the
+key, and only in the app.** MACHINE picks an instrument by the note's pitch
+class, so transposing shifts the whole kit across the columns — the kicks you
+drew become toms. In the app a column is always the same instrument
+(`Music.drumTable`); on the web we leave it as it is.
 
-### M2 — Аудио-фундамент ✅ код готов, приёмка на устройстве за вами
-Рендерер `AudioMixer` в ядре: пул голосов, слап-дилей (170 мс, LPF
-2400 Гц, fb 0.28, send 0.16), мастер 0.9, лимитер (−8 дБ, 12:1, колено
-30 дБ, лукахед 6 мс), стерео насквозь — все 16 сэмплов стерео.
-`StepVoicing` — правило «случайность в рамке» с тем же порядком
-розыгрышей, что в вебе. Wait-free очередь событий (проверена реальными
-потоками). Слой приложения: `AudioEngine`, `AudioSessionController`
-(звонок, наушники, смена маршрута с иной частотой, media services reset),
-`SampleLibrary` (декод один раз, память не освобождается — как кэш в
-вебе), `Sequencer` (таймер 25 мс против кадрового счётчика рендера).
-**Приёмка (нужно устройство):** стенд в приложении — PLAY, пусть играет
-10 минут без дрейфа; принять звонок; воткнуть/выдернуть наушники.
-Компилируется в CI на macOS; 81 тест ядра зелёный.
+The price is named plainly: **a project with MACHINE in it, made on the web,
+will sound different on an iPhone.** That is an accepted divergence rather
+than a bug, and it goes through the M9 checklist as "known". The notes, the
+grid, the tempo and the key all agree — the only thing that differs is which
+drum plays in which column. If it is ever to be reconciled, the fix belongs
+on the web, because the right behaviour is the one here.
 
-### M3 — Рендер сцены на Metal ✅ сделано
-`FieldAnimator` в ядре: энергия вспышек, выталкивание соседей, цветовые
-волны с покольцевой задержкой и стробом, дыхание — выдаёт список
-примитивов. `FieldRenderer` + `FieldShaders.metal`: инстансированные
-квадры, форму задаёт фрагментный шейдер, аддитивный блендинг.
-**Приёмка:** вместо сравнения скриншотов — записывающий canvas-контекст
-снимает с веба сами примитивы (8 сценариев), Swift сверяется с ними
-попримитивно, расхождение < 1e-9. Осталось: fps на устройстве.
+**The fifth, by the owner's decision (21.08):** the sound is tuned by ear and
+differs from the web's. `Tuning.web` is the web's numbers and stays the
+reference, under test; `Tuning.tuned` is what the app opens on. The tuning
+panel (the sound sheet → Tuning) gives sliders over 29 parameters and can go
+back either to the build's defaults or to the web's numbers, to hear what was
+moved away from. **Since 22.08 it is in Debug builds only** (the owner's
+decision): it is the workbench the sound was made on, not a feature — 29
+unexplained sliders are not what you show somebody who has just opened a
+music app. The numbers it produced live in `Tuning.tuned` and travel to the
+release; the panel does not.
 
-### M4 — Экран секвенсора + жесты ✅ сделано
-`SequencerState` в ядре (треки, тональность, темп, snapshot/apply —
-пригодится в M7, уже под тестами). `SequencerModel` связывает состояние,
-движок и поле. `SequencerView` по метрикам CSS: BPM драг/тап, точки
-треков, корень/лад, ERASE, метка голоса, RNDM, шторка Sound. Вспышки
-приходят ровно в момент звучания.
-**Приёмка:** «рисуешь — звучит». Голоса пока сэмплы (синты — M5),
-микшер — M6.
+What was moved, and why: RHODES had its modulation cut almost in half and its
+bell slowed (it was too "digital"); MACHINE's kick starts lower and louder
+(it needs weight, not pitch); ACID's resonance was opened from zero to
+14.5 dB (the squelch became an event rather than a background) and its sweep
+slowed. The full list is in `Tuning.tuned`.
 
-### M5 — Голоса и эффекты ✅ сделано
-Генераторы (8 форм Tone плюс чистая пила для 303, saw/square
-band-limited через PolyBLEP), ADSR и питч-огибающая, шум white/pink,
-Karplus-Strong, двухоператорный FM с собственной огибающей модулятора,
-стереотремоло, резонансный каскад −24 дБ/окт с фильтровой огибающей,
-хорус, пинг-понг-дилей, овердрайв по кривой Tone, ревербератор (FDN),
-фильтр ВЧ на посыле в реверб, цепь пресета с потактовым дрейфом и «даком»
-эха при переброске.
+**What was written here about the room was wrong, and was corrected in M9.**
+It said "half as long and brighter", which was read off the web asking for
+`decay: 7` where 2.92 had been found by ear. But Tone does not read `decay`
+as seconds: it turns the number into the time constant
+`ln(decay+1)/ln(200)`, and the web's room rings for **2.71 seconds**. So the
+length found by ear diverged from the web by eight per cent — and that
+without knowing the reference — while the real difference is exactly one, and
+the opposite of what was written: damping. The web has none at all (the
+impulse is white noise under an envelope, bright to the end), we have
+6870 Hz, so our room is **darker**, not brighter.
 
-Все пять голосов — с точным порядком розыгрышей, включая значения,
-которые Tone берёт из потока и не использует (`octaves` у метала,
-`release` у PluckSynth). Сэмплы удалены по решению владельца: список
-голосов теперь только синты, `voiceIdx` совпадает с вебом (0…4).
+For M9 this means the A/B against the web is done on `Tuning.web` rather than
+on the build's defaults.
 
-Шины пресетов стали стерео — тремоло у Tone разведено на 180°, и в моно
-оно вычиталось бы ровно в ноль.
+**The fourth, by the owner's decision (20.08):** the modals and the buttons
+are native iOS rather than ports of the web's. That applies to what is
+already built as much as to everything after it.
 
-**Приёмка на устройстве за вами:** A/B каждого пресета с вебом.
+- Choosing the sound, the key and the note happens in system sheets
+  (`NavigationStack` + `List`, detents, Done in the toolbar) rather than in
+  styled panels.
+- The key and the scale are now **chosen** rather than cycled by tapping: on
+  the web a tap on the label steps one note forward, and reaching the twelfth
+  takes eleven taps. On a phone that is not the gesture.
+  `SequencerState.setRoot/setScale` sit beside `cycleRoot/cycleScale` — the
+  cycling stayed in the core, and the parity test uses it.
+- The buttons inside modals are system ones (`.bordered`, `.plain`, the
+  toolbar).
+- The sequencer itself is still a literal port of the web: the field, the BPM
+  drag, ERASE/RNDM, the labels. "Native" applies to the modals and the
+  buttons, not to the scene.
 
-**Стоимость рендера.** Треск — это сорванный дедлайн, поэтому он
-измеряется, а не угадывается: `RenderCostTests` печатает realtime-фактор
-(секунда работы на секунду звука) и держит release под 0.25×. Две
-полные дорожки — около 0.08×, простой — 0.002×.
+What that buys beyond the look: VoiceOver, Dynamic Type, scrolling behaviour
+and the dismissal gesture — all of it from the system, and all of it free.
 
-Что было сделано по жалобе «сильный глитч и треск»:
-- Xcode по кнопке Run собирает Debug, а неоптимизированный Swift в
-  несколько раз медленнее. На уровне проекта Debug теперь `-O`, а таргет
-  приложения возвращает себе `-Onone` — считает сэмплы только пакет.
-- Простой стоил 21 % ядра: все пять цепей молотили фильтр, хорус и две
-  линии задержки каждый сэмпл, и сканировались все 40 слотов голосов.
-  Теперь цепь без сигнала и без хвоста пропускается, голоса ходят до
-  «водяного знака», а полная тишина — быстрый выход из цикла.
-- Убраны `pow`/`log10`/`sin` на каждом сэмпле: огибающие стали
-  мультипликативными, гейн-компьютер лимитера считается раз в 8 сэмплов,
-  LFO хоруса — вращение единичного вектора.
-- Выход мастера клампится в ±1, а нефинитный сэмпл (если какой-нибудь
-  фильтр всё же взорвётся) гасит эффекты и считается — рёва до
-  перезапуска приложения быть не должно.
-- В Debug-сборке фактор виден прямо на экране, рядом — счётчик
-  выброшенных нот. Это `#if DEBUG`, до релиза уйдёт.
+An infrastructural detail: a magic link from an email needs a bridge into the
+app. The recommendation is a static page at `sqia.serezhaok.com/ios` (GitHub
+Pages is already there) that forwards the token to `sqia://auth`, with
+`emailRedirectTo` pointing at it when the mail is sent from iOS. It is more
+dependable than AASA/Universal Links on Pages and needs no new
+infrastructure. Google OAuth: `ASWebAuthenticationSession` with a
+`sqia://auth` redirect (a system browser — Google permits that). In the
+Supabase dashboard, add those redirect URLs to the allowlist and switch the
+Apple provider on.
 
-Исходный объём работ:
-По задаче на пресет: REVERIE → KALIMBA → RHODES → ACID → MACHINE
-(порядок = дефолтные голоса и частота использования сначала); цепи
-пресетов + общий ревербератор; BarDrift с якорением рампов и
-переброской эха с даком; бюджет 40 голосов, пул, диспоуз по хвосту;
-путь сэмплов (запаркованный список); балансировка по методике §4.
-**Приёмка:** A/B по каждому пресету; RMS ±1.5 дБ; час игры без
-деградации (утечки голосов, перегруз рендер-потока).
+---
 
-### M6 — Микшер ✅ сделано
-Геометрия панелей в ядре под тестами: поля 10, жёлоб 17, пропорция
-270/168.75, старт на 0.108 высоты, 100 пунктов внизу под плитку.
-Перелёт активной дорожки из фулскрина в свой слот за 0.35 с по кубическому
-ease — на том же display link, что и поле, иначе за треть секунды два
-таймера разъезжаются. Остальные дорожки ждут в слотах и проявляются;
-обводки слотов — новый примитив в шейдере (`kindOutline`), рисуются
-хайрлайном по контуру квада. Чипы имени и mute проявляются своей
-0.18-секундной кривой — ровно как CSS-переход в вебе, где холст летит,
-а контролы просто появляются. Точки треков в шапке открывают микшер;
-пока он открыт, они и весь нижний тулбар скрыты.
+## 7. Milestones, tasks, estimates
 
-Одна ловушка, которой в вебе нет: drag сообщает непрерывно, а выбор
-панели закрывает микшер — без «защёлки» тот же тап выбрал бы дорожку и
-тут же нарисовал бы на ней точку. В вебе это `pointerdown`.
+The estimates are pure development days (the range: confident — with room for
+debugging). The order is chosen so that a **playable vertical slice** (you
+draw, it sounds, it looks right) exists after M4, before full parity.
 
-Плитка «Back to projects» с M7 дожимает автосейв и уходит в библиотеку.
+### M0 — Bootstrap ✅ done
+The Xcode project (Xcode 16+, synchronised groups — new files need no project
+edits), an iOS 17 target, portrait only, dark; the icon rendered out of
+`icon.svg` at 1024 (`tools/make-icon.py`); Manrope cut into four static
+instances (`tools/make-fonts.py` — the variable file's default instance is
+ExtraLight, which the design does not use); the palette and the typography
+from `style.css`; CI on GitHub Actions (the core in
+a Linux Swift container, the app on a macos-runner).
+**Acceptance:** the skeleton shows the field of dots through the real dome
+geometry, in the real palette and the real font. The samples (12 MB) move to
+M2, supabase-swift to M7.
 
-### M6 — исходный объём (2–3 дн)
-Анимация фулскрин↔панель (0.35 с, тот же ease), обводки, чипы
-имени/mute, tap-по-панели, «Back to projects», приглушение muted-трека,
-detail для неактивной панели.
-**Приёмка:** покадровое сравнение перехода с вебом; mute мгновенный и
-сохраняется.
+### M1 — The music core and the fixtures ✅ done
+`Core/` is the `SQIACore` SwiftPM package with no Apple frameworks: `Music`
+(scales/MIDI/rate), `NoteGrid` (the model without the rendering — renamed,
+because `Grid` collides with SwiftUI's container), `Field` (the dome's
+geometry), `ProjectNames`, `ProjectSnapshot`/`Project` (Codable with the
+database's keys), `Mulberry32`. The `tools/gen-fixtures` generator imports the
+**live web sources** (an extension resolver plus an `auth` stub), 6 fixtures.
+**Acceptance:** 20 tests green. The layout, the warp and every grid edit
+match **bit for bit**; only `exp2` (1.6e-16) and the inverse Newton (1.2e-13)
+diverge, and the tolerances are set to the measured facts rather than "with
+room to spare".
 
-### M7 — Библиотека проектов ✅ код готов, приёмка ждёт сессии из M8
-Экран по метрикам 2.1.2: четырёхточечный знак и пилюля аккаунта в 35
-пунктах, заголовок 44 по строке 60, карточки в две колонки с жёлобом 7 и
-полями 20, пилюля «+ Create new» в 40 над домашним индикатором, и одна
-точка перелома на 768, где карточки перестают тянуться и становятся
-фиксированными плитками 200×200. Сетка и её перелом — в ядре под тестами.
+### M2 — The audio foundation ✅ the code is done, acceptance on a device is yours
+The `AudioMixer` renderer in the core: a voice pool, the slap delay (170 ms,
+LPF 2400 Hz, fb 0.28, send 0.16), master 0.9, the limiter (−8 dB, 12:1, a
+30 dB knee, 6 ms lookahead), stereo throughout — all 16 samples are stereo.
+`StepVoicing` is the "randomness inside a frame" rule with the same order of
+rolls as the web's. A wait-free event queue (checked with real threads). The
+app layer: `AudioEngine`, `AudioSessionController` (a call, headphones, a
+route change at a different rate, a media services reset), `SampleLibrary`
+(decoded once, and the memory never released — the same as the web's cache),
+`Sequencer` (a 25 ms timer against the renderer's frame counter).
+**Acceptance (needs a device):** the bench inside the app — press PLAY and
+let it run for ten minutes without drift; take a call; plug the headphones in
+and pull them out. It compiles in CI on macOS; 81 core tests green.
 
-Модалки не веба, а системные: вместо позиционированного div — `Menu`,
-вместо `prompt()` — алерт с текстовым полем, вместо `confirm()` —
-`confirmationDialog`. Это по вашему правилу про нативные окна и кнопки.
+### M3 — The scene on Metal ✅ done
+`FieldAnimator` in the core: the energy of the flashes, the neighbours pushed
+out, the colour waves with their per-ring delay and their strobe, the
+breathing — it emits a list of primitives. `FieldRenderer` plus
+`FieldShaders.metal`: instanced quads, the shape set by the fragment shader,
+additive blending.
+**Acceptance:** instead of comparing screenshots, a recording canvas context
+takes the primitives themselves off the web (8 scenarios) and Swift checks
+against them primitive by primitive, diverging by less than 1e-9. What is
+left: fps on a device.
 
-Автосейв — порт `makeAutosave` с одним намеренным отличием. В браузере
-`clearTimeout` не достаёт до уже ушедшего запроса, а отмена задачи в
-Swift достаёт до всего, что под ней: первая версия держала запись внутри
-задачи-таймера, и следующая правка отменяла запрос, которого ждала —
-сейв терялся на лету. Ожидание и запись теперь две задачи: таймер
-отменяемый, писатель — нет. На это есть тест, и он падает на старой
-форме.
+### M4 — The sequencer screen and the gestures ✅ done
+`SequencerState` in the core (the tracks, the key, the tempo, snapshot/apply
+— useful in M7 and already under test). `SequencerModel` ties the state, the
+engine and the field together. `SequencerView` follows the CSS metrics: the
+BPM drag and tap, the track dots, the root and the scale, ERASE, the voice
+label, RNDM, the Sound sheet. The flashes arrive exactly when the sound does.
+**Acceptance:** "you draw, it sounds". The voices are still samples (the
+synths are M5), the mixer is M6.
 
-Правки идут через `publishVoicing` — та же пара `updateRates(); touch();`,
-что в вебе на каждом месте вызова, но в одном месте вместо восьми.
-Снапшот собирается в момент записи, а не в момент правки: разница между
-«скопировать пятьсот ячеек раз в секунду» и «на каждом кадре драга».
+### M5 — The voices and the effects ✅ done
+The generators (Tone's 8 shapes plus a clean saw for the 303, saw/square
+band-limited through PolyBLEP), an ADSR and a pitch envelope, white and pink
+noise, Karplus-Strong, two-operator FM with its own modulator envelope, a
+stereo tremolo, a resonant −24 dB/oct cascade with a filter envelope, a
+chorus, a ping-pong delay, an overdrive on Tone's curve, the reverb (an FDN),
+a high-pass on the reverb send, and the preset chain with its per-bar drift
+and the echo ducked when it is thrown.
 
-Строки — в файле на телефоне. У веба локальной копии нет вовсе, телефону
-так нельзя; после M8 файл остаётся тем, на что откатывается Supabase.
-Стор Supabase написан и под тестами (колонки, порядок, фильтр записи,
-тело вставки, различие «удалил строку» и «не нашёл строки»), но говорить
-с продом ему нечем: сессии нет до M8. Поэтому приёмка §M7 — CRUD против
-прод-Supabase и «веб-проект открывается на iPhone» — переезжает в M8.
+All five voices roll in the exact order, including the values Tone takes off
+the stream and never uses (`octaves` on the metal, `release` on PluckSynth).
+The samples were removed by the owner's decision: the voice list is synths
+only now, and `voiceIdx` matches the web (0…4).
 
-Два отличия от веба, названные намеренно: неудавшийся rename или delete
-возвращает строку на место (веб оставляет ложь на экране до следующей
-загрузки), и неудавшаяся перезагрузка списка сохраняет уже нарисованные
-карточки вместо того, чтобы стереть библиотеку.
+The preset buses became stereo — Tone's tremolo is spread 180° apart, and in
+mono it would subtract to exactly nothing.
 
-### M7 — исходный объём (3–4 дн)
-Projects-экран по метрикам 2.1.2, контекстные меню, переименование/
-удаление, пустое состояние, iPad-раскладка; автосейв (дебаунс 1.2 с +
-in-flight-очередь), создание с рандом-именем, оффлайн-поведение как в
-вебе.
-**Приёмка:** CRUD против прод-Supabase; проект, созданный в вебе,
-открывается и звучит идентично, правки с iPhone видны в вебе.
+**Acceptance on a device is yours:** an A/B of each preset against the web.
 
-### M8 — Лендинг и auth ✅ код готов, приёмка на устройстве за вами
-Экран входа по метрикам веба: знак 132, вордмарк 2.6rem, кнопки 54 и
-полностью круглые, 38 пунктов воздуха над первой и 12 между остальными,
-колонка не шире 340. Одна кнопка, которой в вебе нет: Guideline 4.8
-требует Apple там, где предложен Google, и требует не менее заметно —
-поэтому она первая, в собственной кнопке Apple, того же размера.
+**What rendering costs.** A crackle is a missed deadline, so it is measured
+rather than guessed at: `RenderCostTests` prints the realtime factor (a
+second of work per second of audio) and holds release under 0.25×. Two full
+tracks come to about 0.08×, and idle to 0.002×.
 
-Вся логика — в ядре под тестами, и держится на одном различии, которое
-несёт `AuthError`: **rejected** — сервер посмотрел и отказал, сессия
-кончилась; **unreachable** — никто не смотрел, и про токен на диске
-по-прежнему ничего не известно. Телефон живёт то в сети, то нет, и
-считать вторую ситуацию разлогином — это как раз то, из-за чего
-приложение выкидывает человека на экран входа в метро, ничего не
-потеряв, кроме самообладания. Отказ гасит сессию и записывает причину
-словами сервера («Already Used» — это гонка двух рефрешей, «session
-expired» — это политика, и слова нужны разные). Недоступный сервер
-держит сессию и повторяет через 5 с, 20 с и по возвращении сети
-(`NWPathMonitor`). Есть тест, названный по тоннелю.
+What was done about the "heavy glitching and crackle" report:
+- Xcode's Run button builds Debug, and unoptimised Swift is several times
+  slower. Debug is now `-O` at the project level, with the app target taking
+  `-Onone` back — only the package counts samples.
+- Idle cost 21 % of a core: all five chains ground through a filter, a chorus
+  and two delay lines every sample, and all 40 voice slots were scanned. Now
+  a chain with no signal and no tail is skipped, the voices run up to a
+  watermark, and complete silence exits the loop early.
+- `pow`/`log10`/`sin` are gone from the per-sample path: the envelopes became
+  multiplicative, the limiter's gain computer runs once every 8 samples, and
+  the chorus LFO is a unit vector being rotated.
+- The master output is clamped to ±1, and a non-finite sample (should some
+  filter blow up after all) mutes the effects and is counted — there should
+  be no roar until the app is restarted.
+- In a Debug build the factor is on screen, next to a count of dropped notes.
+  It is `#if DEBUG` and goes before the release.
 
-Возвращающийся пользователь этого экрана не видит: Keychain читается до
-любого обращения к сети, библиотека открывается по кэшу, а токен
-подтверждается позади. `AfterFirstUnlock` — чтобы телефон в кармане мог
-обновить токен; заметка о причине разлогина живёт в UserDefaults, потому
-что элементы Keychain переживают переустановку, и «Session ended 4 min
-ago» на свежей установке было бы маленькой ложью.
+The original scope:
+One task per preset: REVERIE → KALIMBA → RHODES → ACID → MACHINE (the order
+is the default voices and the most-used first); the preset chains and the
+shared reverb; BarDrift with anchored ramps and the ducked echo throw; the
+40-voice budget, the pool, disposal after the tail; the sample path (the
+parked list); balancing by the method in §4.
+**Acceptance:** an A/B per preset; RMS within ±1.5 dB; an hour of playing
+with no degradation (voice leaks, an overloaded render thread).
 
-SHA-256 написан здесь, а не взят из CryptoKit: весь пакет тестируется на
-Linux, а CryptoKit там нет. Хэшируется значение, которое через миг уйдёт
-в открытом виде, так что утекать через тайминги нечему. Проверен по
-векторам FIPS, по границам блока (55/56/64 байта — там ломается
-паддинг) и по разобранному примеру из RFC 7636 §4.4, который проверяет
-дайджест, кодирование и challenge вместе.
+### M6 — The mixer ✅ done
+The panels' geometry is in the core and under test: 10 outside, a 17-wide
+gutter, the proportion 270/168.75, starting at 0.108 of the height, 100
+points at the bottom for the tile. The active track flies out of full screen
+into its own slot over 0.35 s on a cubic ease — on the same display link as
+the field, or two timers drift apart over a third of a second. The other
+tracks wait in their slots and fade up; the slot outlines are a new primitive
+in the shader (`kindOutline`), drawn as a hairline around the quad's contour.
+The name and mute chips fade in on their own 0.18 s curve — exactly like the
+CSS transition on the web, where the canvas flies and the controls simply
+appear. The track dots in the header open the mixer; while it is open, they
+and the whole bottom toolbar are hidden.
 
-Удаление аккаунта — Guideline 5.1.1(v): функция в
-`supabase/functions/delete-account`, и единственное, что стоит между
-вызывающим и чужим аккаунтом — то, что она удаляет владельца именно
-того JWT, с которым пришли. Тела запроса нет намеренно.
+One trap the web does not have: a drag reports continuously, and choosing a
+panel closes the mixer — without a latch the same tap would pick a track and
+immediately draw a dot on it. On the web this is `pointerdown`.
 
-**Чего нет:** офлайн-кэша проектов. Кэш «на чтение» показывал бы строки,
-которые можно открыть и править, а каждый сейв молча падал бы: человек
-думает, что сохранил. Настоящий офлайн — это очередь отложенных записей
-и разрешение конфликтов, то есть отдельная фича, а не строчка в вехе.
-Честная пустая библиотека офлайн — это ровно то, что делает веб.
+The "Back to projects" tile, from M7, flushes the autosave and leaves for the
+library.
 
-Файловый стор под это был написан и в M9 удалён: он ничем не
-использовался, а мёртвый код в релизе — обязательство без выгоды. Лежит
-в истории, если понадобится.
+### M6 — the original scope (2–3 days)
+The full-screen↔panel animation (0.35 s, the same ease), the outlines, the
+name and mute chips, tap-on-panel, "Back to projects", dimming a muted track,
+detail on an inactive panel.
+**Acceptance:** a frame-by-frame comparison of the transition against the
+web; mute instant and persisted.
 
-**Приёмка (нужно устройство и доступ к дашборду):** три способа входа;
-выключил сеть — приложение не разлогинивает; протухший рефреш
-показывает причину на лендинге; CRUD против прод-Supabase и «проект из
-веба открывается на iPhone» (перенесено из M7).
+### M7 — The project library ✅ the code is done, acceptance waits on a session from M8
+The screen follows the metrics in 2.1.2: the four-dot mark and the account
+pill at 35 points, the title at 44 on a 60 line, cards in two columns with a
+7-wide gutter and 20-point margins, the "+ Create new" pill 40 above the home
+indicator, and one breakpoint at 768 where the cards stop stretching and
+become fixed 200×200 tiles. The grid and its breakpoint are in the core,
+under test.
 
-### M8 — исходный объём (4–5 дн)
-Экран входа 1:1 (логотип — вектор, Google-кнопка, email-форма,
-статусы/ошибки); Google через ASWebAuthenticationSession; magic-link
-через мост-страницу; **Sign in with Apple**; Keychain-кэш сессии и
-мгновенный вход; заметки о причине разлогина + оффлайн-ретраи; выход
-локальный; удаление аккаунта (Edge Function + UI).
-**Приёмка:** все три способа входа на устройстве; выключил сеть —
-приложение не разлогинивает; протухший рефреш показывает причину на
-лендинге.
+The modals are not the web's but the system's: a `Menu` instead of a
+positioned div, an alert with a text field instead of `prompt()`, a
+`confirmationDialog` instead of `confirm()`. That follows your rule about
+native windows and buttons.
 
-### M9 — Паритет-QA ✅ сделано, кроме матрицы устройств
-A/B со звуком веба сделан на `Tuning.web`, и он нашёл три вещи — все три
-в нашу пользу, потому что все три были ошибками эталона или порта, а не
-придирками.
+Autosave is a port of `makeAutosave` with one deliberate difference. In a
+browser `clearTimeout` cannot reach a request that has already left, while
+cancelling a task in Swift reaches everything under it: the first version
+held the write inside the timer's task, and the next edit cancelled the very
+request it was waiting on — the save was lost in flight. The waiting and the
+writing are two tasks now: the timer is cancellable, the writer is not. There
+is a test for this, and it fails on the old shape.
 
-**Реверб (риск R3, закрыт).** Tone читает `decay` не как секунды, а как
-`ln(decay+1)/ln(200)` — постоянную времени для `setTargetAtTime`. Значит
-вебовский `decay: 7` — это комната на 2.71 с, а остаток семисекундного
-буфера — тишина на −139 дБ. В `Tuning.web` лежала семёрка, и сеть читала
-её как семь секунд RT60: эталон, против которого меряется всё остальное,
-звенел в два с половиной раза дольше оригинала. Плюс демпфирование 4500
-Гц там, где у веба его нет вовсе. С исправленным эталоном сеть держится
-(заказанные секунды с точностью до 20 %) и свёртка не нужна.
+Edits go through `publishVoicing` — the same `updateRates(); touch();` pair
+the web has at every call site, but in one place instead of eight. The
+snapshot is assembled when it is written rather than when the edit happens:
+the difference between copying five hundred cells once a second and doing it
+on every frame of a drag.
 
-**Лимитер (риск R8, закрыт).** Оказался не «близко», а неверно. Учебное
-мягкое колено центрируется на пороге, у Blink идёт от порога вверх: на
-−8 дБ с коленом 30 дБ это расхождение на всём от −23 до +22 dBFS. Мастер
-сжимал то, что веб пропускает. Теперь статическая кривая — порт
-`DynamicsCompressor::Saturate`, сверенный с независимой второй
-транскрипцией того же исходника Chromium. Слышно: микс громче и с
-транзиентами. Огибающая осталась своя — разница в скорости прихода того
-же уменьшения, не в его величине.
+The rows live in a file on the phone. The web has no local copy at all, and a
+phone cannot work that way; after M8 the file stays as what Supabase falls
+back to. The Supabase store is written and under test (the columns, their
+order, the write filter, the insert body, and the difference between "deleted
+a row" and "found no row"), but it has nothing to talk to production with:
+there is no session until M8. So the M7 acceptance — CRUD against production
+Supabase and "a web project opens on an iPhone" — moves into M8.
 
-**Клиппинг.** Раз лимитер больше не давит, плотный паттерн касается
-потолка. Померено: один сэмпл из четырёх тысяч на числах веба, один из
-шестисот на настроенных, и Web Audio клампит на ±1 точно так же. Тест
-стережёт долю, а не факт.
+Two deliberate departures from the web: a rename or a delete that failed puts
+the row back (the web leaves the lie on screen until the next load), and a
+list reload that failed keeps the cards already drawn instead of wiping the
+library.
 
-Ещё в M9: задержка вспышки на латентность маршрута (картинка обгоняла
-звук — на Bluetooth была бы пятая секунды); VoiceOver для поля и темпа
-(поле было безымянным прямоугольником, темп читался, но не менялся);
-`NOTICE.md`, которого не было; `PrivacyInfo.xcprivacy`; удалён
-неиспользуемый файловый стор; ползунки убраны из релиза; смоук-тест
-`SQIAUITests`, который проходит по экранам — единственное, чего ядро
-проверить не может.
+### M7 — the original scope (3–4 days)
+The Projects screen to the metrics in 2.1.2, the context menus, rename and
+delete, the empty state, the iPad layout; autosave (a 1.2 s debounce plus an
+in-flight queue), creating with a random name, offline behaviour as on the
+web.
+**Acceptance:** CRUD against production Supabase; a project made on the web
+opens and sounds identical, and edits from an iPhone are visible on the web.
 
-**Чего нет и почему.** Снапшот-тесты экранов не сделаны намеренно: их
-эталонные изображения записываются на машине с симулятором, а эта сессия
-живёт в Linux-контейнере. Добавить их отсюда — значит положить в CI
-падающий шаг до тех пор, пока вы не запишете эталоны локально и не
-закоммитите их. Если нужны — скажите, добавлю таргет и инструкцию, но
-первый прогон за вами. Матрица устройств (SE, ProMotion, iPad) и
-Instruments — за вами по определению.
+### M8 — The landing screen and auth ✅ the code is done, acceptance on a device is yours
+The sign-in screen to the web's metrics: the mark at 132, the wordmark at
+2.6rem, buttons 54 tall and fully rounded, 38 points of air above the first
+and 12 between the rest,
+and the column capped at 340. One button the web does not have: Guideline 4.8
+requires Apple wherever Google is offered, and requires it be no less
+prominent — so it goes first, in Apple's own button, at the same size.
 
-### M9 — исходный объём (4–6 дн)
-Проход по чек-листу §2 экран за экраном рядом с вебом; матрица
-устройств (SE — маленькая сцена/fitCell, ProMotion, iPad);
-Instruments (fps, аудио-поток, память, энергия); поведение при
-беззвучном переключателе (решение: играть — это музыкальное
-приложение, категория .playback это позволяет); VoiceOver-метки на
-контролы (в вебе есть aria-label); снапшот-тесты экранов
-(swift-snapshot-testing), XCUITest-смоук с тест-симами как в вебе
-(запуск с фикстурными проектами без сети — аналог `__setRows`).
-**Приёмка:** чек-лист закрыт, известные расхождения — только §6.
+All the logic is in the core under test, and it rests on one distinction that
+`AuthError` carries: **rejected** — the server looked and refused, the session
+is over; **unreachable** — nobody looked, and nothing new is known about the
+token on disk. A phone is on the network and then it is not, and treating the
+second case as a sign-out is exactly what throws somebody onto the sign-in
+screen in the underground, having lost nothing but their composure. A refusal
+kills the session and writes down the reason in the server's own words
+("Already Used" is two refreshes racing, "session expired" is policy, and the
+words have to differ). An unreachable server keeps the session and retries
+after 5 s, after 20 s, and when the network returns (`NWPathMonitor`). There
+is a test named after the tunnel.
 
-### M10 — Релиз: материалы готовы, магазин за вами
-Написано и лежит в репозитории: `PrivacyInfo.xcprivacy` (два типа данных,
-оба linked, оба App Functionality, трекинга нет), `NOTICE.md`,
-энтайтлмент Sign in with Apple, и `Support/AppStore.md` — название,
-подзаголовок, описание, ключевые слова, анкета конфиденциальности слово
-в слово под манифест, заметки ревьюерам и чек-лист перед загрузкой.
+A returning user never sees this screen: the Keychain is read before anything
+touches the network, the library opens off the cache, and the token is
+confirmed behind it. `AfterFirstUnlock` — so a phone in a pocket can refresh
+its token; the note about why a session ended lives in UserDefaults, because
+Keychain items survive a reinstall and "Session ended 4 min ago" on a fresh
+install would be a small lie.
 
-Заметки ревьюерам стоило написать внимательно: скриншот сетки точек не
-передаёт, что приложение звучит, поэтому там сказано, как услышать его
-за минуту, где лежит удаление аккаунта и что вход через Apple —
-нативный и первый.
+SHA-256 is written out here rather than taken from CryptoKit: the whole
+package is tested on Linux, and CryptoKit is not there. What is hashed is a
+value that goes out in the clear a moment later, so there is nothing for a
+timing attack to leak. It is checked against the FIPS vectors, against the
+block boundaries (55/56/64 bytes — where padding breaks), and against the
+worked example in RFC 7636 §4.4, which checks the digest, the encoding and
+the challenge together.
 
-Тестовый аккаунт в файле намеренно пустой: это единственное, чему не
-место в репозитории.
+Account deletion is Guideline 5.1.1(v): the function in
+`supabase/functions/delete-account`, and the only thing standing between a
+caller and somebody else's account is that it deletes the owner of exactly
+the JWT it was called with. There is no request body, on purpose.
 
-За вами: App Store Connect, скриншоты (с устройства — глоу рисуется
-Metal, и симулятор компонует иначе), TestFlight, возрастной рейтинг,
-`MARKETING_VERSION` в 1.0.
+**What is missing:** an offline cache of the projects. A read-only cache
+would show rows that can be opened and edited while every save failed
+silently: the person believes they saved. Real offline means a queue of
+deferred writes and conflict resolution — a feature of its own, not a line in
+a milestone. An honestly empty library offline is exactly what the web does.
 
-### M10 — исходный объём (2–3 дн + ревью Apple)
-Bundle id, подписи, App Store Connect, PrivacyInfo.xcprivacy, анкета
-конфиденциальности, скриншоты, TestFlight, заметки для ревьюеров
-(тестовый аккаунт!), возрастной рейтинг, метаданные. Буфер на 1 круг
-замечаний ревью.
+The file store for it was written and then removed in M9: nothing used it,
+and dead code in a release is a liability with no upside. It is in the
+history if it is ever wanted.
 
-### Сводка
+**Acceptance (needs a device and dashboard access):** all three ways in;
+turn the network off and the app does not sign you out; an expired refresh
+shows the reason on the landing screen; CRUD against production Supabase and
+"a web project opens on an iPhone" (carried over from M7).
 
-| Веха | Оценка, дн |
+### M8 — the original scope (4–5 days)
+The sign-in screen 1:1 (the logo as a vector, the Google button, the email
+form, the statuses and errors); Google through ASWebAuthenticationSession;
+the magic link through the bridge page; **Sign in with Apple**; the Keychain
+session cache and the instant entry; the notes about why a session ended plus
+the offline retries; a local sign-out; account deletion (the Edge Function
+and the UI).
+**Acceptance:** all three ways in, on a device; turn the network off and the
+app does not sign you out; an expired refresh shows the reason on the landing
+screen.
+
+### M9 — Parity QA ✅ done, bar the device matrix
+The A/B against the web's sound was done on `Tuning.web`, and it found three
+things — all three in our favour, because all three were errors in the
+reference or in the port rather than quibbles.
+
+**The reverb (risk R3, closed).** Tone reads `decay` not as seconds but as
+`ln(decay+1)/ln(200)` — a time constant for `setTargetAtTime`. So the web's
+`decay: 7` is a 2.71 s room, and the rest of the seven-second buffer is
+silence at −139 dB. `Tuning.web` held the seven and the network read it as
+seven seconds of RT60: the reference everything else is measured against was
+ringing two and a half times longer than the original. Plus 4500 Hz of
+damping where the web has none at all. With the reference corrected the
+network holds (the seconds asked for, to within 20 %) and no convolution is
+needed.
+
+**The limiter (risk R8, closed).** It turned out to be not "close" but
+wrong. A textbook soft knee is centred on the threshold; Blink's runs upward
+from it: at −8 dB with a 30 dB knee that is a divergence across everything
+from −23 to +22 dBFS. The master was compressing what the web passes. The
+static curve is now a port of `DynamicsCompressor::Saturate`, checked against
+an independent second transcription of the same Chromium source. You can hear
+it: the mix is louder and has its transients. The envelope stayed ours — the
+difference is in how fast the same reduction arrives, not in how much of it
+there is.
+
+**Clipping.** Now that the limiter no longer squashes, a dense pattern
+touches the ceiling. Measured: one sample in four thousand on the web's
+numbers, one in six hundred on the tuned ones, and Web Audio clamps at ±1 in
+exactly the same way. The test guards the proportion rather than the fact.
+
+Also in M9: the flash delayed by the route's latency (the picture was running
+ahead of the sound — on Bluetooth it would have been a fifth of a second);
+VoiceOver for the field and the tempo (the field was an unnamed rectangle,
+and the tempo could be read but not changed); the `NOTICE.md` that did not
+exist; `PrivacyInfo.xcprivacy`; the unused file store removed; the sliders
+taken out of the release; and the `SQIAUITests` smoke test that walks the
+screens — the one thing the core cannot check.
+
+**What is missing, and why.** Snapshot tests of the screens are deliberately
+not done: their reference images are recorded on a machine with a simulator,
+and this session lives in a Linux container. Adding them from here means
+putting a failing step into CI until you record the references locally and
+commit them. If they are wanted, say so and the target and the instructions
+will follow, but the first run is yours. The device matrix (SE, ProMotion,
+iPad) and Instruments are yours by definition.
+
+### M9 — the original scope (4–6 days)
+A pass through the §2 checklist, screen by screen, beside the web; the device
+matrix (SE — the small stage and fitCell, ProMotion, iPad); Instruments (fps,
+the audio thread, memory, energy); the behaviour under the silent switch (the
+decision: play — this is a music app and the .playback category allows it);
+VoiceOver labels on the controls (the web has aria-labels); snapshot tests of
+the screens (swift-snapshot-testing); an XCUITest smoke test with test seams
+like the web's (launching with fixture projects and no network — the
+equivalent of `__setRows`).
+**Acceptance:** the checklist closed, and the only known divergences are §6's.
+
+### M10 — Release: the materials are ready, the store is yours
+Written and in the repository: `PrivacyInfo.xcprivacy` (two data types, both
+linked, both App Functionality, no tracking), `NOTICE.md`, the Sign in with
+Apple entitlement, and `Support/AppStore.md` — the name, the subtitle, the
+description, the keywords, the privacy questionnaire word for word against
+the manifest, the notes for the reviewers and the checklist before uploading.
+
+The review notes were worth writing carefully: a screenshot of a grid of dots
+does not convey that the app makes sound, so they say how to hear it in a
+minute, where account deletion lives, and that the Apple sign-in is native
+and first.
+
+The test account in the file is deliberately empty: it is the one thing that
+does not belong in a repository.
+
+Yours: App Store Connect, the screenshots (from a device — the glow is drawn
+in Metal and the simulator composites differently), TestFlight, the age
+rating, and `MARKETING_VERSION` at 1.0.
+
+### M10 — the original scope (2–3 days + Apple's review)
+The bundle id, signing, App Store Connect, PrivacyInfo.xcprivacy, the privacy
+questionnaire, the screenshots, TestFlight, the notes for the reviewers (the
+test account!), the age rating, the metadata. A buffer for one round of
+review notes.
+
+### Summary
+
+| Milestone | Estimate, days |
 | --- | --- |
-| M0 бутстрап | 1–2 |
-| M1 ядро + фикстуры | 2–3 |
-| M2 аудио-фундамент | 3–4 |
-| M3 сцена Metal | 5–7 |
-| M4 секвенсор + жесты | 4–6 |
-| M5 голоса и эффекты | 10–14 |
-| M6 микшер | 2–3 |
-| M7 библиотека | 3–4 |
-| M8 лендинг + auth | 4–5 |
-| M9 паритет-QA | 4–6 |
-| M10 релиз | 2–3 |
-| **Итого** | **40–57** |
+| M0 bootstrap | 1–2 |
+| M1 core + fixtures | 2–3 |
+| M2 audio foundation | 3–4 |
+| M3 the scene on Metal | 5–7 |
+| M4 sequencer + gestures | 4–6 |
+| M5 voices and effects | 10–14 |
+| M6 mixer | 2–3 |
+| M7 library | 3–4 |
+| M8 landing + auth | 4–5 |
+| M9 parity QA | 4–6 |
+| M10 release | 2–3 |
+| **Total** | **40–57** |
 
-Вертикальный срез (M0–M4 с одним голосом) — примерно 2.5–3 недели от
-старта; дальше основной риск и основное время — звук (M5).
+The vertical slice (M0–M4 with one voice) is roughly 2.5–3 weeks from the
+start; after that the main risk and the main time is the sound (M5).
 
 ---
 
-## 8. Риски
+## 8. Risks
 
-| # | Риск | Митигация |
+| # | Risk | Mitigation |
 | --- | --- | --- |
-| R1 | Тембры не совпадут с Tone.js на слух | Порт формул, а не «похожих узлов»; оффлайн-A/B с первого пресета (методика §4); неделя запаса внутри M5 |
-| R2 | «Fat»/FM/AM-осцилляторы и огибающие Tone имеют свои особенности (кривые, детюн-стек) | Снять точное поведение из исходников Tone (MIT), повторить в DSP-голосах; фикстуры на формы огибающих |
-| R3 | Ревербератор: в вебе — свёртка с генерируемым IR | **Закрыт в M9.** A/B сделан по времени затухания: у веба RT60 = 2.71 с (не 7 — Tone читает `decay` как постоянную времени), сеть даёт заказанные секунды с точностью до 20 %, и на числах веба они сходятся. Свёртка не понадобилась. Тесты — `ReverbParityTests` |
-| R8 | Лимитер — не порт алгоритма Web Audio, а стандартный soft-knee с теми же числами; он на мастере, значит красит всё | **Закрыт в M9 — и оказался не «близко», а неверно.** Учебное колено центрировано на пороге, у Blink — идёт от порога вверх: на −8 дБ с коленом 30 дБ это расхождение на всём от −23 до +22 dBFS, то есть на всей музыке. Статическая кривая теперь порт `DynamicsCompressor::Saturate` (включая бисекцию по `k` и makeup `(1/Saturate(1,k))^0.6`), сверена с независимой транскрипцией — `LimiterParityTests`. Огибающая (adaptive release) осталась своя: разница в том, как быстро приходит то же самое уменьшение, а не в том, сколько его |
-| R4 | Magic-link: письмо открывает браузер, а не приложение | Мост-страница `/ios` (§6); фолбэк — вход по ссылке остаётся рабочим в вебе |
-| R5 | Ревью Apple: 4.8 / 5.1.1(v) | Закрыто планово в M8; тестовый аккаунт и видео-превью для ревьюеров |
-| R6 | Производительность сцены на старых устройствах | Metal с самого начала; параметр detail уже есть в дизайне; профилирование в M3, не в конце |
-| R7 | Расхождение формата снапшота сломает кроссплатформенность | Байтовые тесты в M1 + интеграционный тест M7 «веб-проект открывается на iOS» |
+| R1 | The timbres will not match Tone.js by ear | Port the formulas rather than "similar nodes"; an offline A/B from the first preset (the method in §4); a week of slack inside M5 |
+| R2 | Tone's "fat"/FM/AM oscillators and envelopes have their own quirks (curves, the detune stack) | Take the exact behaviour from Tone's sources (MIT) and reproduce it in the DSP voices; fixtures over the envelope shapes |
+| R3 | The reverb: the web convolves with a generated IR | **Closed in M9.** The A/B was done on decay time: the web's RT60 is 2.71 s (not 7 — Tone reads `decay` as a time constant), the network gives the seconds asked for to within 20 %, and on the web's numbers they agree. No convolution was needed. The tests are `ReverbParityTests` |
+| R8 | The limiter is not a port of the Web Audio algorithm but a standard soft knee with the same numbers; it is on the master, so it colours everything | **Closed in M9 — and it turned out to be not "close" but wrong.** A textbook knee is centred on the threshold, Blink's runs upward from it: at −8 dB with a 30 dB knee that is a divergence across everything from −23 to +22 dBFS, which is to say across all the music. The static curve is now a port of `DynamicsCompressor::Saturate` (including the bisection over `k` and the makeup `(1/Saturate(1,k))^0.6`), checked against an independent transcription — `LimiterParityTests`. The envelope (the adaptive release) stayed ours: the difference is how fast the same reduction arrives, not how much of it there is |
+| R4 | The magic link: the email opens a browser, not the app | The `/ios` bridge page (§6); the fallback is that link sign-in keeps working on the web |
+| R5 | Apple's review: 4.8 / 5.1.1(v) | Closed as planned in M8; a test account and a video preview for the reviewers |
+| R6 | The scene's performance on older devices | Metal from the start; the detail parameter is already in the design; profiling in M3 rather than at the end |
+| R7 | A divergence in the snapshot format breaks cross-platform | Byte-level tests in M1 plus the M7 integration test, "a web project opens on iOS" |
 
 ---
 
-## 9. Что нужно от владельца проекта
+## 9. What is needed from the project's owner
 
-1. **Apple Developer Program** (99 $/год), Mac с Xcode — эта
-   Linux-сессия пишет код и тесты, но собрать/подписать iOS-бинарь
-   может только macOS (вариант: Xcode Cloud / GitHub Actions
-   macos-runner уже в M0).
-2. Доступ к **Supabase dashboard**: в Authentication → URL Configuration
-   добавить в allowlist `sqia://auth` и
-   `https://sqia.serezhaok.com/ios`; включить провайдер Apple (Service
-   ID + ключ); задеплоить функцию — `supabase functions deploy
-   delete-account`, код лежит в `supabase/functions/delete-account`.
-   Без этого кнопки входа доходят до сервера, и он им отказывает.
-3. Скопировать `web/ios/` в `funny-steps/public/ios/` — это
-   страница-мост для ссылки из письма (почтовый клиент не пойдёт по
-   `sqia://`). Ничего не читает и не хранит, только пересылает.
-4. В Apple Developer: включить Sign in with Apple на App ID
-   `com.serezhaok.sqia` (энтайтлмент уже в `Support/SQIA.entitlements`).
-5. Подтвердить дефолты §1 (фон/хаптика/портрет) — иначе принимаются
-   как есть.
+1. **The Apple Developer Program** ($99/year) and a Mac with Xcode — this
+   Linux session writes the code and the tests, but only macOS can build and
+   sign an iOS binary (the alternative, Xcode Cloud / a GitHub Actions
+   macos-runner, is already in M0).
+2. Access to the **Supabase dashboard**: under Authentication → URL
+   Configuration, add `sqia://auth` and `https://sqia.serezhaok.com/ios` to
+   the allowlist; switch the Apple provider on (a Service ID and a key);
+   deploy the function — `supabase functions deploy delete-account`, the code
+   is in `supabase/functions/delete-account`. Without this the sign-in
+   buttons reach the server and are refused.
+3. Copy `web/ios/` into `funny-steps/public/ios/` — the bridge page for the
+   link in the email (a mail client will not follow `sqia://`). It reads
+   nothing and stores nothing, it only forwards.
+4. In Apple Developer: enable Sign in with Apple on the App ID
+   `com.serezhaok.sqia` (the entitlement is already in
+   `Support/SQIA.entitlements`).
+5. Confirm the defaults in §1 (background/haptics/portrait) — otherwise they
+   are taken as they stand.
 
 ---
 
-## Приложение А. Известные расхождения README ↔ код веба
+## Appendix A. Known divergences between the README and the web's code
 
-Зафиксировано, чтобы порт шёл по коду:
+Written down so the port follows the code:
 
-- README: «10 × 16 grid» — в коде `COLS = 12`.
-- README описывает выбор сэмпла как основной («KALIMBOX» в футере из
-  index.html — тоже старый лейбл) — в коде голоса-синты первичны,
-  список сэмплов запаркован, дефолты REVERIE/MACHINE.
-- README не упоминает микшер/треки/проекты — они есть и портируются.
+- The README says "10 × 16 grid" — the code says `COLS = 12`.
+- The README describes choosing a sample as the main path ("KALIMBOX" in the
+  footer of index.html is an old label too) — in the code the synth voices
+  are primary, the sample list is parked, and the defaults are
+  REVERIE/MACHINE.
+- The README does not mention the mixer, the tracks or the projects — they
+  exist, and they are being ported.

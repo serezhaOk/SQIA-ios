@@ -163,7 +163,15 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private var uniforms = HeatUniforms()
     private var stops = rampStops(.current)
     private var tuning = FieldTuning.current
-    private var elapsed: Double = 0
+    /// The clock every renderer shares.
+    ///
+    /// Two fields are on screen whenever a track zooms out of the mixer or
+    /// back into it, and both are drawing the same track. Each keeping its
+    /// own time would put the ripples of one out of phase with the other,
+    /// and each advancing the track's animator would age its blooms twice
+    /// as fast for as long as both were up.
+    private static let epoch = CACurrentMediaTime()
+    @MainActor private static var advancedAt: [ObjectIdentifier: CFTimeInterval] = [:]
     private var instanceBuffers: [MTLBuffer] = []
     private let inFlight = DispatchSemaphore(value: maxFramesInFlight)
     private var bufferIndex = 0
@@ -300,10 +308,9 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         let dt = lastFrameTime > 0 ? min(0.05, now - lastFrameTime) : 1.0 / 60.0
         lastFrameTime = now
 
-        build(dt: dt)
+        build(dt: dt, now: now)
 
-        elapsed += dt
-        uniforms.time = Float(elapsed)
+        uniforms.time = Float(now - Self.epoch)
 
         inFlight.wait()
         bufferIndex = (bufferIndex + 1) % Self.maxFramesInFlight
@@ -420,7 +427,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
 
     // ------------------------------------------------------------ building --
 
-    private func build(dt: Double) {
+    private func build(dt: Double, now: CFTimeInterval) {
         instances.removeAll(keepingCapacity: true)
         sources.removeAll(keepingCapacity: true)
 
@@ -438,7 +445,10 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             }
 
             for layer in frame.layers {
-                layer.animator.advance(by: dt)
+                let key = ObjectIdentifier(layer.animator)
+                let step = Self.advancedAt[key].map { min(0.05, max(0, now - $0)) } ?? dt
+                Self.advancedAt[key] = now
+                layer.animator.advance(by: step)
                 let layout = Field.layout(
                     x: Double(layer.rect.minX),
                     y: Double(layer.rect.minY),

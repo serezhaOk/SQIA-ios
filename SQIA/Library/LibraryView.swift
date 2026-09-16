@@ -26,6 +26,7 @@ struct LibraryView: View {
     @State private var renameText = ""
     @State private var deleting: Project?
     @State private var closingAccount = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         GeometryReader { geometry in
@@ -44,6 +45,13 @@ struct LibraryView: View {
             .overlay(alignment: .bottom) { createPill(width) }
             .overlay(alignment: .bottom) { failureBanner }
         }
+        // A delete takes the card off before the store has answered, and a
+        // refusal puts it back; without this both are a hole that opens in
+        // the grid between one frame and the next. Keyed on the rows rather
+        // than wrapped round each call, so a reload that reorders them
+        // moves the cards too.
+        .animation(Motion.settle(reduced: reduceMotion), value: model.rows)
+        .animation(Motion.fade, value: model.failure)
         .background(Palette.background.ignoresSafeArea())
         .task { await model.load() }
         // Both of these take the row through `presenting:` rather than
@@ -166,6 +174,7 @@ struct LibraryView: View {
         }
         .buttonStyle(CardPress())
         .overlay(alignment: .topTrailing) { cardMenu(project) }
+        .transition(Motion.arrive)
         .accessibilityLabel(project.name)
     }
 
@@ -211,6 +220,7 @@ struct LibraryView: View {
                     in: RoundedRectangle(cornerRadius: LibraryLayout.cornerRadius))
         }
         .buttonStyle(CardPress())
+        .transition(Motion.arrive)
     }
 
     // ---------------------------------------------------------- the create --
@@ -234,6 +244,7 @@ struct LibraryView: View {
             .buttonStyle(PillPress())
             .padding(.horizontal, LibraryLayout.createInset)
             .padding(.bottom, LibraryLayout.createBottom)
+            .transition(.opacity)
         }
     }
 
@@ -246,6 +257,7 @@ struct LibraryView: View {
                 .padding(12)
                 .padding(.bottom, LibraryLayout.createBottom + LibraryLayout.createHeight)
                 .allowsHitTesting(false)
+                .transition(.opacity)
         }
     }
 
