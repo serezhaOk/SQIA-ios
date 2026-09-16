@@ -91,21 +91,23 @@ struct SequencerPalette: Equatable {
     /// something to be lying on, or they read as holes cut in it.
     var mixerGround: UInt32
 
-    /// What the field itself clears to — the "preview" behind the dots. It is
-    /// held apart from `ground` so that opening the mixer can lift the bars
-    /// off the sequencer's black onto `mixerGround` without dragging the
-    /// field up with them: the picture stays the black it plays on while the
-    /// screen around it changes shade. Set to the base ground and left there
-    /// by `opened`, which only touches `ground`.
+    /// What the field itself clears to — the "preview" behind the dots.
     var fieldGround: UInt32
 
     var background: Color { Color(hex: ground) }
 
-    /// The same palette, standing on the mixer's ground. The field keeps its
-    /// own ground; only the bars move.
+    /// The same palette, standing on the mixer's ground — all of it, field
+    /// included.
+    ///
+    /// It used to lift only the bars. That was when the mixer and a track
+    /// were one screen and one field flew between them, and the picture had
+    /// to stay the black it plays on while it travelled. The mixer is its
+    /// own screen with its own field now, and a black band between two grey
+    /// ones read as a hole rather than as somewhere the panels lie.
     var opened: SequencerPalette {
         var copy = self
         copy.ground = mixerGround
+        copy.fieldGround = mixerGround
         return copy
     }
 

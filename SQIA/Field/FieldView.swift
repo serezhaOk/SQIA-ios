@@ -83,12 +83,10 @@ struct FieldView: UIViewRepresentable {
         }
         view.device = MTLCreateSystemDefaultDevice()
         view.colorPixelFormat = .bgra8Unorm
-        // The ground the heat sits on. With the mixer shut this is the same
-        // black the bars carry, so the screen reads as one surface; opening
-        // the mixer lifts the bars onto a lighter shade but the field keeps
-        // its own ground — the picture stays the black it plays on. Which
-        // ground that is comes down the environment and can be turned over
-        // while the field is running.
+        // The ground the heat sits on: the same shade the bars carry, black
+        // on a track and grey in the mixer, so either screen reads as one
+        // surface. Which ground that is comes down the environment and can
+        // be turned over while the field is running.
         ground(context.environment.sequencerPalette, on: view)
         view.isOpaque = true
         view.framebufferOnly = true
