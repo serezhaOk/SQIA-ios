@@ -10,6 +10,16 @@
 		A1B2C3D4E5F60718293A4B12 /* SQIACore in Frameworks */ = {isa = PBXBuildFile; productRef = A1B2C3D4E5F60718293A4B11 /* SQIACore */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A1B2C3D4E5F60718293A4C09 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1B2C3D4E5F60718293A4B01 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1B2C3D4E5F60718293A4B04;
+			remoteInfo = SQIA;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		A1B2C3D4E5F60718293A4B05 /* SQIA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SQIA.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60718293A4B14 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -19,19 +29,11 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A1B2C3D4E5F60718293A4B06 /* SQIA */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
 			path = SQIA;
 			sourceTree = "<group>";
 		};
 		A1B2C3D4E5F60718293A4C03 /* SQIAUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			explicitFileTypes = {
-			};
-			explicitFolders = (
-			);
 			path = SQIAUITests;
 			sourceTree = "<group>";
 		};
@@ -173,24 +175,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		A1B2C3D4E5F60718293A4C08 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A1B2C3D4E5F60718293A4B04 /* SQIA */;
-			targetProxy = A1B2C3D4E5F60718293A4C09 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
-/* Begin PBXContainerItemProxy section */
-		A1B2C3D4E5F60718293A4C09 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = A1B2C3D4E5F60718293A4B01 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = A1B2C3D4E5F60718293A4B04;
-			remoteInfo = SQIA;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXSourcesBuildPhase section */
 		A1B2C3D4E5F60718293A4B07 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -207,6 +191,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1B2C3D4E5F60718293A4C08 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1B2C3D4E5F60718293A4B04 /* SQIA */;
+			targetProxy = A1B2C3D4E5F60718293A4C09 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A1B2C3D4E5F60718293A4B0C /* Debug */ = {
