@@ -1,11 +1,15 @@
-// The three ways in, as the phone does them.
+// The two ways in, as the phone does them.
 //
 // Google goes out to `ASWebAuthenticationSession`, which is a browser the
 // app cannot read — that is the point, and it is why Google allows it where
 // it refuses an embedded web view. Apple never leaves the app at all: it
 // hands back an identity token and the nonce it was signed against, and
-// GoTrue trades those for a session. Email goes through a bridge page,
-// because no mail client will follow a custom scheme.
+// GoTrue trades those for a session.
+//
+// A mailed link was the third way and is not offered any more. Nothing on
+// the way back in has been removed with it: `handle(_:)` still reads the
+// session a bridge page hands over, so a link somebody was already sent
+// still opens.
 //
 // The decisions all live in `SessionKeeper`, in Core, under test. What is
 // here is the parts that need UIKit: a presentation anchor, a nonce that
@@ -41,6 +45,9 @@ final class AuthController: NSObject {
     /// Apple signs the token against the hash of this.
     @ObservationIgnored private var appleNonce: String?
     @ObservationIgnored private var webSession: ASWebAuthenticationSession?
+    /// Held for as long as the sheet is up: `ASAuthorizationController` does
+    /// not retain itself, and a released one never calls back.
+    @ObservationIgnored private var appleRequest: ASAuthorizationController?
     @ObservationIgnored private var monitor: NWPathMonitor?
 
     init(client: AuthClient = AuthClient(), storage: any SessionStorage = KeychainSessionStorage())
@@ -52,12 +59,19 @@ final class AuthController: NSObject {
 
     // ------------------------------------------------------------ starting --
 
+    /// What storage says, with no network in it. Enough to know which screen
+    /// opens, not enough to trust — `start()` is what confirms it.
+    func peek() async -> Bool {
+        isSignedIn = await keeper.peek()
+        return isSignedIn
+    }
+
     /// Read what is stored, then confirm it. The first half is instant and
     /// decides which screen opens; the second may take a round trip.
     func start() async {
         // Straight from storage, no network: the library opens now rather
         // than after a token has been confirmed.
-        isSignedIn = await keeper.peek()
+        _ = await peek()
         let ok = await keeper.restore()
         isSignedIn = ok
         session = await keeper.current
@@ -122,16 +136,31 @@ final class AuthController: NSObject {
 
     // --------------------------------------------------------------- Apple --
 
+    /// The design's Apple button is a 114-point pill with nothing in it but
+    /// the mark, which `SignInWithAppleButton` cannot be made into — so the
+    /// request is driven here and the button is an ordinary one.
+    func signInWithApple() {
+        let request = ASAuthorizationAppleIDProvider().createRequest()
+        prepareAppleRequest(request)
+        let controller = ASAuthorizationController(authorizationRequests: [request])
+        controller.delegate = self
+        controller.presentationContextProvider = self
+        appleRequest = controller
+        isWorking = true
+        message = nil
+        controller.performRequests()
+    }
+
     /// Apple wants the nonce hashed in the request and the raw one in the
     /// exchange, so it can check the token it signed is the one we asked for.
-    func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
+    private func prepareAppleRequest(_ request: ASAuthorizationAppleIDRequest) {
         let nonce = PKCE(using: random).verifier
         appleNonce = nonce
         request.requestedScopes = [.email]
         request.nonce = SHA256.digest(nonce).hex
     }
 
-    func handleApple(_ result: Result<ASAuthorization, Error>) {
+    private func handleApple(_ result: Result<ASAuthorization, Error>) {
         switch result {
         case .success(let authorization):
             guard
@@ -156,31 +185,6 @@ final class AuthController: NSObject {
             }
         case .failure(let error):
             report(error)
-        }
-    }
-
-    // --------------------------------------------------------------- email --
-
-    func sendMagicLink(to email: String) {
-        let address = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard EmailAddress.looksValid(address) else {
-            message = Message(text: "Enter a valid email address.", isError: true)
-            return
-        }
-        isWorking = true
-        message = Message(text: "Sending a sign-in link…", isError: false)
-        let pkce = PKCE(using: random)
-        Task {
-            // Stored before the mail is asked for: the link may well arrive
-            // at a process that did not exist when it was sent.
-            await keeper.expect(pkce)
-            do {
-                try await client.sendMagicLink(to: address, pkce: pkce)
-                message = Message(text: "Check \(address) for your sign-in link.", isError: false)
-            } catch {
-                report(error)
-            }
-            isWorking = false
         }
     }
 
@@ -265,6 +269,37 @@ final class AuthController: NSObject {
 
 extension AuthController: ASWebAuthenticationPresentationContextProviding {
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        Self.anchor
+    }
+}
+
+extension AuthController: ASAuthorizationControllerDelegate,
+    ASAuthorizationControllerPresentationContextProviding
+{
+    func authorizationController(
+        controller: ASAuthorizationController,
+        didCompleteWithAuthorization authorization: ASAuthorization
+    ) {
+        appleRequest = nil
+        handleApple(.success(authorization))
+    }
+
+    func authorizationController(
+        controller: ASAuthorizationController, didCompleteWithError error: Error
+    ) {
+        appleRequest = nil
+        isWorking = false
+        // Backing out of Apple's sheet lands here, and `report` knows not to
+        // announce it.
+        handleApple(.failure(error))
+    }
+
+    func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        Self.anchor
+    }
+
+    /// The window both sheets are put up over.
+    private static var anchor: ASPresentationAnchor {
         let window = UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .flatMap(\.windows)
