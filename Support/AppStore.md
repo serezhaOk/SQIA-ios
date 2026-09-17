@@ -49,6 +49,12 @@ budget isn't spent twice.
 The first line carries the whole pitch on its own: not a musician's tool,
 a tool for anyone. The rest builds toward the other half of the
 positioning, that this is built to be lost in rather than gotten right.
+The closing line is not part of that pitch — it is the Terms of Use and
+Privacy Policy links App Review looks for, especially on an app that asks
+for a sign-in. Apple only requires this in-description for apps selling
+auto-renewable subscriptions (Guideline 3.1.2), which SQIA doesn't do, but
+reviewers ask for it often enough on account-based free apps that it is
+worth having rather than defending its absence.
 
 > SQIA is a sequencer you draw on, and you don't need to know music to use
 > it.
@@ -60,28 +66,34 @@ positioning, that this is built to be lost in rather than gotten right.
 > instead of a row of switches.
 >
 > Nothing here needs the right notes. The grid is already in a key, so
-> whatever you touch belongs together in it. Every hit is rolled fresh, so
-> a pattern is never quite the same twice, and the patch itself wanders
-> once a bar. Shake it and hear something you didn't plan. This is built
-> to lose an afternoon in, not to get right on the first try.
+> whatever you touch belongs together in it. Once a pattern is running, it
+> keeps evolving on its own: every hit rolls fresh, the patch wanders once
+> a bar, and a replay never sounds quite the same twice.
 >
-> Five voices, synthesised rather than sampled. REVERIE is a pad that
-> drifts. KALIMBA is a plucked string. RHODES is an electric piano with a
-> slow stereo tremolo. ACID is a bassline whose filter opens on every
-> note. MACHINE is a drum kit laid out across the grid, one instrument
-> per column. Switch voices mid-pattern and the same drawing sounds new.
+> FIVE VOICES
+> • REVERIE: a drifting pad
+> • KALIMBA: a plucked string
+> • RHODES: an electric piano with a slow stereo tremolo
+> • ACID: a bassline whose filter opens on every note
+> • MACHINE: a drum kit laid out across the grid, one instrument per column
+>
+> Switch voices mid-pattern and the same drawing turns into a different
+> soundscape.
 >
 > Two tracks play at once. Mute one to redraw it while the other keeps
 > going, then bring it back and hear how the two sit together.
 >
-> Projects save themselves as you draw, and they're the same projects as
-> on sqia.serezhaok.com, so a pattern started on a phone opens in a
-> browser and back again. Come back to it an hour later, or next week;
-> it's exactly how you left it.
+> Every soundscape you shape is saved as you play, and it's the same
+> project as on sqia.serezhaok.com: start it on your phone, keep going in
+> a browser, or come back to it in an hour, or next week, exactly how you
+> left it.
 >
-> No accounts to configure beyond signing in, no subscriptions, no adverts,
-> no analytics, and nothing collected but the email you sign in with and the
-> patterns you make.
+> SQIA doesn't need accounts beyond signing in, subscriptions, adverts, or
+> analytics. It collects only the email you sign in with and the patterns
+> you make.
+>
+> Terms of Use (EULA): sqia.serezhaok.com/terms.html
+> Privacy Policy: sqia.serezhaok.com/privacy.html
 
 ## Keywords (100 characters)
 
@@ -108,6 +120,12 @@ just won't be shown until the first update. Worth having ready:
 - Support URL: `https://sqia.serezhaok.com`
 - Marketing URL: `https://sqia.serezhaok.com`
 - Privacy Policy URL: `https://sqia.serezhaok.com/privacy.html`
+- License Agreement (EULA): `https://sqia.serezhaok.com/terms.html` — this is
+  SQIA's own terms, the same ones the sign-in screen links to, not Apple's
+  Standard EULA. Set it under App Store Connect → App Information → License
+  Agreement, in the **Custom License Agreement** field, or App Review sees
+  no license on file and the description's link below points nowhere
+  Apple recognises.
 
 ## Category
 
