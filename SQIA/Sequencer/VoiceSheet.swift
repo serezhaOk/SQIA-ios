@@ -20,6 +20,8 @@ struct VoiceSheet: View {
     private var selected: Int { model.state.activeTrack.voiceIndex }
 
     @Environment(\.dismiss) private var dismiss
+    /// Who is signed in, for the workbench at the bottom of the list.
+    @Environment(\.accountEmail) private var accountEmail
 
     var body: some View {
         NavigationStack {
@@ -36,7 +38,12 @@ struct VoiceSheet: View {
                 // with it — its numbers ship as `Tuning.tuned` — so the slot
                 // goes to the field, which is still being decided and can
                 // only be decided by looking at it.
-                #if DEBUG
+                //
+                // It used to be `#if DEBUG`, which put it out of reach on the
+                // one build the field has to be judged on: a real phone, over
+                // TestFlight. `Workbench` opens it there for the account that
+                // does the tuning and for nobody else.
+                if Workbench.isOpen(to: accountEmail) {
                     Section {
                         NavigationLink {
                             FieldTuningView(model: model)
@@ -49,7 +56,7 @@ struct VoiceSheet: View {
                                 ? "The field is where it was last written down."
                                 : "Moved from the look this build ships with.")
                     }
-                #endif
+                }
             }
             .navigationTitle("Sound")
             .navigationBarTitleDisplayMode(.inline)

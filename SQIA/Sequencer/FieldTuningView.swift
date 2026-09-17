@@ -6,10 +6,13 @@
 // behind the sheet is redrawing as the slider moves, which is the only way
 // any of it can be decided.
 //
-// Debug builds only. What it produces is written back into
-// `FieldTuning.current`; the panel itself does not ship.
-
-#if DEBUG
+// What it produces is written back into `FieldTuning.current` by hand — the
+// panel itself writes nothing but JSON onto a clipboard.
+//
+// It used to be `#if DEBUG` and is not any more: the field has to be judged
+// on a real phone over TestFlight, and a debug build never gets there. So it
+// ships in the binary, behind one row in the sound sheet that `Workbench`
+// only shows to the account the tuning is done from.
 
 import SQIACore
 import SwiftUI
@@ -297,5 +300,3 @@ extension Color {
             .sRGB, red: rgb.red / 255, green: rgb.green / 255, blue: rgb.blue / 255)
     }
 }
-
-#endif

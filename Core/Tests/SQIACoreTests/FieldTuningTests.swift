@@ -93,9 +93,25 @@ struct FieldTuningTests {
         #expect(FieldTuning.current.rest.count == FieldTuning.restStops)
         #expect(FieldTuning.current.heat.count == FieldTuning.heatStops)
         // In order, or the interpolation between them runs backwards.
-        #expect(zip(FieldTuning.current.rest, FieldTuning.current.rest.dropFirst())
-            .allSatisfy { $0.at < $1.at })
         #expect(zip(FieldTuning.current.heat, FieldTuning.current.heat.dropFirst())
             .allSatisfy { $0.at < $1.at })
+    }
+
+    /// The rest ramp is the exception, and the exception is the look.
+    ///
+    /// Its pink stop is written behind the stop before it, so the shader's
+    /// `smoothstep` across that one step runs from a high edge to a low one
+    /// and the colour fills the whole bottom of the ramp instead of sitting
+    /// in a band. Nothing enforces it and nothing should — this is here so
+    /// that whoever next pastes a set out of the panel and finds the ramps
+    /// disagreeing knows which of them was on purpose.
+    @Test("The rest ramp's pink stop sits behind its neighbour on purpose")
+    func theRestRampKeepsItsBackwardStop() {
+        let rest = FieldTuning.current.rest
+        let backward = zip(rest, rest.dropFirst()).filter { $0.at > $1.at }
+        #expect(backward.count == 1)
+        #expect(backward.first?.1.color == RGB(255, 112, 226))
+        // Every other pair still climbs.
+        #expect(rest.filter { $0.color != RGB(255, 112, 226) }.map(\.at) == [0, 0.30, 0.55, 1])
     }
 }

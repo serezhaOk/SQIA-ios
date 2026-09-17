@@ -41,6 +41,8 @@ struct RootView: View {
                 }
             }
         }
+        // Only the workbench reads this; see Workbench.swift.
+        .environment(\.accountEmail, app.accountEmail)
         .background(Palette.background.ignoresSafeArea())
         .animation(.easeInOut(duration: 0.18), value: app.screen)
         .task { await app.start() }

@@ -377,9 +377,13 @@ struct FieldTests {
         #expect(abs(even.top.size - even.middle.size) < even.middle.size * 0.02)
 
         // And with it turned all the way up, the top of the field is where
-        // the small ones are — the look this is turned off to avoid.
+        // the small ones are — the look this is turned off to avoid. How much
+        // smaller is `rimScale` against `centreLift`, and those two move every
+        // time the panel is emptied into `.current` — a fixed fraction here is
+        // a hostage to whatever the field last looked like. So this asks only
+        // for a difference that reads on screen.
         let tapered = struck(1)
-        #expect(tapered.top.size < tapered.middle.size * 0.8)
+        #expect(tapered.top.size < tapered.middle.size * 0.9)
     }
 
     @Test("A struck source carries its own heat")
