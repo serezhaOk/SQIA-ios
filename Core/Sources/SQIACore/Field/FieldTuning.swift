@@ -136,14 +136,15 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// tenths, and they reach a great deal further while hot: a struck note
     /// is a small mark with a wide bloom rather than a large mark.
     ///
-    /// The rest ramp is no longer white the whole way, and the stop that
-    /// isn't sits out of order on purpose. It carries the pink the heat ramp
-    /// ends on, it is placed at 0.497, and it is written *after* the stop at
-    /// 0.55. The shader walks the stops in the order they are given, so that
-    /// one step runs its `smoothstep` backwards and the pink fills everything
-    /// below 0.497 rather than forming a band around it. That is the look
-    /// this was tuned to, so it is written down the way it was tuned;
-    /// `FieldTuningTests` knows, and checks the heat ramp's order instead.
+    /// The rest ramp is no longer white the whole way. Its fourth stop
+    /// carries the pink the heat ramp ends on, so a drawn note is not purely
+    /// a white grid any more — it takes a little of the colour a sounding
+    /// note ends on, up near the top of its own ramp.
+    ///
+    /// That stop was briefly at 0.497, behind the stop at 0.55 and therefore
+    /// against the order the shader walks the stops in. It sits at 0.68 now,
+    /// in order, which is a band of pink rather than a wash under everything
+    /// below it — and nothing in the ramp runs backwards.
     ///
     /// One number here is not the one that came out of the panel. `edge` was
     /// 0.42 when it meant the top of a fade running up from nothing; it now
@@ -169,8 +170,7 @@ public struct FieldTuning: Sendable, Equatable, Codable {
             ColorStop(at: 0, RGB(255, 255, 255)),
             ColorStop(at: 0.30, RGB(255, 255, 255)),
             ColorStop(at: 0.55, RGB(255, 255, 255)),
-            // Behind the one above it, and meant to be. See the note above.
-            ColorStop(at: 0.49732521176338196, RGB(255, 112, 226)),
+            ColorStop(at: 0.68, RGB(255, 112, 226)),
             ColorStop(at: 1, RGB(255, 255, 255)),
         ],
         heat: [

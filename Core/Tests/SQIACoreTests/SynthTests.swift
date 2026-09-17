@@ -65,7 +65,7 @@ struct PresetTests {
     func order() {
         #expect(
             SynthPreset.allCases.map(\.label) == [
-                "REVERIE", "KALIMBA", "RHODES", "ACID", "MACHINE",
+                "REVERIE", "PLUCKED", "RHODES", "ACID", "MACHINE",
             ])
     }
 
@@ -86,7 +86,7 @@ struct PresetTests {
     }
 }
 
-@Suite("KALIMBA")
+@Suite("PLUCKED")
 struct KalimbaTests {
     private func roll(seed: UInt32, velocity: Double = 0.9) -> [ScheduledVoice] {
         SynthVoicing.notes(
