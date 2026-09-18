@@ -297,9 +297,11 @@ already runs off the frame, rather than squashing the type.
 ## Version and build
 
 `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` live in the project's build
-settings, currently `0.1.0` and `1`. Set the marketing version to `1.0` for
-the first submission; the build number has to increase on every upload, so
-bump it for each TestFlight build rather than reusing one.
+settings, currently `1.0` and `1`, which is what the first submission wants.
+The build number has to increase on every upload, so bump it for each
+TestFlight build rather than reusing one. Both numbers also ride along in
+every feedback mail the account menu opens, so a build nobody bumped is a
+report you cannot place.
 
 ## Before uploading
 
@@ -312,6 +314,7 @@ bump it for each TestFlight build rather than reusing one.
       `#if DEBUG` and must not appear.
 - [ ] All three sign-in routes tried on a real device, and account deletion
       tried once on an account you do not mind losing.
-- [ ] `feedback@sqia.serezhaok.com` exists and forwards somewhere you read.
-      The library's account menu has a Leave feedback item pointing at it,
-      and a mailbox that bounces is a channel that looks open and is not.
+- [ ] The account menu's Leave feedback item opens mail with the subject and
+      the build filled in. It goes to `serezhaok@gmail.com`, which is in the
+      shipped binary and so is public: expect it to be scraped eventually,
+      and move it to an address on the domain if that starts to matter.

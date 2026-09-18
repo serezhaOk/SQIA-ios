@@ -117,11 +117,27 @@ struct LibraryView: View {
 
     /// Feedback opens the mail app rather than a form behind someone else's
     /// script, because the privacy manifest says nothing here talks to anyone
-    /// but this project's own Supabase, and that has to stay true. The
-    /// subject is carried in the URL, so `%3A%20` is the colon and the space
-    /// in "SQIA: Feedback".
-    private static let feedback = URL(
-        string: "mailto:feedback@sqia.serezhaok.com?subject=SQIA%3A%20Feedback")!
+    /// but this project's own Supabase, and that has to stay true.
+    ///
+    /// The build goes in the body because it is the first thing any report
+    /// needs and the last thing anyone knows offhand. Two blank lines above
+    /// it, so what the person came to write goes at the top and the numbers
+    /// stay underneath. `URLComponents` is what does the percent-encoding:
+    /// written out as a string literal, the spaces and newlines would have
+    /// to be escaped by hand and a missed one returns nil.
+    private static var feedback: URL {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        var mail = URLComponents()
+        mail.scheme = "mailto"
+        mail.path = "serezhaok@gmail.com"
+        mail.queryItems = [
+            URLQueryItem(name: "subject", value: "SQIA: Feedback"),
+            URLQueryItem(name: "body", value: "\n\nSQIA \(version) (\(build))"),
+        ]
+        return mail.url!
+    }
 
     private var title: some View {
         Text("Projects")
