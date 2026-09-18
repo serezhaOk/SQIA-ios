@@ -98,6 +98,7 @@ struct LibraryView: View {
 
     private var accountMenu: some View {
         Menu {
+            Link("Leave feedback", destination: Self.feedback)
             Section(accountEmail ?? "Signed in") {
                 Button("Log out") { Task { await onSignOut() } }
                 // Guideline 5.1.1(v): an account made in the app has to be
@@ -112,6 +113,30 @@ struct LibraryView: View {
                 .background(Palette.card, in: Capsule())
         }
         .accessibilityLabel("Account")
+    }
+
+    /// Feedback opens the mail app rather than a form behind someone else's
+    /// script, because the privacy manifest says nothing here talks to anyone
+    /// but this project's own Supabase, and that has to stay true.
+    ///
+    /// The build goes in the body because it is the first thing any report
+    /// needs and the last thing anyone knows offhand. Two blank lines above
+    /// it, so what the person came to write goes at the top and the numbers
+    /// stay underneath. `URLComponents` is what does the percent-encoding:
+    /// written out as a string literal, the spaces and newlines would have
+    /// to be escaped by hand and a missed one returns nil.
+    private static var feedback: URL {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        var mail = URLComponents()
+        mail.scheme = "mailto"
+        mail.path = "serezhaok@gmail.com"
+        mail.queryItems = [
+            URLQueryItem(name: "subject", value: "SQIA: Feedback"),
+            URLQueryItem(name: "body", value: "\n\nSQIA \(version) (\(build))"),
+        ]
+        return mail.url!
     }
 
     private var title: some View {
