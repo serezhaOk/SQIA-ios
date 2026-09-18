@@ -312,3 +312,6 @@ bump it for each TestFlight build rather than reusing one.
       `#if DEBUG` and must not appear.
 - [ ] All three sign-in routes tried on a real device, and account deletion
       tried once on an account you do not mind losing.
+- [ ] `feedback@sqia.serezhaok.com` exists and forwards somewhere you read.
+      The library's account menu has a Leave feedback item pointing at it,
+      and a mailbox that bounces is a channel that looks open and is not.

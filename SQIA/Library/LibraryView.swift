@@ -98,6 +98,7 @@ struct LibraryView: View {
 
     private var accountMenu: some View {
         Menu {
+            Link("Leave feedback", destination: Self.feedback)
             Section(accountEmail ?? "Signed in") {
                 Button("Log out") { Task { await onSignOut() } }
                 // Guideline 5.1.1(v): an account made in the app has to be
@@ -113,6 +114,14 @@ struct LibraryView: View {
         }
         .accessibilityLabel("Account")
     }
+
+    /// Feedback opens the mail app rather than a form behind someone else's
+    /// script, because the privacy manifest says nothing here talks to anyone
+    /// but this project's own Supabase, and that has to stay true. The
+    /// subject is carried in the URL, so `%3A%20` is the colon and the space
+    /// in "SQIA: Feedback".
+    private static let feedback = URL(
+        string: "mailto:feedback@sqia.serezhaok.com?subject=SQIA%3A%20Feedback")!
 
     private var title: some View {
         Text("Projects")
