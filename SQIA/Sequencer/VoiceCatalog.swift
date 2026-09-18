@@ -4,7 +4,8 @@
 // database the web reads — so it has to mean the same thing on both sides.
 // The web's list is the five synths in order, followed by a sample set it
 // keeps commented out, which makes the index a preset's own position:
-// REVERIE 0, KALIMBA 1, RHODES 2, ACID 3, MACHINE 4.
+// REVERIE 0, PLUCKED 1, RHODES 2, ACID 3, MACHINE 4 — the web calls the
+// second one KALIMBA, and the index is what the two agree on, not the word.
 //
 // The picker offers the presets that have voices behind them. The index
 // never moves as more of them are written.

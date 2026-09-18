@@ -72,7 +72,7 @@ worth having rather than defending its absence.
 >
 > FIVE VOICES
 > • REVERIE: a drifting pad
-> • KALIMBA: a plucked string
+> • PLUCKED: a muted wooden pluck
 > • RHODES: an electric piano with a slow stereo tremolo
 > • ACID: a bassline whose filter opens on every note
 > • MACHINE: a drum kit laid out across the grid, one instrument per column
@@ -111,8 +111,8 @@ App Store Connect requires this field on every version, including 1.0; it
 just won't be shown until the first update. Worth having ready:
 
 > First release. Draw a pattern on the grid and it plays — two tracks, five
-> synthesised voices (REVERIE, KALIMBA, RHODES, ACID, MACHINE), a key and a
-> tempo. Sign in with Apple, Google or email; projects sync with
+> synthesised voices (REVERIE, PLUCKED, RHODES, ACID, MACHINE), a key and a
+> tempo. Sign in with Apple or Google; projects sync with
 > sqia.serezhaok.com.
 
 ## Support and marketing URLs
@@ -161,11 +161,15 @@ has nothing to ask about.
 
 ## Notes for the review team
 
-> **Signing in.** The app needs an account, because a project is stored
-> against one and the same project opens in the browser at
-> sqia.serezhaok.com. There are three ways in and all three work on a device:
-> Sign in with Apple, Google, or an email link. A test account is attached
-> below.
+> **Signing in.** The app needs an account because the work is the account.
+> Touching the grid does not open a document that is later saved — it
+> creates a project, on the first touch, and every edit after that is
+> written to it as it happens. There is no save button and nothing to
+> export: the project is a row in the database, it opens in a browser at
+> sqia.serezhaok.com against the same account, and without one there would
+> be nowhere to put the first note and nothing to come back to. There are
+> two ways in and both work on a device: Sign in with Apple, or Google. A
+> test account is attached below.
 >
 > **Sign in with Apple** is offered first and is no less prominent than
 > Google, as Guideline 4.8 requires. It is a native sign-in — no browser is
@@ -179,13 +183,16 @@ has nothing to ask about.
 > the audio session uses the `.playback` category. Please try it with the
 > volume up: the screen alone does not show what the app is.
 >
+> The sign-in screen is the exception. Its film loop is muted and the quiet
+> bed under it is `.ambient`, so it goes silent with the ring switch and
+> never interrupts whatever the phone was already playing.
+>
 > **How to see it working in about a minute.** Sign in → tap
 > "+ Create first project" → drag a finger across the grid of dots. It starts
 > playing at once. The two dots at the top of the screen open the mixer,
 > where "Back to projects" returns to the library.
 
-**Test account:** _fill in the email and password (or the address the sign-in
-link should go to) before submitting._
+**Test account:** _fill in the account to sign in with before submitting._
 
 **Attachment:** a short screen recording helps here, because a still
 screenshot of a grid of dots does not convey that it makes sound.
@@ -194,9 +201,9 @@ screenshot of a grid of dots does not convey that it makes sound.
 
 ## Screenshots
 
-Required sizes: 6.9" (1320 × 2868) and 6.5" (1242 × 2688). iPad is optional
-unless the app is listed as iPad-compatible — it is, so 13" (2064 × 2752)
-is needed too.
+Required sizes: 6.9" (1320 × 2868) and 6.5" (1242 × 2688). No iPad set is
+needed: `TARGETED_DEVICE_FAMILY` is `1`, so 1.0 is listed as an iPhone app
+and installs on an iPad in compatibility mode.
 
 The app is portrait-only, so every shot is portrait. Take the in-app shots
 on a device rather than the simulator: the field's glow is drawn in Metal
@@ -255,7 +262,7 @@ work lives.
 **01 · hook** — no subtext, no glow; the neutral opener.
 > TOUCH SEQUENCER
 > **Touch the grid / and it starts / playing**
-> *Slot: the sign-in screen — the mark, the wordmark, the tagline.*
+> *Slot: the sign-in screen — the film, the wordmark, the two buttons.*
 
 **02 · the field**
 > NO WRONG NOTES
@@ -308,11 +315,11 @@ report you cannot place.
 - [ ] Supabase: `sqia://auth` and the bridge page are in the redirect
       allowlist, the Apple provider is on with `com.serezhaok.sqia` in its
       authorized client IDs, and `delete-account` is deployed.
-- [ ] `sqia.serezhaok.com/ios` is live, or the email sign-in link goes
-      nowhere.
-- [ ] Archive is a Release build — the tuning panel and the load meter are
-      `#if DEBUG` and must not appear.
-- [ ] All three sign-in routes tried on a real device, and account deletion
+- [ ] Archive is a Release build. The load meter is `#if DEBUG` and must not
+      appear. The field's tuning panel does ship now, by design: `Workbench`
+      opens it to the signed-in owner and to nobody else, so check it is
+      absent under the account you attach for review.
+- [ ] Both sign-in routes tried on a real device, and account deletion
       tried once on an account you do not mind losing.
 - [ ] The account menu's Leave feedback item opens mail with the subject and
       the build filled in. It goes to `serezhaok@gmail.com`, which is in the

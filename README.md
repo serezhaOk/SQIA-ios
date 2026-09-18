@@ -26,7 +26,7 @@ each part maps onto iOS.
 | M9 — parity QA | done bar the device matrix |
 | M10 — release | materials written; the store side is manual |
 
-What runs today: all of it. Sign in with Apple, Google or an email link;
+What runs today: all of it. Sign in with Apple or Google;
 the library lists what you have made and creates new ones with a name out of
 the microbial world; opening a project starts it playing. Draw on the field
 with a finger and it sounds; drag the tempo, choose the key, erase, scatter a
@@ -38,7 +38,7 @@ flies into its panel while the other fades up beside it, each with a name and
 a mute button.
 
 The sounds are synthesised, not sampled — the sample set is gone. All five
-presets are written: REVERIE the drifting pad, KALIMBA a plucked string,
+presets are written: REVERIE the drifting pad, PLUCKED a plucked string,
 RHODES an FM electric piano with a stereo tremolo, ACID a 303 whose filter
 an envelope sweeps on every note, and MACHINE the drums whose instrument is
 chosen by the column's register. Every rolled value comes off the random

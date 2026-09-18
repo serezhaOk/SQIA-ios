@@ -28,14 +28,12 @@ extension View {
 }
 
 enum TextStyle {
-    // Landing
-    static let wordmarkSize: CGFloat = 41.6  // 2.6rem
-    static let taglineSize: CGFloat = 16
-    static let buttonSize: CGFloat = 16
-    static let termsSize: CGFloat = 12.5  // 0.78rem
+    // Sign-in. These come from the Figma frame rather than the web app's
+    // CSS, so they are whole points and carry no letter-spacing.
+    static let taglineSize: CGFloat = 17
+    static let promptSize: CGFloat = 17
+    static let termsSize: CGFloat = 13
     static let messageSize: CGFloat = 13.6  // 0.85rem
-    static let aboutSize: CGFloat = 14.4  // 0.9rem
-    static let copyrightSize: CGFloat = 11.5  // 0.72rem
 
     // Projects
     static let titleSize: CGFloat = 44

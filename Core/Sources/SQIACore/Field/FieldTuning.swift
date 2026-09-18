@@ -122,19 +122,29 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// Where the field stands now.
     ///
     /// Arrived at on a screen and copied back out of the panel, which is the
-    /// only way any of it could have been decided. Two things in here are
+    /// only way any of it could have been decided. Four things in here are
     /// worth knowing rather than reading off:
     ///
-    /// A drawn note is white at every stop — the rest ramp carries no colour
-    /// at all, so the field at rest is a white grid and every colour on
-    /// screen belongs to a note that is sounding.
-    ///
-    /// The taper is severe: four tenths at the rim against nearly one and a
-    /// half in the middle, so the grid falls away hard toward the edges.
+    /// The taper has turned over. The rim is a shade above one and the middle
+    /// adds a little over half on top of it, so the grid no longer falls away
+    /// toward the edges the way it did — it stands nearly even, and what the
+    /// middle has is weight rather than the rim having emptiness.
     ///
     /// The blobs do not take that taper — `sourceTaper` is zero, so they are
     /// all drawn at the size the middle would give them and notes close up
-    /// the same wherever they are on the field.
+    /// the same wherever they are on the field. They are small now, three
+    /// tenths, and they reach a great deal further while hot: a struck note
+    /// is a small mark with a wide bloom rather than a large mark.
+    ///
+    /// The rest ramp is no longer white the whole way. Its fourth stop
+    /// carries the pink the heat ramp ends on, so a drawn note is not purely
+    /// a white grid any more — it takes a little of the colour a sounding
+    /// note ends on, up near the top of its own ramp.
+    ///
+    /// That stop was briefly at 0.497, behind the stop at 0.55 and therefore
+    /// against the order the shader walks the stops in. It sits at 0.68 now,
+    /// in order, which is a band of pink rather than a wash under everything
+    /// below it — and nothing in the ramp runs backwards.
     ///
     /// One number here is not the one that came out of the panel. `edge` was
     /// 0.42 when it meant the top of a fade running up from nothing; it now
@@ -142,17 +152,17 @@ public struct FieldTuning: Sendable, Equatable, Codable {
     /// so the shapes keep the size they read at, with an edge instead of a
     /// gradient.
     public static let current = FieldTuning(
-        rimScale: 0.3987588852643967,
-        centreLift: 0.9969604969024658,
+        rimScale: 1.0597227931022644,
+        centreLift: 0.5690627217292785,
         sourceTaper: 0,
-        dotScale: 0.7437907487154006,
-        blobScale: 0.44638523608446123,
-        returnSeconds: 1.1477322801947596,
-        spread: 0.6575244069099426,
-        rippleFrequency: 7.269474625587463,
+        dotScale: 0.8381068050861358,
+        blobScale: 0.3,
+        returnSeconds: 1.1537100106477738,
+        spread: 0.9145621061325073,
+        rippleFrequency: 4.092169761657715,
         rippleSpeed: 6.574946403503418,
-        rippleAmplitude: 0.3058905959129333,
-        gain: 0.6700709116458893,
+        rippleAmplitude: 0.22103413939476013,
+        gain: 0.574427540898323,
         edge: 0.21,
         softness: 0.9,
         hint: RGB(255, 255, 255),
@@ -160,12 +170,12 @@ public struct FieldTuning: Sendable, Equatable, Codable {
             ColorStop(at: 0, RGB(255, 255, 255)),
             ColorStop(at: 0.30, RGB(255, 255, 255)),
             ColorStop(at: 0.55, RGB(255, 255, 255)),
-            ColorStop(at: 0.78, RGB(255, 255, 255)),
+            ColorStop(at: 0.68, RGB(255, 112, 226)),
             ColorStop(at: 1, RGB(255, 255, 255)),
         ],
         heat: [
             ColorStop(at: 0, RGB(92, 133, 219)),
-            ColorStop(at: 0.22, RGB(51, 97, 212)),
+            ColorStop(at: 0.05890577286481857, RGB(51, 97, 212)),
             ColorStop(at: 0.42, RGB(107, 173, 230)),
             ColorStop(at: 0.55, RGB(219, 237, 242)),
             ColorStop(at: 0.6914083361625671, RGB(252, 237, 158)),
