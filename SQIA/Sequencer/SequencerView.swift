@@ -36,6 +36,7 @@ struct SequencerView: View {
     @State private var announcement: String?
     @State private var announcing: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage(Preferences.backgroundPlayback) private var playsInBackground = false
     @Namespace private var zoom
 
     init(model: SequencerModel, onLeave: @escaping @MainActor () async -> Void) {
@@ -88,10 +89,11 @@ struct SequencerView: View {
         }
         .onChange(of: scenePhase) { _, phase in
             // Backgrounded, the app goes quiet — the same as a browser tab
-            // losing its audio context.
+            // losing its audio context — unless the profile's switch says
+            // to play on.
             if phase == .active {
                 model.start()
-            } else {
+            } else if !playsInBackground {
                 model.stop()
             }
         }

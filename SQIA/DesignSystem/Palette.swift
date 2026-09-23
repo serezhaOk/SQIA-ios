@@ -45,6 +45,8 @@ enum Palette {
     static let glassButton = Color(hex: 0xF9F7FA).opacity(0.1)
     static let playButton = Color(hex: 0xF9F7FA).opacity(0.2)
     static let playButtonEdge = Color.white.opacity(0.08)
+    /// The profile's switch, on. The design uses the system's own green.
+    static let toggleOn = Color(uiColor: .systemGreen)
 
     // Sheet
     static let sheet = Color(hex: 0x1A1A1A)

@@ -30,11 +30,28 @@ struct LibraryView: View {
     @State private var renaming: Project?
     @State private var renameText = ""
     @State private var deleting: Project?
-    @State private var closingAccount = false
+    @State private var showingProfile = false
+    @AppStorage(Preferences.backgroundPlayback) private var playsInBackground = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
+    /// The profile is pushed rather than presented: it is a place of its own
+    /// with a way back, not a question the library is waiting on. The stack's
+    /// own bar stays hidden, because both screens draw their own headers.
     var body: some View {
+        NavigationStack {
+            library
+                .toolbar(.hidden, for: .navigationBar)
+                .navigationDestination(isPresented: $showingProfile) {
+                    ProfileView(
+                        accountEmail: accountEmail,
+                        onSignOut: onSignOut,
+                        onDeleteAccount: onDeleteAccount)
+                }
+        }
+    }
+
+    private var library: some View {
         GeometryReader { geometry in
             let width = LibraryLayout.cardWidth(screen: Double(geometry.size.width))
             let bottomInset = Double(geometry.safeAreaInsets.bottom)
@@ -79,10 +96,11 @@ struct LibraryView: View {
         .background(LibraryBackdrop(isEmpty: model.isEmpty))
         .task { await model.load() }
         // A loop plays while somebody is here listening to it. Leaving the
-        // app ends it, as it does in the sequencer, and deleting the card
-        // that is playing takes its sound with it.
+        // app ends it, as it does in the sequencer, unless the profile says
+        // to play on; deleting the card that is playing takes its sound with
+        // it either way.
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active { onStopPreview() }
+            if phase != .active && !playsInBackground { onStopPreview() }
         }
         .onChange(of: model.rows) { _, rows in
             if let previewing, !rows.contains(where: { $0.id == previewing }) {
@@ -113,16 +131,6 @@ struct LibraryView: View {
         } message: { _ in
             Text("This cannot be undone.")
         }
-        .confirmationDialog(
-            "Delete your account?", isPresented: $closingAccount, titleVisibility: .visible
-        ) {
-            Button("Delete account", role: .destructive) {
-                Task { await onDeleteAccount() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Every project goes with it. This cannot be undone.")
-        }
     }
 
     // -------------------------------------------------------------- header --
@@ -140,44 +148,15 @@ struct LibraryView: View {
     }
 
     private var accountMenu: some View {
-        Menu {
-            Link("Leave feedback", destination: Self.feedback)
-            Section(accountEmail ?? "Signed in") {
-                Button("Log out") { Task { await onSignOut() } }
-                // Guideline 5.1.1(v): an account made in the app has to be
-                // closable from the app.
-                Button("Delete account", role: .destructive) { closingAccount = true }
-            }
+        Button {
+            showingProfile = true
         } label: {
             Image(.userIcon)
                 .frame(width: LibraryLayout.headHeight, height: LibraryLayout.headHeight)
                 .background(Palette.glassButton, in: Circle())
         }
-        .accessibilityLabel("Account")
-    }
-
-    /// Feedback opens the mail app rather than a form behind someone else's
-    /// script, because the privacy manifest says nothing here talks to anyone
-    /// but this project's own Supabase, and that has to stay true.
-    ///
-    /// The build goes in the body because it is the first thing any report
-    /// needs and the last thing anyone knows offhand. Two blank lines above
-    /// it, so what the person came to write goes at the top and the numbers
-    /// stay underneath. `URLComponents` is what does the percent-encoding:
-    /// written out as a string literal, the spaces and newlines would have
-    /// to be escaped by hand and a missed one returns nil.
-    private static var feedback: URL {
-        let info = Bundle.main.infoDictionary
-        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
-        let build = info?["CFBundleVersion"] as? String ?? "?"
-        var mail = URLComponents()
-        mail.scheme = "mailto"
-        mail.path = "serezhaok@gmail.com"
-        mail.queryItems = [
-            URLQueryItem(name: "subject", value: "SQIA: Feedback"),
-            URLQueryItem(name: "body", value: "\n\nSQIA \(version) (\(build))"),
-        ]
-        return mail.url!
+        .buttonStyle(PillPress())
+        .accessibilityLabel("Profile")
     }
 
     // --------------------------------------------------------------- cards --
@@ -399,100 +378,6 @@ struct LibraryView: View {
 
     private var deletingBinding: Binding<Bool> {
         Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
-    }
-}
-
-/// Behind the library: the login's forest, out of focus. Laid out on the
-/// mockup's 375-wide frame and scaled with the screen, so a bigger phone
-/// sees the same picture rather than more of it.
-///
-/// With projects it is a darker grade of the still at full strength; with
-/// none it is the login's own still at 0.3 with a dark pool at the bottom,
-/// so the one card on the screen is the brightest thing on it. Both are
-/// blurred once and flattened, and the scroll moves over them without
-/// asking for either again.
-private struct LibraryBackdrop: View {
-    var isEmpty: Bool
-
-    var body: some View {
-        GeometryReader { geometry in
-            let scale = geometry.size.width / 375
-            ZStack(alignment: .top) {
-                Color.black
-                Image(.libraryBackdrop)
-                    .resizable()
-                    .frame(width: 792 * scale, height: 1051 * scale)
-                    .blur(radius: 48.25 * scale)
-                    .offset(y: -99 * scale)
-                    .opacity(isEmpty ? 0 : 1)
-                ZStack(alignment: .topLeading) {
-                    Image(.loginStill)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: 642 * scale, height: 853 * scale)
-                        .clipped()
-                    RoundedRectangle(cornerRadius: 60 * scale)
-                        .fill(Color(hex: 0x0B110C))
-                        .frame(width: 436 * scale, height: 199 * scale)
-                        .blur(radius: 45.5 * scale)
-                        .offset(x: 103 * scale, y: 654 * scale)
-                }
-                .frame(width: 642 * scale, height: 853 * scale)
-                .blur(radius: 35.45 * scale)
-                .opacity(isEmpty ? 0.3 : 0)
-                .offset(y: -21 * scale)
-            }
-            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-            .clipped()
-            .drawingGroup()
-        }
-        .ignoresSafeArea()
-        .animation(Motion.fade, value: isEmpty)
-        .accessibilityHidden(true)
-    }
-}
-
-/// Blur that builds towards the bottom edge: nothing at the top of the band,
-/// all of it at the bottom. The design's is a plain blur with no tint, and
-/// every material iOS offers carries one — over this backdrop it read as a
-/// grey bar laid across the bottom of the screen. So this is the system's
-/// blur with the tint layers above it hidden, and a ramp for a mask is what
-/// makes it progressive.
-private struct ProgressiveBlur: View {
-    var body: some View {
-        UntintedBlur()
-            .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: .black.opacity(0.7), location: 0.55),
-                        .init(color: .black, location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom)
-            }
-    }
-}
-
-private struct UntintedBlur: UIViewRepresentable {
-    func makeUIView(context: Context) -> BlurOnly { BlurOnly() }
-    func updateUIView(_ view: BlurOnly, context: Context) {}
-
-    /// The first subview of an effect view is the blur of what is behind it;
-    /// the ones above it are the material's tint and the content view. Only
-    /// public views are touched, and if the arrangement ever changes the
-    /// worst case is the tint coming back, not a crash.
-    final class BlurOnly: UIVisualEffectView {
-        init() {
-            super.init(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
-            isUserInteractionEnabled = false
-        }
-
-        required init?(coder: NSCoder) { nil }
-
-        override func layoutSubviews() {
-            super.layoutSubviews()
-            for view in subviews.dropFirst() { view.isHidden = true }
-        }
     }
 }
 

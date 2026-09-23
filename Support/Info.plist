@@ -57,6 +57,13 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- Audio only, and only when the profile's Background playback switch
+	     is on: with it off the sequencer stops itself when the app leaves
+	     the screen, so there is nothing for the mode to keep alive. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<!-- There is no light mode: the app is black, always. -->
 	<key>UIUserInterfaceStyle</key>
 	<string>Dark</string>

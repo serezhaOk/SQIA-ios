@@ -43,6 +43,8 @@ enum TextStyle {
     static let cardNameLineHeight: CGFloat = 40
     static let cardDetailSize: CGFloat = 15
     static let menuItemSize: CGFloat = 15
+    /// A row on the profile's cards.
+    static let rowSize: CGFloat = 17
 
     // Sequencer — wide tracking is the look here, so it is spelled out.
     static let labelSize: CGFloat = 13.1  // 0.82rem

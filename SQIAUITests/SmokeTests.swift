@@ -65,7 +65,30 @@ final class SmokeTests: XCTestCase {
         awaitElement("My vibes", "the library never appeared")
         XCTAssertTrue(named("Wild Amoeba").exists)
         XCTAssertTrue(named("Slow Diatom").exists)
-        XCTAssertTrue(named("Account").exists, "the account menu has no label")
+        XCTAssertTrue(named("Profile").exists, "the profile button has no label")
+    }
+
+    /// The profile is pushed from the library, carries the playback switch
+    /// and the links, keeps the account behind its menu, and goes back.
+    func testTheProfileOpensAndComesBack() {
+        awaitElement("Profile", "the profile button is missing").tap()
+        awaitElement("Background playback", "the profile did not open")
+        for row in ["Leave feedback", "Rate in App Store", "Privacy policy", "Terms of use", "About"] {
+            XCTAssertTrue(named(row).exists, "the profile has no \(row) row")
+        }
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "profile"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        named("Account").tap()
+        awaitElement("Log out", "the account menu has no way out")
+        XCTAssertTrue(named("Delete account").exists)
+        // Dismiss the menu without choosing anything.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+
+        awaitElement("Back", "the profile has no way back").tap()
+        awaitElement("My vibes", "going back did not return to the library")
     }
 
     /// The play pill on a card plays the loop without leaving the library;
