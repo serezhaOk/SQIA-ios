@@ -59,17 +59,28 @@ public enum MixerLayout {
     public static let chipHeight = 30.0
     public static let chipInset = 8.0
 
+    /// With the effect knobs underneath, the panels give up their height:
+    /// the design cuts them 162 by 145 and hangs them near the top of the
+    /// stage, leaving the rest to the knobs.
+    public static let effectsPanelRatio = 145.0 / 162.0
+    public static let effectsTop = 14.0
+
     /// Where track `index` sits: one column per track, left to right.
+    ///
+    /// `ratio` and `top` default to the web's layout; the mixer with its
+    /// effects passes its own.
     public static func panel(
         _ index: Int,
         of count: Int,
         width: Double,
-        height: Double
+        height: Double,
+        ratio: Double = panelRatio,
+        top: Double? = nil
     ) -> Panel {
         let tracks = max(1, count)
         let w = (width - margin * 2 - gutter * Double(tracks - 1)) / Double(tracks)
-        let y = (height * topFraction).rounded()
-        let h = max(minimumHeight, min(w * panelRatio, height - y - buttonRoom))
+        let y = top ?? (height * topFraction).rounded()
+        let h = max(minimumHeight, min(w * ratio, height - y - buttonRoom))
         return Panel(x: margin + Double(index) * (w + gutter), y: y, width: w, height: h)
     }
 

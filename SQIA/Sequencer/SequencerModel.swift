@@ -129,6 +129,14 @@ final class SequencerModel {
     private(set) var dotField = false
     private static let dotFieldKey = "sqia.dotField"
 
+    /// The mixer's four knobs, 0…1 each.
+    ///
+    /// Kept on the phone rather than in the project for now, while the
+    /// sound of them is being settled: a project saved with a knob that
+    /// later means something else would play back wrong.
+    private(set) var effects = EffectSettings()
+    private static let effectsKey = "sqia.effects"
+
     /// The colours a track's screen wears. The mixer stands on `opened`, its
     /// own ground, so the panels have something to lie on.
     var palette: SequencerPalette {
@@ -167,6 +175,11 @@ final class SequencerModel {
             let restored = FieldTuning.decoded(from: saved)
         {
             fieldTuning = restored
+        }
+        if let saved = UserDefaults.standard.data(forKey: Self.effectsKey),
+            let restored = try? JSONDecoder().decode(EffectSettings.self, from: saved)
+        {
+            effects = restored
         }
         lightBackground = UserDefaults.standard.bool(forKey: Self.lightBackgroundKey)
         dotField = UserDefaults.standard.bool(forKey: Self.dotFieldKey)
@@ -247,12 +260,14 @@ final class SequencerModel {
                 self?.failure = nil
                 self?.publishRoom()
                 self?.publishChain(.machine)
+                self?.publishEffects()
             }
         }
         // A restored tuning, or a mixer rebuilt after a route change, both
         // start with everything at its defaults. Tell them where they are.
         publishRoom()
         publishChain(.machine)
+        publishEffects()
         sequencer.bpm = state.bpm
         sequencer.start()
         isRunning = true
@@ -338,6 +353,12 @@ final class SequencerModel {
             //
             // Read per step rather than captured, because plugging in
             // headphones changes it mid-pattern.
+            // The effects that keep time hear where this step lands. Last,
+            // because the queue is played in order and the drift above has
+            // to arrive ahead of its own frame; the grid names its frame, so
+            // arriving a moment late costs it nothing.
+            mixer.schedule(AudioEvent.grid(StepGrid(frame: frame, stepSeconds: 60 / bpm / 4)))
+
             let travel = max(0, lead) + engine.outputLatency
             DispatchQueue.main.asyncAfter(deadline: .now() + travel) {
                 Task { @MainActor in self?.land(step: step, lit: lit) }
@@ -394,7 +415,8 @@ final class SequencerModel {
     func mixerPanel(_ index: Int, in size: CGSize) -> Panel {
         MixerLayout.panel(
             index, of: state.tracks.count,
-            width: Double(size.width), height: Double(size.height))
+            width: Double(size.width), height: Double(size.height),
+            ratio: MixerLayout.effectsPanelRatio, top: MixerLayout.effectsTop)
     }
 
     // -------------------------------------------------------------- mixer --
@@ -564,6 +586,22 @@ final class SequencerModel {
 
     private func publishRoom() {
         engine.mixer.schedule(AudioEvent.room(RoomSettings(tuning)))
+    }
+
+    // ------------------------------------------------------------ effects --
+
+    func setEffect(_ effect: MasterEffect, to amount: Double) {
+        let clamped = min(max(amount, 0), 1)
+        guard effects[effect] != clamped else { return }
+        effects[effect] = clamped
+        publishEffects()
+        if let data = try? JSONEncoder().encode(effects) {
+            UserDefaults.standard.set(data, forKey: Self.effectsKey)
+        }
+    }
+
+    private func publishEffects() {
+        engine.mixer.setEffects(effects)
     }
 
     func toggleErase() {

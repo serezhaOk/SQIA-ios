@@ -139,6 +139,35 @@ final class SmokeTests: XCTestCase {
         awaitElement("My vibes", "leaving the mixer did not return to the library")
     }
 
+    /// The four effect knobs sit under the panels, turn when dragged, and
+    /// double tap back to zero — with the pattern playing through them the
+    /// whole time.
+    func testTheMixerKnobsTurn() {
+        openAProject()
+        awaitElement("Tracks", "the track dots are missing").tap()
+        for name in ["Reverb", "Delay", "Scatter", "Cloud"] {
+            awaitElement(name, "the mixer has no \(name) knob")
+        }
+
+        let knob = named("Scatter")
+        knob.doubleTap()
+        let before = knob.value as? String
+        let from = knob.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        let to = knob.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+        from.press(forDuration: 0.05, thenDragTo: to)
+        XCTAssertNotEqual(knob.value as? String, before, "dragging the knob did not turn it")
+
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "mixer-knobs"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertEqual(app.state, .runningForeground, "the app went away with a knob up")
+        knob.doubleTap()
+        XCTAssertEqual(knob.value as? String, "0", "double tap did not reset the knob")
+    }
+
     /// The octave sits at the top of the key sheet, and choosing one is
     /// heard on the key pill by VoiceOver, which is the only place it shows.
     func testTheKeySheetShiftsTheOctave() {

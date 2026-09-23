@@ -10,8 +10,8 @@
 //
 // The signal follows the web's: voices sum into their preset's own chain
 // (filter → overdrive → chorus → ping-pong delay), each chain goes dry to
-// the master and sends into one shared reverb, and the master runs at 0.9
-// into the limiter.
+// the master and sends into one shared reverb, the sum goes through the
+// mixer's four knobs, and the master runs at 0.9 into the limiter.
 //
 // Nothing in `render` allocates, locks or touches a reference count.
 
@@ -37,6 +37,8 @@ public final class AudioMixer: @unchecked Sendable {
     private var busesLeft: [Double]
     private var busesRight: [Double]
     private var reverb: Reverb
+    /// Reverb, Delay, Scatter and Cloud, over everything.
+    private var effects: MasterEffects
     private var limiter: Limiter
 
     /// Frames rendered since the mixer started — the clock events are
@@ -102,6 +104,34 @@ public final class AudioMixer: @unchecked Sendable {
 
     private var nextEvent: AudioEvent?
 
+    /// The four knobs, as the bits of four doubles.
+    ///
+    /// Not an event: the queue has one writer, the transport, and a knob is
+    /// turned on the main thread — sixty times a second under a finger. So
+    /// the knobs are left here for the render thread to look at once a
+    /// block, and only the newest position matters anyway.
+    private let publishedEffects: UnsafeMutablePointer<SQIAAtomicUInt64>
+    private var appliedEffects = EffectSettings()
+
+    /// Where the mixer's knobs are. Safe from any thread.
+    public func setEffects(_ settings: EffectSettings) {
+        for effect in MasterEffect.allCases {
+            SQIAAtomicStoreRelease(
+                publishedEffects + effect.rawValue, settings[effect].bitPattern)
+        }
+    }
+
+    private func pickUpEffects() {
+        var settings = EffectSettings()
+        for effect in MasterEffect.allCases {
+            settings[effect] = Double(
+                bitPattern: SQIAAtomicLoadAcquire(publishedEffects + effect.rawValue))
+        }
+        guard settings != appliedEffects else { return }
+        appliedEffects = settings
+        effects.apply(settings)
+    }
+
     /// One past the highest voice slot that might be sounding. Scanning all
     /// forty every sample costs more than everything they play.
     private var activeHigh = 0
@@ -129,6 +159,7 @@ public final class AudioMixer: @unchecked Sendable {
         busesLeft = Array(repeating: 0, count: SynthPreset.allCases.count)
         busesRight = Array(repeating: 0, count: SynthPreset.allCases.count)
         reverb = Reverb(sampleRate: sampleRate)
+        effects = MasterEffects(sampleRate: sampleRate)
         limiter = Limiter(sampleRate: sampleRate)
         events = AudioEventQueue(capacity: queueCapacity)
         publishedFrame = .allocate(capacity: 1)
@@ -137,12 +168,17 @@ public final class AudioMixer: @unchecked Sendable {
         SQIAAtomicInit(publishedLoad, 0)
         publishedFaults = .allocate(capacity: 1)
         SQIAAtomicInit(publishedFaults, 0)
+        publishedEffects = .allocate(capacity: MasterEffect.allCases.count)
+        for effect in MasterEffect.allCases {
+            SQIAAtomicInit(publishedEffects + effect.rawValue, 0)
+        }
     }
 
     deinit {
         publishedFrame.deallocate()
         publishedLoad.deallocate()
         publishedFaults.deallocate()
+        publishedEffects.deallocate()
     }
 
     private func publishFrame() {
@@ -182,6 +218,7 @@ public final class AudioMixer: @unchecked Sendable {
         right: UnsafeMutablePointer<Float>
     ) {
         let started = DispatchTime.now().uptimeNanoseconds
+        pickUpEffects()
 
         for i in 0..<frameCount {
             let now = frame + Int64(i)
@@ -242,8 +279,9 @@ public final class AudioMixer: @unchecked Sendable {
                 dryRight += room.right
             }
 
+            let mixed = effects.process(left: dryLeft, right: dryRight, frame: now)
             let out = limiter.process(
-                left: dryLeft * Self.masterGain, right: dryRight * Self.masterGain)
+                left: mixed.left * Self.masterGain, right: mixed.right * Self.masterGain)
 
             // One test covers both channels for NaN and for either infinity:
             // adding them keeps a NaN, and an infinity either survives or
@@ -295,6 +333,7 @@ public final class AudioMixer: @unchecked Sendable {
         for v in voices.indices { voices[v].stop() }
         for c in chains.indices { chains[c].clear() }
         reverb.clear()
+        effects.clear()
         limiter.clear()
         activeHigh = 0
         reverbRinging = 0
@@ -321,6 +360,7 @@ public final class AudioMixer: @unchecked Sendable {
             for v in voices.indices { voices[v].stop() }
             for c in chains.indices { chains[c].clear() }
             reverb.clear()
+            effects.clear()
             limiter.clear()
             activeHigh = 0
             reverbRinging = 0
@@ -338,6 +378,9 @@ public final class AudioMixer: @unchecked Sendable {
             if event.chain.delayWet >= 0 {
                 chains[index].setDelayWet(event.chain.delayWet)
             }
+
+        case .grid:
+            effects.apply(event.grid)
 
         case .presetDrift:
             let index = event.drift.preset.rawValue
@@ -374,6 +417,7 @@ public final class AudioMixer: @unchecked Sendable {
         for v in voices.indices { voices[v].stop() }
         for c in chains.indices { chains[c].clear() }
         reverb.clear()
+        effects.clear()
         limiter.clear()
         activeHigh = 0
         reverbRinging = 0

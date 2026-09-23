@@ -313,7 +313,8 @@ struct SequencerView: View {
     }
 
     /// Every track in its panel, drawn by one field, with a tap target over
-    /// each panel that the track zooms out of.
+    /// each panel that the track zooms out of — and the four effect knobs
+    /// under them, a column to each panel.
     private var mixerStage: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
@@ -329,6 +330,8 @@ struct SequencerView: View {
                         tile(index, in: panel)
                     }
                 }
+
+                effectKnobs(in: geometry.size)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -358,6 +361,32 @@ struct SequencerView: View {
         }
         .frame(width: panel.width, height: panel.height)
         .position(x: panel.midX, y: panel.midY)
+    }
+
+    /// Two rows of two, in the space the panels leave. Each column lines up
+    /// with the panel above it.
+    private func effectKnobs(in size: CGSize) -> some View {
+        let first = CGRect(model.mixerPanel(0, in: size))
+        let second = CGRect(model.mixerPanel(1, in: size))
+        let top = first.maxY + 18
+        let rowHeight = max(0, (size.height - top - 8) / 2)
+        let rows: [[MasterEffect]] = [[.reverb, .delay], [.scatter, .cloud]]
+
+        return ForEach(rows.indices, id: \.self) { row in
+            ForEach(rows[row].indices, id: \.self) { column in
+                let effect = rows[row][column]
+                let slot = column == 0 ? first : second
+                EffectKnob(
+                    title: effect.name,
+                    value: model.effects[effect],
+                    onChange: { model.setEffect(effect, to: $0) }
+                )
+                .frame(width: slot.width, height: rowHeight)
+                .position(
+                    x: slot.midX,
+                    y: top + rowHeight * (CGFloat(row) + 0.5))
+            }
+        }
     }
 
     private var panelShape: RoundedRectangle {
@@ -419,7 +448,7 @@ struct SequencerView: View {
             Haptics.toggle()
             Task { await onLeave() }
         } label: {
-            ControlPill(width: 335, height: 126) {
+            ControlPill(width: 175, height: 50) {
                 Text("Back to projects")
                     .manrope(.medium, 15, tracking: 0)
                     .foregroundStyle(palette.pillLabel)

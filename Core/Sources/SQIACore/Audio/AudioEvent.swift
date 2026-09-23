@@ -16,6 +16,8 @@ public struct AudioEvent: Sendable {
         case room
         /// One preset's chain, likewise.
         case chain
+        /// Where the steps fall, for the effects that keep time.
+        case grid
     }
 
     public var kind: Kind
@@ -25,6 +27,7 @@ public struct AudioEvent: Sendable {
     public var drift: PresetDrift
     public var room: RoomSettings
     public var chain: ChainSettings
+    public var grid: StepGrid
 
     public init(
         kind: Kind,
@@ -32,7 +35,8 @@ public struct AudioEvent: Sendable {
         recipe: VoiceRecipe = VoiceRecipe(),
         drift: PresetDrift = PresetDrift(),
         room: RoomSettings = RoomSettings(),
-        chain: ChainSettings = ChainSettings()
+        chain: ChainSettings = ChainSettings(),
+        grid: StepGrid = StepGrid()
     ) {
         self.kind = kind
         self.frame = frame
@@ -40,6 +44,7 @@ public struct AudioEvent: Sendable {
         self.drift = drift
         self.room = room
         self.chain = chain
+        self.grid = grid
     }
 
     public static func note(_ recipe: VoiceRecipe, at frame: Int64) -> AudioEvent {
@@ -56,6 +61,12 @@ public struct AudioEvent: Sendable {
 
     public static func chain(_ chain: ChainSettings) -> AudioEvent {
         AudioEvent(kind: .chain, frame: 0, chain: chain)
+    }
+
+    /// Applied as soon as it is reached rather than at its frame: the grid
+    /// names its own frame, and waiting for it would be a step late.
+    public static func grid(_ grid: StepGrid) -> AudioEvent {
+        AudioEvent(kind: .grid, frame: 0, grid: grid)
     }
 }
 
