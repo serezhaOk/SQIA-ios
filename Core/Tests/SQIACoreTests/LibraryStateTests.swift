@@ -59,40 +59,22 @@ struct LibraryStateTests {
     }
 }
 
-@Suite("Library grid")
+@Suite("Library list")
 struct LibraryLayoutTests {
-    @Test("On a phone the cards stretch to fill two columns")
+    @Test("On a phone a card fills the width between the margins")
     func phoneStretches() {
-        let (columns, side) = LibraryLayout.layout(width: 375)
-        #expect(columns == 2)
-        // (375 - 20 - 20 - 7) / 2
-        #expect(abs(side - 164) < 0.001)
-
-        // Still two columns right up to the breakpoint, just wider ones.
-        let (narrowColumns, narrowSide) = LibraryLayout.layout(width: 767)
-        #expect(narrowColumns == 2)
-        #expect(narrowSide > side)
+        #expect(LibraryLayout.cardWidth(screen: 375) == 335)
+        #expect(LibraryLayout.cardWidth(screen: 430) == 390)
     }
 
-    @Test("At the breakpoint the cards stop stretching")
-    func wideIsFixedTiles() {
-        let (columns, side) = LibraryLayout.layout(width: 768)
-        #expect(side == 200)
-        // 3 * 200 + 2 * 7 = 614 fits; a fourth would need 821 of the 768.
-        #expect(columns == 3)
-
-        // And the grid never grows past its 848pt column, however wide the
-        // window gets — four tiles is the most that fits inside it.
-        let (wide, wideSide) = LibraryLayout.layout(width: 1600)
-        #expect(wide == 4)
-        #expect(wideSide == 200)
-        #expect(LibraryLayout.gridWidth((wide, wideSide)) <= LibraryLayout.maxWidth)
+    @Test("Past 460 a card stops growing")
+    func wideStopsAt460() {
+        #expect(LibraryLayout.cardWidth(screen: 500) == 460)
+        #expect(LibraryLayout.cardWidth(screen: 1024) == 460)
     }
 
     @Test("A screen too narrow to hold anything asks for nothing negative")
     func absurdlyNarrow() {
-        let (columns, side) = LibraryLayout.layout(width: 30)
-        #expect(columns == 2)
-        #expect(side >= 0)
+        #expect(LibraryLayout.cardWidth(screen: 30) == 0)
     }
 }

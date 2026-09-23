@@ -34,8 +34,18 @@ final class AppModel {
     private(set) var hasStarted = false
     let auth: AuthController
     let library: LibraryModel
-    /// Nil until a project has been opened for the first time.
+    /// Nil until a project has been opened or played for the first time.
     private(set) var sequencer: SequencerModel?
+    /// The project the library's play button started, while the library is
+    /// what is on screen. The same engine plays it that the sequencer does,
+    /// so opening it from there carries on without a seam.
+    private var previewId: String?
+    /// Which card is sounding — nil as soon as the engine is, whatever
+    /// stopped it: an interruption or a lost route stops the sound without
+    /// asking the library, and the button has to follow the sound.
+    var previewing: String? {
+        sequencer?.isRunning == true ? previewId : nil
+    }
 
     @ObservationIgnored private let store: any ProjectStore
     /// True once a session has taken us past the sign-in screen. Losing one
@@ -124,6 +134,7 @@ final class AppModel {
             if screen == .landing { screen = .library }
         } else if wasSignedIn {
             wasSignedIn = false
+            previewId = nil
             sequencer?.stop()
             screen = .landing
         }
@@ -135,11 +146,39 @@ final class AppModel {
 
     // ------------------------------------------------------------ projects --
 
+    /// A project that is already playing from the library keeps playing:
+    /// the loop is the one being listened to, and opening it should not
+    /// start it again from the top.
     func open(_ project: Project) {
         let model = engine()
-        model.open(project)
+        if previewing != project.id {
+            model.stop()
+            model.open(project)
+        }
+        previewId = nil
         screen = .sequencer
         model.start()
+    }
+
+    /// The play button on a library card: plays that project's loop where it
+    /// is, or stops it if it is the one already playing. Another card's loop
+    /// gives way, and the new one starts from its first step.
+    func togglePreview(_ project: Project) {
+        if previewing == project.id {
+            stopPreview()
+            return
+        }
+        let model = engine()
+        model.stop()
+        model.open(project)
+        model.start()
+        previewId = model.isRunning ? project.id : nil
+    }
+
+    func stopPreview() {
+        guard previewId != nil else { return }
+        previewId = nil
+        sequencer?.stop()
     }
 
     /// A new project: a blank field first, so the app is playable at once,
@@ -147,6 +186,7 @@ final class AppModel {
     /// field to draw on — the next edit will find no row and simply not
     /// save, which is the web's behaviour when it is offline.
     func createNew() {
+        stopPreview()
         let model = engine()
         model.startFresh()
         screen = .sequencer

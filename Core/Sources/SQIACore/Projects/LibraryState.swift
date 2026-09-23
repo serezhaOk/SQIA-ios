@@ -58,46 +58,32 @@ public struct LibraryState: Sendable, Equatable {
     }
 }
 
-/// The grid, from the 375pt mockup and the one breakpoint above it.
+/// The list, from the 375pt mockup.
 ///
-/// Below 768 the cards stretch: two columns, whatever is left over after the
-/// margins. At 768 and up they stop stretching and become fixed 200pt tiles
-/// laid out from the centre, which is what `repeat(auto-fill, 200px)` inside
-/// a centred 848pt column comes to.
+/// One column of tall cards, 20 in from either edge, until a card would be
+/// wider than 460 — past that it stops growing and the column is centred,
+/// so an iPad gets the same card a big phone does rather than a banner.
 public enum LibraryLayout {
-    public static let breakpoint = 768.0
     public static let margin = 20.0
-    public static let gap = 7.0
-    public static let tile = 200.0
-    public static let maxWidth = 848.0
-    public static let cornerRadius = 20.0
-    public static let cardPadding = 20.0
-    /// The empty state is one tall card, the height of a screenful.
-    public static let emptyHeight = 602.0
-    public static let emptyHeightWide = 200.0
+    public static let gap = 12.0
+    public static let cardHeight = 306.0
+    public static let maxCardWidth = 460.0
+    public static let cornerRadius = 32.0
+    public static let headHeight = 48.0
+    /// Below the safe area. The mockup's 56 is this over a 44pt status bar.
+    public static let headTop = 12.0
+    public static let listTop = 24.0
+    /// The empty card runs to this far off the bottom edge of the screen.
+    public static let emptyBottom = 20.0
+    public static let createWidth = 175.0
     public static let createHeight = 50.0
-    public static let createInset = 24.0
+    /// From the bottom edge of the screen, not of the safe area.
     public static let createBottom = 40.0
-    public static let headHeight = 40.0
-    public static let headTop = 35.0
-    public static let titleTop = 23.0
-    public static let listTop = 16.0
-    public static let profile = CGSize(width: 52, height: 39)
+    /// The blur the list goes under, measured up from the screen's edge.
+    public static let blurHeight = 110.0
 
-    public static func layout(width: Double) -> (columns: Int, side: Double) {
-        guard width >= breakpoint else {
-            return (2, max(0, (width - 2 * margin - gap) / 2))
-        }
-        let available = min(width, maxWidth)
-        var columns = 1
-        while Double(columns + 1) * tile + Double(columns) * gap <= available {
-            columns += 1
-        }
-        return (columns, tile)
-    }
-
-    /// The whole grid's width, so a wide screen can centre it.
-    public static func gridWidth(_ layout: (columns: Int, side: Double)) -> Double {
-        Double(layout.columns) * layout.side + Double(layout.columns - 1) * gap
+    /// How wide a card is on a screen this wide.
+    public static func cardWidth(screen width: Double) -> Double {
+        max(0, min(width - 2 * margin, maxCardWidth))
     }
 }

@@ -5,7 +5,8 @@
 // the reverb tail and the session policy, and all of them would still pass
 // if a view were wired to the wrong model and the library never appeared.
 //
-// So this walks the app: library → a project → the mixer → back. It asserts
+// So this walks the app: library → a loop played from its card → a project
+// → the mixer → back. It asserts
 // on accessibility labels rather than on pixels, which means it doubles as a
 // check that VoiceOver has something to read on every screen — the two
 // failures look the same from here, and both are worth failing on.
@@ -61,10 +62,32 @@ final class SmokeTests: XCTestCase {
     }
 
     func testTheLibraryOpensWithItsProjects() {
-        awaitElement("Projects", "the library never appeared")
+        awaitElement("My vibes", "the library never appeared")
         XCTAssertTrue(named("Wild Amoeba").exists)
         XCTAssertTrue(named("Slow Diatom").exists)
         XCTAssertTrue(named("Account").exists, "the account menu has no label")
+    }
+
+    /// The play pill on a card plays the loop without leaving the library;
+    /// it turns into a stop while it does, and back once it is stopped.
+    /// Opening the card that is playing goes on to the sequencer as usual.
+    func testACardPlaysItsLoopFromTheLibrary() {
+        awaitElement("Play Wild Amoeba", "the card's play button is missing or unnamed").tap()
+        awaitElement("Stop Wild Amoeba", "playing from the library did not start")
+        XCTAssertTrue(named("My vibes").exists, "playing a card left the library")
+
+        // Another card's loop takes over rather than playing on top.
+        named("Play Slow Diatom").tap()
+        awaitElement("Stop Slow Diatom", "the second card did not take over")
+        XCTAssertTrue(named("Play Wild Amoeba").exists, "the first card still says it is playing")
+
+        named("Stop Slow Diatom").tap()
+        awaitElement("Play Slow Diatom", "stopping did not stop")
+
+        named("Play Wild Amoeba").tap()
+        awaitElement("Stop Wild Amoeba", "playing again did not start")
+        named("Wild Amoeba").tap()
+        awaitElement("Note field", "opening a playing card did not reach the sequencer")
     }
 
     func testOpeningAProjectReachesTheSequencer() {
@@ -90,7 +113,7 @@ final class SmokeTests: XCTestCase {
         awaitElement("Tracks", "the track dots are missing").tap()
         awaitElement("Back to projects", "the mixer did not open, or its way out is missing")
             .tap()
-        awaitElement("Projects", "leaving the mixer did not return to the library")
+        awaitElement("My vibes", "leaving the mixer did not return to the library")
     }
 
     func testTheSoundSheetOpensAndCloses() {

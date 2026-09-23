@@ -24,7 +24,10 @@ struct RootView: View {
                     LibraryView(
                         model: app.library,
                         accountEmail: app.accountEmail,
+                        previewing: app.previewing,
                         onOpen: { app.open($0) },
+                        onPreview: { app.togglePreview($0) },
+                        onStopPreview: { app.stopPreview() },
                         onCreate: { app.createNew() },
                         onSignOut: { await app.signOut() },
                         onDeleteAccount: { await app.deleteAccount() }

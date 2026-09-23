@@ -37,6 +37,14 @@ enum Palette {
     static let menuPressed = Color(hex: 0x2C2C2C)
     static let danger = Color(hex: 0xFF6B6B)
     static let icon = Color(hex: 0xE3E3E3)
+    /// The library's cards and round buttons are glass over its backdrop
+    /// rather than grey on black, so they are white at an opacity and take
+    /// their colour from whatever is behind them.
+    static let glass = Color.white.opacity(0.13)
+    static let glassEdge = Color.white.opacity(0.16)
+    static let glassButton = Color(hex: 0xF9F7FA).opacity(0.1)
+    static let playButton = Color(hex: 0xF9F7FA).opacity(0.2)
+    static let playButtonEdge = Color.white.opacity(0.08)
 
     // Sheet
     static let sheet = Color(hex: 0x1A1A1A)

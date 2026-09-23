@@ -35,9 +35,13 @@ enum TextStyle {
     static let termsSize: CGFloat = 13
     static let messageSize: CGFloat = 13.6  // 0.85rem
 
-    // Projects
-    static let titleSize: CGFloat = 44
-    static let cardNameSize: CGFloat = 15
+    // Projects, from the Figma frame like the sign-in. The name is set
+    // 40 apart at 35, tighter than Manrope's own 48, so two lines of it
+    // read as one title rather than as a paragraph.
+    static let titleSize: CGFloat = 24
+    static let cardNameSize: CGFloat = 35
+    static let cardNameLineHeight: CGFloat = 40
+    static let cardDetailSize: CGFloat = 15
     static let menuItemSize: CGFloat = 15
 
     // Sequencer — wide tracking is the look here, so it is spelled out.
