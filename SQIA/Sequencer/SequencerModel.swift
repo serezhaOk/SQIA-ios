@@ -596,6 +596,12 @@ final class SequencerModel {
         publishVoicing()
     }
 
+    func selectOctave(_ octave: Int) {
+        guard octave != state.octave else { return }
+        state.setOctave(octave)
+        publishVoicing()
+    }
+
     // ------------------------------------------------------------ the tempo --
 
     func scrubTempo(dx: CGFloat) {

@@ -35,20 +35,36 @@ public struct ProjectSnapshot: Codable, Sendable, Equatable {
     public var bpm: Int
     public var rootPc: Int
     public var scale: String
+    /// iOS's own column; see `SequencerState.octave`. A row the web wrote
+    /// before the column existed has none, and reads as 0.
+    public var octave: Int
     public var tracks: [TrackSnapshot]
 
     enum CodingKeys: String, CodingKey {
         case bpm
         case rootPc = "root_pc"
         case scale
+        case octave
         case tracks
     }
 
-    public init(bpm: Int, rootPc: Int, scale: String, tracks: [TrackSnapshot]) {
+    public init(
+        bpm: Int, rootPc: Int, scale: String, octave: Int = 0, tracks: [TrackSnapshot]
+    ) {
         self.bpm = bpm
         self.rootPc = rootPc
         self.scale = scale
+        self.octave = octave
         self.tracks = tracks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let row = try decoder.container(keyedBy: CodingKeys.self)
+        bpm = try row.decode(Int.self, forKey: .bpm)
+        rootPc = try row.decode(Int.self, forKey: .rootPc)
+        scale = try row.decode(String.self, forKey: .scale)
+        octave = try row.decodeIfPresent(Int.self, forKey: .octave) ?? 0
+        tracks = try row.decode([TrackSnapshot].self, forKey: .tracks)
     }
 
     /// Two decimals is plenty for an intensity and keeps the row small.
@@ -67,6 +83,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
     public var bpm: Int
     public var rootPc: Int
     public var scale: String
+    public var octave: Int
     public var tracks: [TrackSnapshot]
     public var updatedAt: String
 
@@ -76,6 +93,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         case bpm
         case rootPc = "root_pc"
         case scale
+        case octave
         case tracks
         case updatedAt = "updated_at"
     }
@@ -86,6 +104,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         bpm: Int,
         rootPc: Int,
         scale: String,
+        octave: Int = 0,
         tracks: [TrackSnapshot],
         updatedAt: String
     ) {
@@ -94,11 +113,24 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         self.bpm = bpm
         self.rootPc = rootPc
         self.scale = scale
+        self.octave = octave
         self.tracks = tracks
         self.updatedAt = updatedAt
     }
 
+    public init(from decoder: Decoder) throws {
+        let row = try decoder.container(keyedBy: CodingKeys.self)
+        id = try row.decode(String.self, forKey: .id)
+        name = try row.decode(String.self, forKey: .name)
+        bpm = try row.decode(Int.self, forKey: .bpm)
+        rootPc = try row.decode(Int.self, forKey: .rootPc)
+        scale = try row.decode(String.self, forKey: .scale)
+        octave = try row.decodeIfPresent(Int.self, forKey: .octave) ?? 0
+        tracks = try row.decode([TrackSnapshot].self, forKey: .tracks)
+        updatedAt = try row.decode(String.self, forKey: .updatedAt)
+    }
+
     public var snapshot: ProjectSnapshot {
-        ProjectSnapshot(bpm: bpm, rootPc: rootPc, scale: scale, tracks: tracks)
+        ProjectSnapshot(bpm: bpm, rootPc: rootPc, scale: scale, octave: octave, tracks: tracks)
     }
 }

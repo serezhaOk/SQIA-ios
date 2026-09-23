@@ -407,5 +407,19 @@ struct ProjectSnapshotTests {
         #expect(project.tracks[0].grid.at(row: 0, column: 2) == 1)
         // A short cells array leaves the rest of the pattern empty.
         #expect(project.tracks[0].grid.cells.count == NoteGrid.count)
+        // The web does not know the octave column; a row without it is at 0.
+        #expect(project.octave == 0)
+        #expect(project.snapshot.octave == 0)
+    }
+
+    @Test("A row carrying an octave keeps it")
+    func decodesOctave() throws {
+        let json = """
+            {"id": "a", "name": "Low", "bpm": 90, "root_pc": 0, "scale": "minor",
+             "octave": -2, "tracks": [], "updated_at": "2026-09-23T10:00:00+00:00"}
+            """
+        let project = try JSONDecoder().decode(Project.self, from: Data(json.utf8))
+        #expect(project.octave == -2)
+        #expect(project.snapshot.octave == -2)
     }
 }

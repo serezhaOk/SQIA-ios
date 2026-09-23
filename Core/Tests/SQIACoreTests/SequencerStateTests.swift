@@ -18,6 +18,7 @@ struct SequencerStateTests {
         #expect(state.bpm == 120)
         #expect(state.rootName == "A")
         #expect(state.scale.name == "minor")
+        #expect(state.octave == 0)
         #expect(state.tracks.count == 2)
         #expect(state.activeTrackIndex == 0)
         #expect(state.tracks.allSatisfy { !$0.muted })
@@ -155,11 +156,13 @@ struct SequencerStateTests {
         state.selectTrack(1)
         state.randomize(using: Mulberry32(seed: 8))
         state.toggleMute(1)
+        state.setOctave(-1)
 
         var restored = fresh()
         restored.apply(state.snapshot())
 
         #expect(restored.bpm == 137)
+        #expect(restored.octave == -1)
         #expect(restored.rootPc == state.rootPc)
         #expect(restored.scale.name == state.scale.name)
         #expect(restored.tracks.map(\.muted) == state.tracks.map(\.muted))
@@ -175,6 +178,33 @@ struct SequencerStateTests {
                 #expect(abs(Double(a.grid.cells[i]) - Double(b.grid.cells[i])) <= 0.005)
             }
         }
+    }
+
+    @Test("An octave moves every column twelve semitones and nothing else")
+    func octaveShifts() {
+        var state = fresh()
+        let home = state.midiTable
+        state.randomize(using: Mulberry32(seed: 3))
+        let pattern = state.tracks[0].grid
+
+        for octave in Music.octaveRange {
+            state.setOctave(octave)
+            #expect(state.midiTable == home.map { $0 + 12 * octave })
+        }
+        #expect(state.tracks[0].grid == pattern)
+    }
+
+    @Test("The octave stops at two either way")
+    func octaveClamps() {
+        var state = fresh()
+        state.setOctave(5)
+        #expect(state.octave == 2)
+        state.setOctave(-9)
+        #expect(state.octave == -2)
+
+        // A row edited by hand past the range opens at the nearest end.
+        state.apply(ProjectSnapshot(bpm: 120, rootPc: 0, scale: "minor", octave: 7, tracks: []))
+        #expect(state.octave == 2)
     }
 
     @Test("An unfamiliar scale name falls back to minor rather than failing")

@@ -36,8 +36,11 @@ public actor SupabaseProjectStore: ProjectStore {
     public static let publishableKey = "sb_publishable_9cBv22ifdlp-nFn_d4VhoQ_qoNoQOvF"
 
     /// The columns, in the web's order. A row written with any other set is
-    /// a row a browser cannot read.
-    static let columns = "id,name,bpm,root_pc,scale,tracks,updated_at"
+    /// a row a browser cannot read. `octave` is the one the web does not
+    /// have: it neither sends nor asks for it, so its writes leave it alone
+    /// and its reads never see it. It has to exist before this ships —
+    /// PostgREST refuses a select that names a column it does not know.
+    static let columns = "id,name,bpm,root_pc,scale,octave,tracks,updated_at"
 
     public typealias Session = @Sendable () async -> SupabaseSession?
     public typealias Transport = @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
@@ -78,6 +81,7 @@ public actor SupabaseProjectStore: ProjectStore {
             bpm: snapshot.bpm,
             rootPc: snapshot.rootPc,
             scale: snapshot.scale,
+            octave: snapshot.octave,
             tracks: snapshot.tracks)
         let rows = try await send(
             .post, query: "select=\(Self.columns)", body: try JSONEncoder().encode(body),
@@ -89,7 +93,7 @@ public actor SupabaseProjectStore: ProjectStore {
     public func save(id: String, snapshot: ProjectSnapshot) async throws {
         let body = PatchRow(
             bpm: snapshot.bpm, rootPc: snapshot.rootPc, scale: snapshot.scale,
-            tracks: snapshot.tracks)
+            octave: snapshot.octave, tracks: snapshot.tracks)
         try await patch(id: id, body: try JSONEncoder().encode(body))
     }
 
@@ -186,6 +190,7 @@ public actor SupabaseProjectStore: ProjectStore {
         let bpm: Int
         let rootPc: Int
         let scale: String
+        let octave: Int
         let tracks: [TrackSnapshot]
 
         enum CodingKeys: String, CodingKey {
@@ -194,6 +199,7 @@ public actor SupabaseProjectStore: ProjectStore {
             case bpm
             case rootPc = "root_pc"
             case scale
+            case octave
             case tracks
         }
     }
@@ -205,16 +211,18 @@ public actor SupabaseProjectStore: ProjectStore {
         var bpm: Int?
         var rootPc: Int?
         var scale: String?
+        var octave: Int?
         var tracks: [TrackSnapshot]?
 
         init(
             name: String? = nil, bpm: Int? = nil, rootPc: Int? = nil,
-            scale: String? = nil, tracks: [TrackSnapshot]? = nil
+            scale: String? = nil, octave: Int? = nil, tracks: [TrackSnapshot]? = nil
         ) {
             self.name = name
             self.bpm = bpm
             self.rootPc = rootPc
             self.scale = scale
+            self.octave = octave
             self.tracks = tracks
         }
 
@@ -223,6 +231,7 @@ public actor SupabaseProjectStore: ProjectStore {
             case bpm
             case rootPc = "root_pc"
             case scale
+            case octave
             case tracks
         }
     }

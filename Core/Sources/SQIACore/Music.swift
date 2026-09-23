@@ -41,12 +41,18 @@ public enum Music {
         scales.first { $0.name == name }
     }
 
-    /// MIDI note for a column, given the root pitch class and scale.
-    public static func columnMidi(_ column: Int, rootPc: Int, scale: Scale) -> Int {
+    /// How far the whole grid can be shifted, in octaves, either way.
+    public static let octaveRange = -2...2
+
+    /// MIDI note for a column, given the root pitch class and scale, and
+    /// the octave the grid has been shifted by.
+    public static func columnMidi(
+        _ column: Int, rootPc: Int, scale: Scale, octave: Int = 0
+    ) -> Int {
         let count = scale.steps.count
-        let octave = column / count
-        let offset = octave * 12 + scale.steps[column % count]
-        return rootBase + rootPc + offset
+        let span = column / count
+        let offset = span * 12 + scale.steps[column % count]
+        return rootBase + 12 * octave + rootPc + offset
     }
 
     /// Playback rate that pitches a sample (recorded at `baseMidi`) to a
@@ -76,8 +82,8 @@ public enum Music {
         440 * exp2(Double(midi - 69) / 12)
     }
 
-    public static func midiTable(rootPc: Int, scale: Scale) -> [Int] {
-        (0..<columns).map { columnMidi($0, rootPc: rootPc, scale: scale) }
+    public static func midiTable(rootPc: Int, scale: Scale, octave: Int = 0) -> [Int] {
+        (0..<columns).map { columnMidi($0, rootPc: rootPc, scale: scale, octave: octave) }
     }
 
     /// The columns a drum kit is laid out on, which is not a key at all.

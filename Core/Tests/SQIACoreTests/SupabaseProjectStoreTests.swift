@@ -19,7 +19,7 @@ private let session = SupabaseSession(accessToken: "jwt-here", userId: "user-1")
 
 private func snapshot(bpm: Int = 120) -> ProjectSnapshot {
     ProjectSnapshot(
-        bpm: bpm, rootPc: 4, scale: "dorian",
+        bpm: bpm, rootPc: 4, scale: "dorian", octave: 1,
         tracks: [TrackSnapshot(voiceIdx: 2, muted: true, grid: NoteGrid())])
 }
 
@@ -78,7 +78,7 @@ struct SupabaseProjectStoreTests {
         let url = request?.url?.absoluteString ?? ""
         #expect(request?.httpMethod == "GET")
         #expect(url.hasPrefix("https://example.supabase.co/rest/v1/projects?"))
-        #expect(url.contains("select=id,name,bpm,root_pc,scale,tracks,updated_at"))
+        #expect(url.contains("select=id,name,bpm,root_pc,scale,octave,tracks,updated_at"))
         #expect(url.contains("order=updated_at.desc"))
     }
 
@@ -114,6 +114,7 @@ struct SupabaseProjectStoreTests {
         #expect(json["bpm"] as? Int == 137)
         #expect(json["root_pc"] as? Int == 4)
         #expect(json["scale"] as? String == "dorian")
+        #expect(json["octave"] as? Int == 1)
         #expect(json["tracks"] is [Any])
         // Not ours to set: Postgres owns both.
         #expect(json["id"] == nil)
@@ -144,6 +145,7 @@ struct SupabaseProjectStoreTests {
         let json = try #require(
             try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["bpm"] as? Int == 91)
+        #expect(json["octave"] as? Int == 1)
         #expect(json["tracks"] is [Any])
         // A save is not a rename.
         #expect(json["name"] == nil)
@@ -260,6 +262,7 @@ struct SupabaseProjectStoreTests {
             SupabaseProjectStore.projectURL.absoluteString
                 == "https://iayngkirvbjlsmgtymnl.supabase.co")
         #expect(SupabaseProjectStore.publishableKey.hasPrefix("sb_publishable_"))
-        #expect(SupabaseProjectStore.columns == "id,name,bpm,root_pc,scale,tracks,updated_at")
+        // The web's columns plus the octave, which only iOS reads.
+        #expect(SupabaseProjectStore.columns == "id,name,bpm,root_pc,scale,octave,tracks,updated_at")
     }
 }

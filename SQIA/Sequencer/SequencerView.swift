@@ -76,6 +76,8 @@ struct SequencerView: View {
             KeySheet(
                 rootPc: model.state.rootPc,
                 scaleIndex: model.state.scaleIndex,
+                octave: model.state.octave,
+                onPickOctave: { model.selectOctave($0) },
                 onPickRoot: { model.selectRoot($0) },
                 onPickScale: { model.selectScale($0) }
             )
@@ -237,7 +239,16 @@ struct SequencerView: View {
         }
         .buttonStyle(PressFade())
         .accessibilityLabel("Key")
-        .accessibilityValue("\(model.state.rootName) \(model.state.scale.name)")
+        .accessibilityValue(keyDescription)
+    }
+
+    /// The pill shows the key alone and keeps its width; the octave, when
+    /// it is not the home one, is spoken rather than squeezed in.
+    private var keyDescription: String {
+        let key = "\(model.state.rootName) \(model.state.scale.name)"
+        let octave = model.state.octave
+        guard octave != 0 else { return key }
+        return "\(key), octave \(KeySheet.octaveLabel(octave))"
     }
 
     /// The track dots, or whatever the screen has to say instead.

@@ -116,6 +116,19 @@ final class SmokeTests: XCTestCase {
         awaitElement("My vibes", "leaving the mixer did not return to the library")
     }
 
+    /// The octave sits at the top of the key sheet, and choosing one is
+    /// heard on the key pill by VoiceOver, which is the only place it shows.
+    func testTheKeySheetShiftsTheOctave() {
+        openAProject()
+        awaitElement("Key", "the key pill is unlabelled").tap()
+        awaitElement("+1", "the key sheet has no octave control").tap()
+        awaitElement("Done", "the key sheet did not open").tap()
+        awaitElement("Note field", "the key sheet did not close")
+        XCTAssertTrue(
+            (named("Key").value as? String)?.hasSuffix("octave +1") == true,
+            "the octave did not reach the key pill")
+    }
+
     func testTheSoundSheetOpensAndCloses() {
         openAProject()
         awaitElement("Sound", "the voice label is unlabelled").tap()

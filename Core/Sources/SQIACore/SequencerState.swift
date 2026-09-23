@@ -35,6 +35,10 @@ public struct SequencerState: Sendable, Equatable {
     public var tracks: [TrackState]
     public var rootPc: Int
     public var scaleIndex: Int
+    /// Octaves the whole grid is shifted by, within `Music.octaveRange`.
+    /// Not the web's: a browser neither reads nor writes it, so its rows
+    /// play at 0 there and keep what the phone set here.
+    public var octave: Int
     public var activeTrackIndex: Int
     public var bpm: Double
 
@@ -42,12 +46,14 @@ public struct SequencerState: Sendable, Equatable {
         tracks: [TrackState],
         rootPc: Int = defaultRootPc,
         scaleIndex: Int = defaultScaleIndex,
+        octave: Int = 0,
         activeTrackIndex: Int = 0,
         bpm: Double = defaultBPM
     ) {
         self.tracks = tracks
         self.rootPc = rootPc
         self.scaleIndex = scaleIndex
+        self.octave = Self.clampOctave(octave)
         self.activeTrackIndex = activeTrackIndex
         self.bpm = bpm
     }
@@ -72,7 +78,7 @@ public struct SequencerState: Sendable, Equatable {
 
     /// The MIDI note each column plays.
     public var midiTable: [Int] {
-        Music.midiTable(rootPc: rootPc, scale: scale)
+        Music.midiTable(rootPc: rootPc, scale: scale, octave: octave)
     }
 
     /// Playback rates for a sample recorded at `baseMidi`.
@@ -94,6 +100,16 @@ public struct SequencerState: Sendable, Equatable {
     public mutating func setRoot(_ pc: Int) {
         guard Music.noteNames.indices.contains(pc) else { return }
         rootPc = pc
+    }
+
+    /// Out of range is clamped rather than ignored: a stepper pressed past
+    /// the end stays at the end.
+    public mutating func setOctave(_ value: Int) {
+        octave = Self.clampOctave(value)
+    }
+
+    static func clampOctave(_ value: Int) -> Int {
+        min(max(value, Music.octaveRange.lowerBound), Music.octaveRange.upperBound)
     }
 
     public mutating func setScale(_ index: Int) {
@@ -146,6 +162,7 @@ public struct SequencerState: Sendable, Equatable {
             bpm: Int(bpm.rounded()),
             rootPc: rootPc,
             scale: scale.name,
+            octave: octave,
             tracks: tracks.map {
                 TrackSnapshot(voiceIdx: $0.voiceIndex, muted: $0.muted, grid: $0.grid)
             }
@@ -161,6 +178,7 @@ public struct SequencerState: Sendable, Equatable {
         bpm = Double(project.bpm)
         rootPc = project.rootPc
         scaleIndex = Music.scales.firstIndex { $0.name == project.scale } ?? 0
+        octave = Self.clampOctave(project.octave)
 
         for (i, snapshot) in project.tracks.enumerated() where tracks.indices.contains(i) {
             tracks[i].voiceIndex = snapshot.voiceIdx

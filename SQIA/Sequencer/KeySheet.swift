@@ -1,4 +1,6 @@
-// The key picker: which note the grid starts from, and which scale it walks.
+// The key picker: which octave the grid sits in, which note it starts from,
+// and which scale it walks. The octave is iOS's own; the web has no such
+// control and plays every project at the home octave.
 //
 // The web cycles both on tap, a label at a time. On a phone, picking one of
 // twelve notes by tapping eleven times is not the same gesture — so this is
@@ -15,6 +17,8 @@ import SwiftUI
 struct KeySheet: View {
     let rootPc: Int
     let scaleIndex: Int
+    let octave: Int
+    let onPickOctave: (Int) -> Void
     let onPickRoot: (Int) -> Void
     let onPickScale: (Int) -> Void
 
@@ -27,6 +31,17 @@ struct KeySheet: View {
     var body: some View {
         NavigationStack {
             List {
+                Section("Octave") {
+                    Picker("Octave", selection: octaveBinding) {
+                        ForEach(Array(Music.octaveRange), id: \.self) { value in
+                            Text(Self.octaveLabel(value)).tag(value)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .padding(.vertical, 4)
+                }
+
                 Section("Note") {
                     LazyVGrid(columns: columns, spacing: 8) {
                         ForEach(Music.noteNames.indices, id: \.self) { pc in
@@ -56,6 +71,20 @@ struct KeySheet: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    /// "−2", "0", "+1": a sign on everything but the home octave, with a
+    /// true minus so the digits line up with the plus.
+    static func octaveLabel(_ value: Int) -> String {
+        switch value {
+        case ..<0: "\u{2212}\(-value)"
+        case 0: "0"
+        default: "+\(value)"
+        }
+    }
+
+    private var octaveBinding: Binding<Int> {
+        Binding(get: { octave }, set: { onPickOctave($0) })
     }
 
     private func noteButton(_ pc: Int) -> some View {
@@ -98,6 +127,8 @@ struct KeySheet: View {
 #Preview {
     Color.black
         .sheet(isPresented: .constant(true)) {
-            KeySheet(rootPc: 0, scaleIndex: 0, onPickRoot: { _ in }, onPickScale: { _ in })
+            KeySheet(
+                rootPc: 0, scaleIndex: 0, octave: 0, onPickOctave: { _ in },
+                onPickRoot: { _ in }, onPickScale: { _ in })
         }
 }
