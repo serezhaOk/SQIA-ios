@@ -70,8 +70,12 @@ final class SequencerModel {
         didSet {
             guard isRunning != oldValue else { return }
             UIApplication.shared.isIdleTimerDisabled = isRunning
+            onRunningChanged?(isRunning)
         }
     }
+    /// For the lock screen, which has to follow the sound however it
+    /// stopped.
+    @ObservationIgnored var onRunningChanged: ((Bool) -> Void)?
     private(set) var failure: String?
 
     /// One per track: each keeps its own blooms and ripples, so a track that

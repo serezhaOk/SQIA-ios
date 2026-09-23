@@ -40,6 +40,13 @@ final class AppModel {
     /// what is on screen. The same engine plays it that the sequencer does,
     /// so opening it from there carries on without a seam.
     private var previewId: String?
+    /// What the lock screen calls the sound: the project open in the
+    /// sequencer, or the one last played from the library — kept after a
+    /// pause there, so the lock screen's play has something to resume.
+    @ObservationIgnored private var playing: Project?
+    @ObservationIgnored private lazy var nowPlaying = NowPlaying(
+        onPlay: { [weak self] in self?.resume() ?? false },
+        onPause: { [weak self] in self?.pause() })
     /// Which card is sounding — nil as soon as the engine is, whatever
     /// stopped it: an interruption or a lost route stops the sound without
     /// asking the library, and the button has to follow the sound.
@@ -136,6 +143,8 @@ final class AppModel {
             wasSignedIn = false
             previewId = nil
             sequencer?.stop()
+            playing = nil
+            nowPlaying.show(title: nil, isPlaying: false)
             screen = .landing
         }
     }
@@ -156,8 +165,10 @@ final class AppModel {
             model.open(project)
         }
         previewId = nil
+        playing = project
         screen = .sequencer
         model.start()
+        showNowPlaying()
     }
 
     /// The play button on a library card: plays that project's loop where it
@@ -171,8 +182,10 @@ final class AppModel {
         let model = engine()
         model.stop()
         model.open(project)
+        playing = project
         model.start()
         previewId = model.isRunning ? project.id : nil
+        showNowPlaying()
     }
 
     func stopPreview() {
@@ -189,11 +202,15 @@ final class AppModel {
         stopPreview()
         let model = engine()
         model.startFresh()
+        playing = nil
         screen = .sequencer
         model.start()
+        showNowPlaying()
         Task {
             if let created = await library.create(model.snapshot) {
                 model.adopt(created)
+                playing = created
+                showNowPlaying()
             }
         }
     }
@@ -204,6 +221,10 @@ final class AppModel {
     func backToLibrary() async {
         await sequencer?.leave()
         screen = .library
+        // What was open has been saved and may since have changed; the
+        // library's rows are the ones to play from now, not this copy.
+        playing = nil
+        nowPlaying.show(title: nil, isPlaying: false)
     }
 
     // ------------------------------------------------------------ the exit --
@@ -226,7 +247,43 @@ final class AppModel {
     private func engine() -> SequencerModel {
         if let sequencer { return sequencer }
         let model = SequencerModel(store: store)
+        model.onRunningChanged = { [weak self] _ in self?.showNowPlaying() }
         sequencer = model
         return model
+    }
+
+    // ------------------------------------------------------ the lock screen --
+
+    private func showNowPlaying() {
+        guard let sequencer, screen != .landing else { return }
+        // A new project has no row, and so no name, for the moment it takes
+        // the store to write one.
+        let title = playing?.name ?? (screen == .sequencer ? "New project" : nil)
+        nowPlaying.show(title: title, isPlaying: sequencer.isRunning)
+    }
+
+    /// The lock screen's play: whatever was last sounding, from where it
+    /// was left. In the library that is the last card played; the pause
+    /// took it off the card's button but not out of `playing`.
+    private func resume() -> Bool {
+        guard let sequencer else { return false }
+        switch screen {
+        case .sequencer:
+            sequencer.start()
+        case .library:
+            guard let playing else { return false }
+            if previewing != playing.id { togglePreview(playing) }
+        case .landing:
+            return false
+        }
+        return sequencer.isRunning
+    }
+
+    private func pause() {
+        if screen == .library {
+            stopPreview()
+        } else {
+            sequencer?.stop()
+        }
     }
 }
