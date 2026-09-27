@@ -1,7 +1,7 @@
 # SQIA Plus — the subscription
 
 One auto-renewable subscription, $1.99 a month. For now it opens the
-mixer's second track; later features join it through `PlusFeature` in
+mixer's second track and background playback; later features join it through `PlusFeature` in
 `Core/Sources/SQIACore/Plus/Access.swift`, which is the one place that says
 what Plus opens.
 
@@ -14,10 +14,16 @@ what Plus opens.
 - Without Plus the second track keeps its notes but is silent and locked.
   A project drawn with two tracks in the browser, or before a lapse, opens
   intact and plays both again the moment Plus comes back.
-- The paywall is `SubscriptionStoreView`, with Restore, the policy links and
-  a close button. It opens from the locked panel in the mixer and from
-  Profile → Get SQIA Plus. Once subscribed, that row opens the system's
-  Manage Subscriptions sheet.
+- Background playback: the profile's switch reads off without Plus and
+  offers the paywall when pressed; subscribing from there turns it on. A
+  switch left on when Plus lapses is ignored, so the app goes quiet when
+  left, as it does on the free app.
+- The paywall is our own sheet, from the Figma frame "Paywall" (Prototyping,
+  node 226:2838), with the app icon in place of the other project's. It
+  shows the storefront's price and period, Restore, Privacy and Terms, and
+  buys through `PlusStore.purchase()`. It opens from the locked panel in the
+  mixer, the background playback switch, and Profile → Get SQIA Plus. Once
+  subscribed, that row opens the system's Manage Subscriptions sheet.
 
 ## Testing locally
 

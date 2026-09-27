@@ -53,6 +53,10 @@ struct LibraryView: View {
         }
     }
 
+    private var playsOn: Bool {
+        playsInBackground && plus.access.allows(.backgroundPlayback)
+    }
+
     private var library: some View {
         GeometryReader { geometry in
             let width = LibraryLayout.cardWidth(screen: Double(geometry.size.width))
@@ -102,7 +106,7 @@ struct LibraryView: View {
         // to play on; deleting the card that is playing takes its sound with
         // it either way.
         .onChange(of: scenePhase) { _, phase in
-            if phase != .active && !playsInBackground { onStopPreview() }
+            if phase != .active && !playsOn { onStopPreview() }
         }
         .onChange(of: model.rows) { _, rows in
             if let previewing, !rows.contains(where: { $0.id == previewing }) {

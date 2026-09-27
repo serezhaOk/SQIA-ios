@@ -180,6 +180,27 @@ final class SmokeTests: XCTestCase {
         XCTAssertFalse(named("Note field").isHittable, "a locked track opened anyway")
     }
 
+    /// Background playback is Plus too: without it the profile's switch
+    /// stays off and offers the paywall, and subscribing from there turns
+    /// it on.
+    func testBackgroundPlaybackAsksForPlus() {
+        awaitElement("Profile", "the profile button is missing").tap()
+        let toggle = app.switches.firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: patience), "the profile has no switch")
+        XCTAssertEqual(toggle.value as? String, "0", "background playback is on without Plus")
+
+        // The knob, not the row's middle, which is the label.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+        awaitElement("SQIA Plus", "the switch did not offer the paywall")
+        XCTAssertEqual(toggle.value as? String, "0", "the switch moved without Plus")
+
+        awaitElement("Subscribe", "the paywall has no Subscribe button").tap()
+        let on = NSPredicate(format: "value == %@", "1")
+        expectation(for: on, evaluatedWith: toggle)
+        waitForExpectations(timeout: patience)
+        XCTAssertFalse(named("Subscribe").exists, "the paywall stayed up")
+    }
+
     /// Buying Plus on the paywall closes it and opens the second track.
     func testSubscribingOpensTheSecondTrack() {
         openAProject()
@@ -197,7 +218,7 @@ final class SmokeTests: XCTestCase {
         let unlocked = NSPredicate(format: "value != %@", "SQIA Plus")
         expectation(for: unlocked, evaluatedWith: second)
         waitForExpectations(timeout: patience)
-        XCTAssertFalse(named("Subscription Store View Container").exists, "the paywall stayed up")
+        XCTAssertFalse(named("Subscribe").exists, "the paywall stayed up")
 
         second.tap()
         awaitElement("Note field", "the second track did not open after subscribing")

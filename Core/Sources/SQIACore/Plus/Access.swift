@@ -14,6 +14,9 @@ import Foundation
 public enum PlusFeature: String, CaseIterable, Sendable {
     /// The mixer's second track: opening it, drawing on it, hearing it.
     case secondTrack
+    /// The pattern playing on once the app is out of sight or the phone
+    /// is locked.
+    case backgroundPlayback
 }
 
 public struct Access: Sendable, Equatable {
@@ -30,7 +33,7 @@ public struct Access: Sendable, Equatable {
     /// ever comes free — or free for a while — is one line to change.
     public func allows(_ feature: PlusFeature) -> Bool {
         switch feature {
-        case .secondTrack: hasPlus
+        case .secondTrack, .backgroundPlayback: hasPlus
         }
     }
 

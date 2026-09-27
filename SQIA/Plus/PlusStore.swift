@@ -50,7 +50,64 @@ final class PlusStore {
             }
         }
         await refresh()
+        await loadProduct()
+    }
+
+    /// Again from the paywall, if launch found no network: the price is
+    /// what the Subscribe button stands on.
+    func loadProduct() async {
+        guard product == nil else { return }
         product = try? await Product.products(for: Self.productIDs).first
+    }
+
+    enum Outcome: Equatable {
+        case subscribed
+        /// Ask to Buy, or a bank that wants a second look. It arrives
+        /// through `Transaction.updates` if and when it goes through.
+        case pending
+        case cancelled
+        case failed(String)
+    }
+
+    func purchase() async -> Outcome {
+        await loadProduct()
+        guard let product else {
+            return .failed("The App Store did not answer. Try again in a moment.")
+        }
+        do {
+            switch try await product.purchase() {
+            case .success(let verification):
+                await handle(verification)
+                return access.hasPlus
+                    ? .subscribed : .failed("The purchase could not be verified.")
+            case .pending:
+                return .pending
+            case .userCancelled:
+                return .cancelled
+            @unknown default:
+                return .cancelled
+            }
+        } catch {
+            log.error("Purchase failed: \(error.localizedDescription, privacy: .public)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// Guideline 3.1.1 wants a way to restore. `AppStore.sync` asks the
+    /// App Store for everything this Apple ID owns, which is also what
+    /// brings a subscription over to a new phone.
+    func restore() async -> Outcome {
+        do {
+            try await AppStore.sync()
+        } catch StoreKitError.userCancelled {
+            return .cancelled
+        } catch {
+            log.error("Restore failed: \(error.localizedDescription, privacy: .public)")
+            return .failed(error.localizedDescription)
+        }
+        await refresh()
+        return access.hasPlus
+            ? .subscribed : .failed("There is no SQIA Plus on this Apple Account to restore.")
     }
 
     /// Read the entitlements again. `currentEntitlements` already leaves out

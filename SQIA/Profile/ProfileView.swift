@@ -20,6 +20,9 @@ struct ProfileView: View {
     @State private var closingAccount = false
     @State private var showingPaywall = false
     @State private var managingPlus = false
+    /// The switch was pressed without Plus: turn it on if the paywall it
+    /// opened ends in a subscription.
+    @State private var wantsBackground = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.requestReview) private var requestReview
@@ -78,6 +81,13 @@ struct ProfileView: View {
             PlusPaywall(plus: plus)
         }
         .manageSubscriptionsSheet(isPresented: $managingPlus)
+        .onChange(of: plus.access.hasPlus) { _, hasPlus in
+            if hasPlus && wantsBackground { playsInBackground = true }
+            wantsBackground = false
+        }
+        .onChange(of: showingPaywall) { _, showing in
+            if !showing && !plus.access.hasPlus { wantsBackground = false }
+        }
     }
 
     // -------------------------------------------------------------- header --
@@ -169,12 +179,31 @@ struct ProfileView: View {
         return "\(product.displayPrice) / \(period.unit.localizedDescription.lowercased())"
     }
 
+    /// Plus. Without it the switch reads off whatever was stored, and
+    /// pressing it offers the subscription instead of moving.
     private var playbackRow: some View {
-        Toggle(isOn: $playsInBackground) {
-            label("Background playback")
+        Toggle(isOn: backgroundBinding) {
+            HStack(spacing: 8) {
+                label("Background playback")
+                if !plus.access.hasPlus { PlusBadge() }
+            }
         }
+        .accessibilityHint(plus.access.hasPlus ? "" : "Part of SQIA Plus.")
         .tint(Palette.toggleOn)
         .padding(.vertical, ProfileLayout.rowGap / 2)
+    }
+
+    private var backgroundBinding: Binding<Bool> {
+        Binding(
+            get: { playsInBackground && plus.access.allows(.backgroundPlayback) },
+            set: { on in
+                if plus.access.allows(.backgroundPlayback) {
+                    playsInBackground = on
+                } else if on {
+                    wantsBackground = true
+                    showingPaywall = true
+                }
+            })
     }
 
     private func row(

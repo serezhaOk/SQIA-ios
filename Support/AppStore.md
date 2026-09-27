@@ -83,7 +83,8 @@ the SQIA PLUS paragraph above it has to name the price and the period.
 > SQIA PLUS
 > Open the second track and two parts play at once: mute one to redraw it
 > while the other keeps going, then bring it back and hear how the two sit
-> together. Everything added to Plus later comes with it. SQIA Plus is an
+> together. Keep the pattern playing with the screen locked or another app
+> open. Everything added to Plus later comes with it. SQIA Plus is an
 > auto-renewable subscription at $1.99 a month; it renews unless cancelled
 > at least 24 hours before the end of the period, and can be managed or
 > cancelled in your Apple Account settings.
@@ -192,10 +193,11 @@ has nothing to ask about.
 > never interrupts whatever the phone was already playing.
 >
 > **SQIA Plus.** One auto-renewable subscription, `com.serezhaok.sqia.plus.monthly`,
-> $1.99 a month. It opens the mixer's second track: in the mixer, the right
-> panel wears a padlock, and pressing it shows the paywall. The paywall is
-> StoreKit's own `SubscriptionStoreView`, with Restore Purchases and the
-> Terms of Use and Privacy Policy links on it. Once subscribed, Profile →
+> $1.99 a month. It opens the mixer's second track and background
+> playback. In the mixer, the right panel wears a padlock and pressing it
+> shows the paywall; so does the Background playback switch in Profile.
+> The paywall shows the price and period, Restore, and the Terms of Use
+> and Privacy Policy links. Once subscribed, Profile →
 > SQIA Plus opens the system's Manage Subscriptions sheet. Everything else
 > in the app is free.
 >

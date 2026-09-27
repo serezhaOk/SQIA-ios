@@ -110,7 +110,7 @@ struct SequencerView: View {
             // to play on.
             if phase == .active {
                 model.start()
-            } else if !playsInBackground {
+            } else if !(playsInBackground && plus.access.allows(.backgroundPlayback)) {
                 model.stop()
             }
         }

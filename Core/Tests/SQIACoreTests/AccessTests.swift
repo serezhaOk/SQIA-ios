@@ -31,6 +31,12 @@ struct AccessTests {
         #expect(!Access.plus.sounds(track: 1, muted: true))
     }
 
+    @Test("Background playback is Plus")
+    func backgroundPlaybackIsPlus() {
+        #expect(!Access.free.allows(.backgroundPlayback))
+        #expect(Access.plus.allows(.backgroundPlayback))
+    }
+
     @Test("Plus allows every feature, free allows none")
     func features() {
         for feature in PlusFeature.allCases {
