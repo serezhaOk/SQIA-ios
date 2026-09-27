@@ -151,7 +151,7 @@ struct ProfileView: View {
             .overlay(Self.cardShape.strokeBorder(Palette.glassEdge, lineWidth: 1))
     }
 
-    /// What it costs, before anyone opens the paywall; once subscribed, the
+    /// Subscribe opens the paywall; once subscribed, Manage opens the
     /// system's own sheet for changing or cancelling it, which is where
     /// somebody looking to cancel expects to end up.
     private var plusRow: some View {
@@ -159,9 +159,9 @@ struct ProfileView: View {
             if plus.access.hasPlus { managingPlus = true } else { showingPaywall = true }
         } label: {
             HStack(spacing: 12) {
-                label(plus.access.hasPlus ? "SQIA Plus" : "Get SQIA Plus")
+                label("SQIA Plus")
                 Spacer(minLength: 0)
-                Text(plusDetail)
+                Text(plusAction)
                     .manrope(.medium, TextStyle.rowSize, tracking: -0.02)
                     .foregroundStyle(Palette.ui.opacity(0.55))
             }
@@ -169,14 +169,14 @@ struct ProfileView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RowPress())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("SQIA Plus")
+        .accessibilityValue(plusAction)
+        .accessibilityAddTraits(.isButton)
     }
 
-    private var plusDetail: String {
-        if plus.access.hasPlus { return "Manage" }
-        guard let product = plus.product,
-            let period = product.subscription?.subscriptionPeriod
-        else { return "" }
-        return "\(product.displayPrice) / \(period.unit.localizedDescription.lowercased())"
+    private var plusAction: String {
+        plus.access.hasPlus ? "Manage" : "Subscribe"
     }
 
     /// Plus. Without it the switch reads off whatever was stored, and

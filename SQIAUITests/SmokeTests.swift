@@ -91,7 +91,7 @@ final class SmokeTests: XCTestCase {
         awaitElement("Profile", "the profile button is missing").tap()
         awaitElement("Background playback", "the profile did not open")
         let rows = [
-            "Get SQIA Plus", "Leave feedback", "Rate in App Store", "Privacy policy",
+            "SQIA Plus", "Leave feedback", "Rate in App Store", "Privacy policy",
             "Terms of use", "About",
         ]
         for row in rows {
@@ -191,14 +191,19 @@ final class SmokeTests: XCTestCase {
 
         // The knob, not the row's middle, which is the label.
         toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-        awaitElement("SQIA Plus", "the switch did not offer the paywall")
+        let subscribe = app.buttons["paywall.subscribe"]
+        XCTAssertTrue(
+            subscribe.waitForExistence(timeout: patience), "the switch did not offer the paywall")
         XCTAssertEqual(toggle.value as? String, "0", "the switch moved without Plus")
 
-        awaitElement("Subscribe", "the paywall has no Subscribe button").tap()
+        subscribe.tap()
         let on = NSPredicate(format: "value == %@", "1")
         expectation(for: on, evaluatedWith: toggle)
         waitForExpectations(timeout: patience)
-        XCTAssertFalse(named("Subscribe").exists, "the paywall stayed up")
+        // The sheet takes a moment to slide away once it has said yes.
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: subscribe)
+        waitForExpectations(timeout: patience)
+        XCTAssertEqual(named("SQIA Plus").value as? String, "Manage", "the profile still sells Plus")
     }
 
     /// Buying Plus on the paywall closes it and opens the second track.
@@ -208,17 +213,20 @@ final class SmokeTests: XCTestCase {
         awaitElement("Track 2", "the mixer has no second panel").tap()
         awaitElement("SQIA Plus", "pressing a locked track did not show the paywall")
 
-        let subscribe = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] 'Subscribe' OR label CONTAINS '1.99'")
-        ).firstMatch
-        XCTAssertTrue(subscribe.waitForExistence(timeout: patience), "the paywall has no price")
+        let subscribe = app.buttons["paywall.subscribe"]
+        XCTAssertTrue(subscribe.waitForExistence(timeout: patience), "the paywall has no button")
+        let priced = NSPredicate(format: "value CONTAINS %@ AND isEnabled == true", "1.99")
+        expectation(for: priced, evaluatedWith: subscribe)
+        waitForExpectations(timeout: patience)
         subscribe.tap()
 
         let second = named("Track 2")
         let unlocked = NSPredicate(format: "value != %@", "SQIA Plus")
         expectation(for: unlocked, evaluatedWith: second)
         waitForExpectations(timeout: patience)
-        XCTAssertFalse(named("Subscribe").exists, "the paywall stayed up")
+        // The sheet takes a moment to slide away once it has said yes.
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: subscribe)
+        waitForExpectations(timeout: patience)
 
         second.tap()
         awaitElement("Note field", "the second track did not open after subscribing")

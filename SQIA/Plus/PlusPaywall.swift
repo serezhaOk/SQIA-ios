@@ -1,6 +1,7 @@
 // The paywall, from the Figma frame "Paywall": a dark green sheet with two
-// pale green glows bleeding in from its edges, the app's icon, what Plus
-// opens as a column of pills, and one white Subscribe button.
+// pale green glows bleeding in from its edges and vines creeping in at the
+// bottom corners, the app's icon in a wreath of them, what Plus opens as a
+// column of pills, and one white Subscribe button.
 //
 // The sheet itself is the system's — its corners, its grabber, its swipe to
 // dismiss, and Restore as a navigation bar button — with no close button:
@@ -30,6 +31,7 @@ struct PlusPaywall: View {
                     GeometryReader { geometry in
                         ZStack {
                             PaywallLayout.ground
+                            vines(in: geometry.size)
                             glows(in: geometry.size)
                         }
                     }
@@ -61,17 +63,15 @@ struct PlusPaywall: View {
             PaywallIcon()
                 .padding(.top, 8)
 
-            title
-                .padding(.top, 9)
-
             Text("Access all features")
                 .manrope(.medium, 20, tracking: 0)
                 .foregroundStyle(.white)
-                .padding(.top, 24)
+                .padding(.top, 64)
 
             VStack(spacing: 4) {
-                FeaturePill(symbol: "square.split.2x1", text: "A second track in the mixer")
-                FeaturePill(symbol: "headphones", text: "Background playback")
+                FeaturePill(
+                    symbol: "square.split.2x1", text: "Play two sequences simultaneously")
+                FeaturePill(symbol: "headphones", text: "Listen with background playback")
                 FeaturePill(symbol: nil, text: "...more features are coming")
             }
             .padding(.top, 24)
@@ -79,7 +79,7 @@ struct PlusPaywall: View {
             Text(priceLine)
                 .manrope(.medium, 20, tracking: 0)
                 .foregroundStyle(.white)
-                .padding(.top, 28)
+                .padding(.top, 68)
 
             Spacer(minLength: 16)
 
@@ -103,22 +103,6 @@ struct PlusPaywall: View {
                 .padding(.bottom, 4)
         }
         .animation(Motion.fade, value: message)
-    }
-
-    /// The name with its badge hung off the top right corner, so the name
-    /// alone is what is centred.
-    private var title: some View {
-        Text("SQIA")
-            .manrope(.medium, 37, tracking: -0.02)
-            .foregroundStyle(.white)
-            .overlay(alignment: .topTrailing) {
-                PlusBadge()
-                    .alignmentGuide(.trailing) { $0[.leading] }
-                    .alignmentGuide(.top) { $0[.top] + 9 }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("SQIA Plus")
-            .accessibilityAddTraits(.isHeader)
     }
 
     /// The storefront's own price, so it reads in the buyer's currency. The
@@ -149,6 +133,7 @@ struct PlusPaywall: View {
         .buttonStyle(PressFade())
         .disabled(busy || plus.product == nil)
         .accessibilityValue(priceLine)
+        .accessibilityIdentifier("paywall.subscribe")
     }
 
     private var footer: some View {
@@ -199,6 +184,32 @@ struct PlusPaywall: View {
 
     // --------------------------------------------------------------- glows --
 
+    /// The same vine twice, turned 41°, creeping in over the bottom left
+    /// and the bottom right. Exclusion rather than plain over, as the frame
+    /// sets it, so the dark stems lift out of the green instead of sitting
+    /// on it as black.
+    private func vines(in size: CGSize) -> some View {
+        ZStack {
+            vine(side: 280)
+                .position(x: -60.5, y: size.height - 185.5)
+            vine(side: 328.6)
+                .position(x: size.width + 40.5, y: size.height - 135.5)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func vine(side: CGFloat) -> some View {
+        Image(.paywallVines)
+            .resizable()
+            .scaledToFill()
+            .frame(width: side, height: side)
+            .rotationEffect(.degrees(41.13))
+            .blendMode(.exclusion)
+    }
+
     /// Two shapes blurred into light, each turned 45° and mostly off the
     /// sheet: one over the upper left, one over the lower right. Set
     /// against the sheet's edges rather than its middle, as the frame does.
@@ -225,8 +236,7 @@ private enum PaywallLayout {
     static let pill = Color.black.opacity(0.3)
 }
 
-/// The small white tag after the name. Shared with the profile, which marks
-/// what Plus opens with it.
+/// The small white tag the profile marks what Plus opens with.
 struct PlusBadge: View {
     var body: some View {
         Text("Plus")
@@ -264,11 +274,11 @@ private struct FeaturePill: View {
 }
 
 /// The app's icon, cut to the frame's corner with its hairline and the
-/// white glow along its inside top edge.
+/// white glow along its inside top edge, in its wreath of vines.
 private struct PaywallIcon: View {
-    private static let size: CGFloat = 142
-    private static let corner: CGFloat = 41
-    private static let edge = Color(hex: 0xFFF596)
+    private static let size: CGFloat = 160.26
+    private static let corner: CGFloat = 46.27
+    private static let edge = Color(hex: 0x6E9265)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
@@ -281,14 +291,26 @@ private struct PaywallIcon: View {
             // pushed down and blurred, then clipped back inside the shape.
             .overlay {
                 shape
-                    .stroke(.white.opacity(0.8), lineWidth: 12)
-                    .blur(radius: 7.5)
-                    .offset(y: 4)
+                    .stroke(.white.opacity(0.8), lineWidth: 13.5)
+                    .blur(radius: 8.5)
+                    .offset(y: 4.5)
                     .mask { shape }
                     .allowsHitTesting(false)
             }
-            .overlay { shape.strokeBorder(Self.edge, lineWidth: 1) }
-            .accessibilityHidden(true)
+            .overlay { shape.strokeBorder(Self.edge, lineWidth: 1.13) }
+            // Hung over the icon a touch up and to the left of its centre,
+            // and wider than it: the wreath takes no room of its own.
+            .overlay {
+                Image(.paywallWreath)
+                    .resizable()
+                    .frame(width: 316, height: 316)
+                    .offset(x: -5.6, y: -3.4)
+                    .allowsHitTesting(false)
+            }
+            // The name is on the icon; this is what VoiceOver reads first.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("SQIA Plus")
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
