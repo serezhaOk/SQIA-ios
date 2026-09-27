@@ -388,29 +388,28 @@ struct SequencerView: View {
         .position(x: panel.midX, y: panel.midY)
     }
 
-    /// Two rows of two, in the space the panels leave. Each column lines up
-    /// with the panel above it.
+    /// One knob under each panel, in the space the panels leave: Scatter on
+    /// the left, Delay on the right. The size they had when there were two
+    /// rows of them, so the dial does not balloon into the room the other
+    /// two left — the pair sits in the middle of it instead.
     private func effectKnobs(in size: CGSize) -> some View {
         let first = CGRect(model.mixerPanel(0, in: size))
         let second = CGRect(model.mixerPanel(1, in: size))
         let top = first.maxY + 18
-        let rowHeight = max(0, (size.height - top - 8) / 2)
-        let rows: [[MasterEffect]] = [[.reverb, .delay], [.scatter, .cloud]]
+        let band = max(0, size.height - top - 8)
+        let height = band / 2
+        let effects: [MasterEffect] = [.scatter, .delay]
 
-        return ForEach(rows.indices, id: \.self) { row in
-            ForEach(rows[row].indices, id: \.self) { column in
-                let effect = rows[row][column]
-                let slot = column == 0 ? first : second
-                EffectKnob(
-                    title: effect.name,
-                    value: model.effects[effect],
-                    onChange: { model.setEffect(effect, to: $0) }
-                )
-                .frame(width: slot.width, height: rowHeight)
-                .position(
-                    x: slot.midX,
-                    y: top + rowHeight * (CGFloat(row) + 0.5))
-            }
+        return ForEach(effects.indices, id: \.self) { column in
+            let effect = effects[column]
+            let slot = column == 0 ? first : second
+            EffectKnob(
+                title: effect.name,
+                value: model.effects[effect],
+                onChange: { model.setEffect(effect, to: $0) }
+            )
+            .frame(width: slot.width, height: height)
+            .position(x: slot.midX, y: top + band / 2)
         }
     }
 

@@ -1,4 +1,4 @@
-// The mixer's four knobs: that they are silent when down, stable when all
+// The mixer's two knobs: that they are silent when down, stable when all
 // the way up, and that each one actually does something in between.
 
 import Foundation
@@ -61,7 +61,7 @@ struct MasterEffectsTests {
     @Test("Everything at full stays finite and bounded for half a minute")
     func stableAtFull() {
         let input = pattern(frames: Int(rate * 30))
-        let out = run(EffectSettings(reverb: 1, delay: 1, scatter: 1, cloud: 1), input: input)
+        let out = run(EffectSettings(delay: 1, scatter: 1), input: input)
         let peak = zip(out.left, out.right).reduce(0.0) { max($0, abs($1.0), abs($1.1)) }
         #expect(out.left.allSatisfy { $0.isFinite })
         #expect(out.right.allSatisfy { $0.isFinite })
@@ -88,7 +88,7 @@ struct MasterEffectsTests {
     func tails() {
         var input = pattern(frames: Int(rate * 2))
         input += Array(repeating: 0, count: Int(rate))
-        for effect in [MasterEffect.reverb, .delay, .cloud] {
+        for effect in [MasterEffect.delay] {
             var settings = EffectSettings()
             settings[effect] = 0.5
             let out = run(settings, input: input)

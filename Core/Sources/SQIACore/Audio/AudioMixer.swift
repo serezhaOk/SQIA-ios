@@ -11,7 +11,7 @@
 // The signal follows the web's: voices sum into their preset's own chain
 // (filter → overdrive → chorus → ping-pong delay), each chain goes dry to
 // the master and sends into one shared reverb, the sum goes through the
-// mixer's four knobs, and the master runs at 0.9 into the limiter.
+// mixer's two knobs, and the master runs at 0.9 into the limiter.
 //
 // Nothing in `render` allocates, locks or touches a reference count.
 
@@ -37,7 +37,7 @@ public final class AudioMixer: @unchecked Sendable {
     private var busesLeft: [Double]
     private var busesRight: [Double]
     private var reverb: Reverb
-    /// Reverb, Delay, Scatter and Cloud, over everything.
+    /// Delay and Scatter, over everything.
     private var effects: MasterEffects
     private var limiter: Limiter
 
@@ -104,7 +104,7 @@ public final class AudioMixer: @unchecked Sendable {
 
     private var nextEvent: AudioEvent?
 
-    /// The four knobs, as the bits of four doubles.
+    /// The knobs, as the bits of one double each.
     ///
     /// Not an event: the queue has one writer, the transport, and a knob is
     /// turned on the main thread — sixty times a second under a finger. So

@@ -232,14 +232,17 @@ final class SmokeTests: XCTestCase {
         awaitElement("Note field", "the second track did not open after subscribing")
     }
 
-    /// The four effect knobs sit under the panels, turn when dragged, and
+    /// The two effect knobs sit under the panels, turn when dragged, and
     /// double tap back to zero — with the pattern playing through them the
     /// whole time.
     func testTheMixerKnobsTurn() {
         openAProject()
         awaitElement("Tracks", "the track dots are missing").tap()
-        for name in ["Reverb", "Delay", "Scatter", "Cloud"] {
+        for name in ["Scatter", "Delay"] {
             awaitElement(name, "the mixer has no \(name) knob")
+        }
+        for name in ["Reverb", "Cloud"] {
+            XCTAssertFalse(named(name).exists, "the mixer still has a \(name) knob")
         }
 
         let knob = named("Scatter")

@@ -30,6 +30,16 @@ struct EffectKnob: View {
 
     var body: some View {
         VStack(spacing: 10) {
+            GeometryReader { geometry in
+                let size = min(geometry.size.width, geometry.size.height)
+                dial(size: size)
+                    .frame(width: size, height: size)
+                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            }
+            // A little narrower than the panel above.
+            .padding(.horizontal, 8)
+
+            // Under the dial, where a thumb turning it does not cover it.
             // The number while it is being turned, so it can be read off by
             // ear-testing; the name the rest of the time.
             Text(dragStart == nil ? title : "\(percent)")
@@ -37,17 +47,6 @@ struct EffectKnob: View {
                 .foregroundStyle(palette.label.opacity(0.5))
                 .monospacedDigit()
                 .frame(height: 18)
-
-            GeometryReader { geometry in
-                let size = min(geometry.size.width, geometry.size.height)
-                dial(size: size)
-                    .frame(width: size, height: size)
-                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            }
-            // A little narrower than the panel above, and clear of the next
-            // row's name.
-            .padding(.horizontal, 8)
-            .padding(.bottom, 14)
         }
         .contentShape(Rectangle())
         .gesture(drag)
@@ -110,7 +109,7 @@ struct EffectKnob: View {
 }
 
 #Preview {
-    EffectKnob(title: "Reverb", value: 0.3, onChange: { _ in })
+    EffectKnob(title: "Delay", value: 0.3, onChange: { _ in })
         .frame(width: 160, height: 190)
         .padding()
         .background(Color(hex: 0x1C1C1C))

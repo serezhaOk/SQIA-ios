@@ -129,7 +129,7 @@ final class SequencerModel {
     private(set) var dotField = false
     private static let dotFieldKey = "sqia.dotField"
 
-    /// The mixer's four knobs, 0…1 each.
+    /// The mixer's two knobs, 0…1 each.
     ///
     /// Kept on the phone rather than in the project for now, while the
     /// sound of them is being settled: a project saved with a knob that

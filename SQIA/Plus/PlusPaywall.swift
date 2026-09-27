@@ -1,7 +1,7 @@
 // The paywall, from the Figma frame "Paywall": a dark green sheet with two
-// pale green glows bleeding in from its edges and vines creeping in at the
-// bottom corners, the app's icon in a wreath of them, what Plus opens as a
-// column of pills, and one white Subscribe button.
+// pale green glows bleeding in from its edges, the app's icon in a wreath
+// of vines, what Plus opens as a column of pills, and one white Subscribe
+// button.
 //
 // The sheet itself is the system's — its corners, its grabber, its swipe to
 // dismiss, and Restore as a navigation bar button — with no close button:
@@ -31,7 +31,6 @@ struct PlusPaywall: View {
                     GeometryReader { geometry in
                         ZStack {
                             PaywallLayout.ground
-                            vines(in: geometry.size)
                             glows(in: geometry.size)
                         }
                     }
@@ -184,31 +183,6 @@ struct PlusPaywall: View {
 
     // --------------------------------------------------------------- glows --
 
-    /// The same vine twice, turned 41°, creeping in over the bottom left
-    /// and the bottom right. Exclusion rather than plain over, as the frame
-    /// sets it, so the dark stems lift out of the green instead of sitting
-    /// on it as black.
-    private func vines(in size: CGSize) -> some View {
-        ZStack {
-            vine(side: 280)
-                .position(x: -60.5, y: size.height - 185.5)
-            vine(side: 328.6)
-                .position(x: size.width + 40.5, y: size.height - 135.5)
-        }
-        .frame(width: size.width, height: size.height)
-        .clipped()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    private func vine(side: CGFloat) -> some View {
-        Image(.paywallVines)
-            .resizable()
-            .scaledToFill()
-            .frame(width: side, height: side)
-            .rotationEffect(.degrees(41.13))
-            .blendMode(.exclusion)
-    }
 
     /// Two shapes blurred into light, each turned 45° and mostly off the
     /// sheet: one over the upper left, one over the lower right. Set
