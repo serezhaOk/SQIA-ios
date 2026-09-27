@@ -34,6 +34,9 @@ final class AppModel {
     private(set) var hasStarted = false
     let auth: AuthController
     let library: LibraryModel
+    /// SQIA Plus, as StoreKit sees it. Belongs to the Apple ID, not to the
+    /// SQIA account, so signing out does not touch it.
+    let plus = PlusStore()
     /// Nil until a project has been opened or played for the first time.
     private(set) var sequencer: SequencerModel?
     /// The project the library's play button started, while the library is
@@ -107,6 +110,9 @@ final class AppModel {
     // ------------------------------------------------------------ the door --
 
     func start() async {
+        // Its own task: StoreKit's listener runs for the life of the app,
+        // and the door below should not wait on the App Store to answer.
+        Task { await plus.start() }
         #if DEBUG
             if Self.isUITesting {
                 wasSignedIn = true
@@ -247,6 +253,7 @@ final class AppModel {
     private func engine() -> SequencerModel {
         if let sequencer { return sequencer }
         let model = SequencerModel(store: store)
+        model.setAccess(plus.access)
         model.onRunningChanged = { [weak self] _ in self?.showNowPlaying() }
         sequencer = model
         return model

@@ -1,10 +1,10 @@
 // The profile, pushed from the library's account button.
 //
-// Three glass cards on the library's backdrop, from the Figma frame: whether
-// the sound carries on once the app is out of sight; feedback and a rating;
-// and the documents, each of which opens in the browser. The account itself
-// — logging out, deleting it — is behind the header's menu, one step further
-// from a thumb than anything on the cards.
+// Glass cards on the library's backdrop, from the Figma frame: SQIA Plus;
+// whether the sound carries on once the app is out of sight; feedback and a
+// rating; and the documents, each of which opens in the browser. The account
+// itself — logging out, deleting it — is behind the header's menu, one step
+// further from a thumb than anything on the cards.
 
 import SQIACore
 import SwiftUI
@@ -12,11 +12,14 @@ import StoreKit
 
 struct ProfileView: View {
     var accountEmail: String?
+    let plus: PlusStore
     var onSignOut: @MainActor () async -> Void
     var onDeleteAccount: @MainActor () async -> Void
 
     @AppStorage(Preferences.backgroundPlayback) private var playsInBackground = false
     @State private var closingAccount = false
+    @State private var showingPaywall = false
+    @State private var managingPlus = false
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @Environment(\.requestReview) private var requestReview
@@ -30,15 +33,16 @@ struct ProfileView: View {
                         .frame(width: width)
                         .padding(.top, LibraryLayout.headTop)
                     VStack(spacing: LibraryLayout.gap) {
+                        card(width: width) { plusRow }
                         card(width: width) { playbackRow }
                         card(width: width) {
                             row("Leave feedback", icon: .pencilIcon) { openURL(Self.feedback) }
                             row("Rate in App Store", icon: .likeIcon) { requestReview() }
                         }
                         card(width: width) {
-                            row("Privacy policy", icon: .openInNewIcon) { openURL(Self.privacy) }
-                            row("Terms of use", icon: .openInNewIcon) { openURL(Self.terms) }
-                            row("About", icon: .openInNewIcon) { openURL(Self.about) }
+                            row("Privacy policy", icon: .openInNewIcon) { openURL(Links.privacy) }
+                            row("Terms of use", icon: .openInNewIcon) { openURL(Links.terms) }
+                            row("About", icon: .openInNewIcon) { openURL(Links.about) }
                         }
                     }
                     .padding(.top, ProfileLayout.cardsTop)
@@ -70,6 +74,10 @@ struct ProfileView: View {
         } message: {
             Text("Every project goes with it. This cannot be undone.")
         }
+        .sheet(isPresented: $showingPaywall) {
+            PlusPaywall(plus: plus)
+        }
+        .manageSubscriptionsSheet(isPresented: $managingPlus)
     }
 
     // -------------------------------------------------------------- header --
@@ -133,6 +141,34 @@ struct ProfileView: View {
             .overlay(Self.cardShape.strokeBorder(Palette.glassEdge, lineWidth: 1))
     }
 
+    /// What it costs, before anyone opens the paywall; once subscribed, the
+    /// system's own sheet for changing or cancelling it, which is where
+    /// somebody looking to cancel expects to end up.
+    private var plusRow: some View {
+        Button {
+            if plus.access.hasPlus { managingPlus = true } else { showingPaywall = true }
+        } label: {
+            HStack(spacing: 12) {
+                label(plus.access.hasPlus ? "SQIA Plus" : "Get SQIA Plus")
+                Spacer(minLength: 0)
+                Text(plusDetail)
+                    .manrope(.medium, TextStyle.rowSize, tracking: -0.02)
+                    .foregroundStyle(Palette.ui.opacity(0.55))
+            }
+            .padding(.vertical, ProfileLayout.rowGap / 2)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(RowPress())
+    }
+
+    private var plusDetail: String {
+        if plus.access.hasPlus { return "Manage" }
+        guard let product = plus.product,
+            let period = product.subscription?.subscriptionPeriod
+        else { return "" }
+        return "\(product.displayPrice) / \(period.unit.localizedDescription.lowercased())"
+    }
+
     private var playbackRow: some View {
         Toggle(isOn: $playsInBackground) {
             label("Background playback")
@@ -163,10 +199,6 @@ struct ProfileView: View {
     }
 
     // --------------------------------------------------------------- links --
-
-    private static let privacy = URL(string: "https://sqia.serezhaok.com/privacy.html")!
-    private static let terms = URL(string: "https://sqia.serezhaok.com/terms.html")!
-    private static let about = URL(string: "https://serezhaok.com")!
 
     /// Feedback opens the mail app rather than a form behind someone else's
     /// script, because the privacy manifest says nothing here talks to anyone

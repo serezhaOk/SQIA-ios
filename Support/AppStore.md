@@ -51,10 +51,10 @@ a tool for anyone. The rest builds toward the other half of the
 positioning, that this is built to be lost in rather than gotten right.
 The closing line is not part of that pitch — it is the Terms of Use and
 Privacy Policy links App Review looks for, especially on an app that asks
-for a sign-in. Apple only requires this in-description for apps selling
-auto-renewable subscriptions (Guideline 3.1.2), which SQIA doesn't do, but
-reviewers ask for it often enough on account-based free apps that it is
-worth having rather than defending its absence.
+for a sign-in. Apple requires this in-description for apps selling
+auto-renewable subscriptions (Guideline 3.1.2), which SQIA does from the
+release that brings SQIA Plus in — so from then on it is not optional, and
+the SQIA PLUS paragraph above it has to name the price and the period.
 
 > SQIA is a sequencer you draw on, and you don't need to know music to use
 > it.
@@ -80,16 +80,20 @@ worth having rather than defending its absence.
 > Switch voices mid-pattern and the same drawing turns into a different
 > soundscape.
 >
-> Two tracks play at once. Mute one to redraw it while the other keeps
-> going, then bring it back and hear how the two sit together.
+> SQIA PLUS
+> Open the second track and two parts play at once: mute one to redraw it
+> while the other keeps going, then bring it back and hear how the two sit
+> together. Everything added to Plus later comes with it. SQIA Plus is an
+> auto-renewable subscription at $1.99 a month; it renews unless cancelled
+> at least 24 hours before the end of the period, and can be managed or
+> cancelled in your Apple Account settings.
 >
 > Every soundscape you shape is saved as you play, and it's the same
 > project as on sqia.serezhaok.com: start it on your phone, keep going in
 > a browser, or come back to it in an hour, or next week, exactly how you
 > left it.
 >
-> SQIA doesn't need accounts beyond signing in, subscriptions, adverts, or
-> analytics. It collects only the email you sign in with and the patterns
+> SQIA doesn't need accounts beyond signing in, adverts, or analytics. It collects only the email you sign in with and the patterns
 > you make.
 >
 > Terms of Use (EULA): sqia.serezhaok.com/terms.html
@@ -186,6 +190,14 @@ has nothing to ask about.
 > The sign-in screen is the exception. Its film loop is muted and the quiet
 > bed under it is `.ambient`, so it goes silent with the ring switch and
 > never interrupts whatever the phone was already playing.
+>
+> **SQIA Plus.** One auto-renewable subscription, `com.serezhaok.sqia.plus.monthly`,
+> $1.99 a month. It opens the mixer's second track: in the mixer, the right
+> panel wears a padlock, and pressing it shows the paywall. The paywall is
+> StoreKit's own `SubscriptionStoreView`, with Restore Purchases and the
+> Terms of Use and Privacy Policy links on it. Once subscribed, Profile →
+> SQIA Plus opens the system's Manage Subscriptions sheet. Everything else
+> in the app is free.
 >
 > **How to see it working in about a minute.** Sign in → tap
 > "+ Create first project" → drag a finger across the grid of dots. It starts

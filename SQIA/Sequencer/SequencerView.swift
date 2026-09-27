@@ -11,6 +11,9 @@
 // Opening a project lands on its track with the mixer already underneath, so
 // the first thing on screen is still something to draw on.
 //
+// The second panel is SQIA Plus. Without it the panel wears a padlock, and
+// pressing it brings up the paywall instead of the track.
+//
 // Tempo and key across the top of both, the field in the middle, the eraser,
 // the sound and the randomiser along the bottom of a track — laid out and
 // styled from the Figma. Everything raised is one part wearing different
@@ -21,6 +24,7 @@ import SwiftUI
 
 struct SequencerView: View {
     let model: SequencerModel
+    let plus: PlusStore
     /// Flush what is owed and go back to the library.
     var onLeave: @MainActor () async -> Void
 
@@ -32,6 +36,7 @@ struct SequencerView: View {
     @State private var showingVoices = false
     @State private var showingKey = false
     @State private var showingTempo = false
+    @State private var showingPaywall = false
     /// The line above the field. Set by an action, cleared by its own task.
     @State private var announcement: String?
     @State private var announcing: Task<Void, Never>?
@@ -39,8 +44,12 @@ struct SequencerView: View {
     @AppStorage(Preferences.backgroundPlayback) private var playsInBackground = false
     @Namespace private var zoom
 
-    init(model: SequencerModel, onLeave: @escaping @MainActor () async -> Void) {
+    init(
+        model: SequencerModel, plus: PlusStore,
+        onLeave: @escaping @MainActor () async -> Void
+    ) {
         self.model = model
+        self.plus = plus
         self.onLeave = onLeave
         _path = State(initialValue: [model.state.activeTrackIndex])
         _mixerLive = State(initialValue: false)
@@ -83,9 +92,17 @@ struct SequencerView: View {
                 onPickScale: { model.selectScale($0) }
             )
         }
+        .sheet(isPresented: $showingPaywall) {
+            PlusPaywall(plus: plus)
+        }
         .onAppear {
             model.start()
             Haptics.warm()
+        }
+        .onChange(of: model.access) {
+            // Plus lapsed with its track open: back out to the mixer, where
+            // the panel now shows why.
+            if let index = path.first, model.isLocked(index) { path.removeAll() }
         }
         .onChange(of: scenePhase) { _, phase in
             // Backgrounded, the app goes quiet — the same as a browser tab
@@ -123,6 +140,10 @@ struct SequencerView: View {
     private func open(_ index: Int) {
         guard path.isEmpty else { return }
         Haptics.toggle()
+        if model.isLocked(index) {
+            showingPaywall = true
+            return
+        }
         model.selectTrack(index)
         path = [index]
     }
@@ -351,10 +372,14 @@ struct SequencerView: View {
             .buttonStyle(TilePress(shape: panelShape))
             .zoomSource(index, in: zoom, shape: panelShape)
             .accessibilityLabel("Track \(index + 1)")
-            .accessibilityValue(model.voiceLabel(index))
-            .accessibilityHint("Opens this track.")
+            .accessibilityValue(model.isLocked(index) ? "SQIA Plus" : model.voiceLabel(index))
+            .accessibilityHint(
+                model.isLocked(index) ? "Shows what SQIA Plus opens." : "Opens this track.")
 
-            if model.hasPart(index) {
+            if model.isLocked(index) {
+                lockChip()
+                    .padding(MixerLayout.chipInset)
+            } else if model.hasPart(index) {
                 chipRow(index)
                     .padding(MixerLayout.chipInset)
             }
@@ -438,6 +463,29 @@ struct SequencerView: View {
             .accessibilityLabel(model.isMuted(index) ? "Unmute" : "Mute")
             .accessibilityAddTraits(model.isMuted(index) ? [.isSelected] : [])
         }
+    }
+
+    /// Where the name chip would be, on a panel Plus has not opened: the
+    /// same capsule, saying what it would take. Only a picture — a press on
+    /// it lands on the panel beneath, and the panel already says "SQIA Plus"
+    /// to VoiceOver.
+    private func lockChip() -> some View {
+        let chip = palette.opened
+        return HStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Plus")
+                    .manrope(.regular, 16, tracking: 0)
+            }
+            .foregroundStyle(chip.background)
+            .padding(.horizontal, 14)
+            .frame(height: MixerLayout.chipHeight)
+            .background(chip.label, in: Capsule())
+            Spacer(minLength: 0)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     // -------------------------------------------------------------- footer --
@@ -599,5 +647,6 @@ private extension View {
 }
 
 #Preview {
-    SequencerView(model: SequencerModel(store: InMemoryProjectStore()), onLeave: {})
+    SequencerView(
+        model: SequencerModel(store: InMemoryProjectStore()), plus: PlusStore(), onLeave: {})
 }

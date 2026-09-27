@@ -18,6 +18,7 @@ import SwiftUI
 struct LibraryView: View {
     let model: LibraryModel
     var accountEmail: String?
+    let plus: PlusStore
     /// The project whose loop is playing from here, if any.
     var previewing: String?
     var onOpen: (Project) -> Void
@@ -45,6 +46,7 @@ struct LibraryView: View {
                 .navigationDestination(isPresented: $showingProfile) {
                     ProfileView(
                         accountEmail: accountEmail,
+                        plus: plus,
                         onSignOut: onSignOut,
                         onDeleteAccount: onDeleteAccount)
                 }

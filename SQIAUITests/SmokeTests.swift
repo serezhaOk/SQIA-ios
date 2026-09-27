@@ -17,13 +17,30 @@
 // test that needed a network and a real account would be testing the network
 // and the account.
 
+import StoreKitTest
 import XCTest
 
 final class SmokeTests: XCTestCase {
     private var app: XCUIApplication!
+    /// The App Store, played by SQIA.storekit: SQIA Plus at 1.99 a month,
+    /// nothing bought, and no sheets asking to confirm a purchase. Every
+    /// test starts on the free app, so the second track is always locked
+    /// unless a test buys it.
+    private var store: SKTestSession!
 
-    override func setUp() {
+    override func setUpWithError() throws {
         continueAfterFailure = false
+        // Read from beside this file rather than from the test bundle: the
+        // simulator sees the Mac's disk, and a `.storekit` in a synchronised
+        // folder is not copied as a resource. The scheme's Run action points
+        // at the same file, so Xcode's Run and the tests sell the same thing.
+        let configuration = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("SQIA.storekit")
+        store = try SKTestSession(contentsOf: configuration)
+        store.resetToDefaultState()
+        store.clearTransactions()
+        store.disableDialogs = true
         app = XCUIApplication()
         app.launchArguments = ["-uiTesting"]
         app.launch()
@@ -73,7 +90,11 @@ final class SmokeTests: XCTestCase {
     func testTheProfileOpensAndComesBack() {
         awaitElement("Profile", "the profile button is missing").tap()
         awaitElement("Background playback", "the profile did not open")
-        for row in ["Leave feedback", "Rate in App Store", "Privacy policy", "Terms of use", "About"] {
+        let rows = [
+            "Get SQIA Plus", "Leave feedback", "Rate in App Store", "Privacy policy",
+            "Terms of use", "About",
+        ]
+        for row in rows {
             XCTAssertTrue(named(row).exists, "the profile has no \(row) row")
         }
         let shot = XCTAttachment(screenshot: app.screenshot())
@@ -137,6 +158,49 @@ final class SmokeTests: XCTestCase {
         awaitElement("Back to projects", "the mixer did not open, or its way out is missing")
             .tap()
         awaitElement("My vibes", "leaving the mixer did not return to the library")
+    }
+
+    /// Without Plus the second panel is locked: pressing it brings up the
+    /// paywall rather than the track, and closing that leaves the mixer.
+    func testTheSecondTrackAsksForPlus() {
+        openAProject()
+        awaitElement("Tracks", "the track dots are missing").tap()
+        let second = awaitElement("Track 2", "the mixer has no second panel")
+        XCTAssertEqual(second.value as? String, "SQIA Plus", "the second track is not locked")
+        second.tap()
+        awaitElement("SQIA Plus", "pressing a locked track did not show the paywall")
+
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "paywall"
+        shot.lifetime = .keepAlways
+        add(shot)
+
+        app.swipeDown(velocity: .fast)
+        awaitElement("Back to projects", "closing the paywall did not return to the mixer")
+        XCTAssertFalse(named("Note field").isHittable, "a locked track opened anyway")
+    }
+
+    /// Buying Plus on the paywall closes it and opens the second track.
+    func testSubscribingOpensTheSecondTrack() {
+        openAProject()
+        awaitElement("Tracks", "the track dots are missing").tap()
+        awaitElement("Track 2", "the mixer has no second panel").tap()
+        awaitElement("SQIA Plus", "pressing a locked track did not show the paywall")
+
+        let subscribe = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'Subscribe' OR label CONTAINS '1.99'")
+        ).firstMatch
+        XCTAssertTrue(subscribe.waitForExistence(timeout: patience), "the paywall has no price")
+        subscribe.tap()
+
+        let second = named("Track 2")
+        let unlocked = NSPredicate(format: "value != %@", "SQIA Plus")
+        expectation(for: unlocked, evaluatedWith: second)
+        waitForExpectations(timeout: patience)
+        XCTAssertFalse(named("Subscription Store View Container").exists, "the paywall stayed up")
+
+        second.tap()
+        awaitElement("Note field", "the second track did not open after subscribing")
     }
 
     /// The four effect knobs sit under the panels, turn when dragged, and

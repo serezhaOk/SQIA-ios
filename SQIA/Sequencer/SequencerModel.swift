@@ -137,6 +137,11 @@ final class SequencerModel {
     private(set) var effects = EffectSettings()
     private static let effectsKey = "sqia.effects"
 
+    /// What the subscription opens. Handed in by the app, which hears it
+    /// from StoreKit; free until told otherwise, so a locked track is never
+    /// heard by accident for the moment before that.
+    private(set) var access = Access.free
+
     /// The colours a track's screen wears. The mixer stands on `opened`, its
     /// own ground, so the panels have something to lie on.
     var palette: SequencerPalette {
@@ -401,7 +406,8 @@ final class SequencerModel {
             // what it holds rather than letting a blob hang over the border.
             layer.clipped = true
             layer.alpha = MixerLayout.alpha(
-                active: false, eased: 1, muted: state.tracks[index].muted)
+                active: false, eased: 1,
+                muted: !access.sounds(track: index, muted: state.tracks[index].muted))
             layer.detail = MixerLayout.detail(active: false, eased: 1)
             frame.layers.append(layer)
             frame.outlines.append(
@@ -424,7 +430,24 @@ final class SequencerModel {
     /// Make a track the one the tools and the sound belong to — which is
     /// what opening its panel does.
     func selectTrack(_ index: Int) {
+        guard access.opens(track: index) else { return }
         state.selectTrack(index)
+    }
+
+    func isLocked(_ index: Int) -> Bool {
+        !access.opens(track: index)
+    }
+
+    /// Plus arriving or lapsing. Nothing in the project changes — a locked
+    /// track keeps its notes and only goes quiet — so there is nothing to
+    /// save. If the track that just closed is the one being drawn on, the
+    /// tools go back to the first.
+    func setAccess(_ next: Access) {
+        guard next != access else { return }
+        access = next
+        if !access.opens(track: state.activeTrackIndex) { state.selectTrack(0) }
+        syncScenes()
+        publishVoicing(saving: false)
     }
 
     func toggleMute(_ index: Int) {
@@ -435,9 +458,11 @@ final class SequencerModel {
     }
 
     /// Only a track that holds a part gets a name and a mute button, as in
-    /// the web — an empty panel is left clean.
+    /// the web — an empty panel is left clean. A locked one wears the
+    /// padlock instead, whatever it holds.
     func hasPart(_ index: Int) -> Bool {
         state.tracks.indices.contains(index) && state.tracks[index].grid.hasNotes
+            && !isLocked(index)
     }
 
     func voiceLabel(_ index: Int) -> String {
@@ -707,7 +732,7 @@ final class SequencerModel {
     private func syncScenes() {
         for (index, track) in state.tracks.enumerated() where scenes.indices.contains(index) {
             scenes[index].grid = track.grid
-            scenes[index].alpha = track.muted ? 0.35 : 1
+            scenes[index].alpha = access.sounds(track: index, muted: track.muted) ? 1 : 0.35
         }
     }
 
@@ -727,11 +752,11 @@ final class SequencerModel {
         // column is always the same instrument.
         let drums = tuning.isOn(.machineFollowsKey) ? midi : Music.drumTable
         voicing.write(
-            tracks: state.tracks.map { track in
+            tracks: state.tracks.enumerated().map { index, track in
                 let preset = VoiceCatalog.preset(at: track.voiceIndex)
                 return VoicingBox.Track(
                     grid: track.grid,
-                    muted: track.muted,
+                    muted: !access.sounds(track: index, muted: track.muted),
                     preset: preset,
                     midi: preset == .machine ? drums : midi
                 )

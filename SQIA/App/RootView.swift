@@ -24,6 +24,7 @@ struct RootView: View {
                     LibraryView(
                         model: app.library,
                         accountEmail: app.accountEmail,
+                        plus: app.plus,
                         previewing: app.previewing,
                         onOpen: { app.open($0) },
                         onPreview: { app.togglePreview($0) },
@@ -37,6 +38,7 @@ struct RootView: View {
                     if let sequencer = app.sequencer {
                         SequencerView(
                             model: sequencer,
+                            plus: app.plus,
                             onLeave: { await app.backToLibrary() }
                         )
                         .transition(.opacity)
@@ -53,6 +55,9 @@ struct RootView: View {
         .onOpenURL { url in Task { await app.open(url) } }
         .onChange(of: app.auth.isSignedIn) { _, signedIn in
             app.sessionChanged(to: signedIn)
+        }
+        .onChange(of: app.plus.access) { _, access in
+            app.sequencer?.setAccess(access)
         }
     }
 }

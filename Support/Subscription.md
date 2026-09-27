@@ -1,0 +1,62 @@
+# SQIA Plus — the subscription
+
+One auto-renewable subscription, $1.99 a month. For now it opens the
+mixer's second track; later features join it through `PlusFeature` in
+`Core/Sources/SQIACore/Plus/Access.swift`, which is the one place that says
+what Plus opens.
+
+## How it works in the app
+
+- `PlusStore` (SQIA/Plus) asks StoreKit 2 for the entitlement at launch and
+  listens to `Transaction.updates` for the life of the app. Nothing goes to
+  Supabase: the subscription belongs to the Apple ID, not the SQIA account,
+  so signing out or into another account does not change it.
+- Without Plus the second track keeps its notes but is silent and locked.
+  A project drawn with two tracks in the browser, or before a lapse, opens
+  intact and plays both again the moment Plus comes back.
+- The paywall is `SubscriptionStoreView`, with Restore, the policy links and
+  a close button. It opens from the locked panel in the mixer and from
+  Profile → Get SQIA Plus. Once subscribed, that row opens the system's
+  Manage Subscriptions sheet.
+
+## Testing locally
+
+`SQIAUITests/SQIA.storekit` is the local App Store: SQIA Plus at 1.99 a
+month. The scheme's Run action points at it, so a Run from Xcode sells from
+it with no sandbox account. Debug → StoreKit → Manage Transactions refunds,
+expires or deletes a purchase to see the track lock again.
+
+The UI tests load the same file through `SKTestSession`, start every test
+on the free app, and buy Plus once in `testSubscribingOpensTheSecondTrack`.
+
+## App Store Connect, click by click
+
+1. My Apps → SQIA → Monetization → Subscriptions → **Create** a group named
+   `SQIA Plus`.
+2. In it, create a subscription:
+   - Reference name: `SQIA Plus Monthly`
+   - Product ID: `com.serezhaok.sqia.plus.monthly` — exactly this; the app
+     looks it up by this string.
+   - Duration: 1 month. Price: $1.99 (tier for USD 1.99), then let Apple
+     fill the other storefronts.
+   - Family Sharing: off (matches the StoreKit file).
+3. Localization (English): display name `SQIA Plus`, description
+   `The second track, and everything Plus adds next.`
+4. Group localization: display name `SQIA Plus`.
+5. Review information: a screenshot of the paywall (the UI test
+   `testTheSecondTrackAsksForPlus` attaches one) and a line of review notes.
+6. The first subscription has to go to review **with an app version**: on
+   the version page, under In-App Purchases and Subscriptions, add it before
+   submitting.
+7. Agreements, Tax, and Banking: the Paid Apps agreement must be active, or
+   the product never loads outside Xcode.
+
+## Before it ships
+
+- [ ] Product created in App Store Connect with the ID above, status
+      "Ready to Submit".
+- [ ] Bought, restored and cancelled once on a real device with a sandbox
+      account (Settings → Developer → Sandbox Apple Account).
+- [ ] App Store description carries the SQIA PLUS paragraph with price,
+      period and renewal terms (Support/AppStore.md).
+- [ ] Review notes mention where the paywall is.
