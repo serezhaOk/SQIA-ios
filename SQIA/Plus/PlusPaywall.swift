@@ -1,7 +1,10 @@
-// The paywall, from the Figma frame "Paywall": a dark plum sheet with a
-// yellow and a magenta glow bleeding in from its edges, the app's icon with
-// two sparkles on it, what Plus opens as a column of pills, and one white
-// Subscribe button.
+// The paywall, from the Figma frame "Paywall": a dark green sheet with two
+// pale green glows bleeding in from its edges, the app's icon, what Plus
+// opens as a column of pills, and one white Subscribe button.
+//
+// The sheet itself is the system's — its corners, its grabber, its swipe to
+// dismiss, and Restore as a navigation bar button — with no close button:
+// swiping down is the way out.
 //
 // It used to be StoreKit's `SubscriptionStoreView`. The design wants the
 // whole sheet, so the buying is ours now: `PlusStore` does the purchase and
@@ -21,16 +24,27 @@ struct PlusPaywall: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        GeometryReader { geometry in
-            ZStack {
-                PaywallLayout.ground
-                glows(in: geometry.size)
-                content
-            }
+        NavigationStack {
+            content
+                .background {
+                    GeometryReader { geometry in
+                        ZStack {
+                            PaywallLayout.ground
+                            glows(in: geometry.size)
+                        }
+                    }
+                    .ignoresSafeArea()
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Restore") { run(plus.restore) }
+                            .disabled(busy)
+                    }
+                }
+                .toolbarBackground(.hidden, for: .navigationBar)
         }
-        .ignoresSafeArea(edges: .bottom)
+        .tint(.white)
         .presentationBackground(PaywallLayout.ground)
-        .presentationCornerRadius(PaywallLayout.corner)
         .presentationDragIndicator(.visible)
         .task { await plus.loadProduct() }
         .onChange(of: plus.access.hasPlus) { _, hasPlus in
@@ -44,19 +58,8 @@ struct PlusPaywall: View {
 
     private var content: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button("Restore") { run(plus.restore) }
-                    .manrope(.regular, 17, tracking: 0)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .buttonStyle(PressFade())
-                    .disabled(busy)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 32)
-
             PaywallIcon()
-                .padding(.top, 18)
+                .padding(.top, 8)
 
             title
                 .padding(.top, 9)
@@ -96,7 +99,8 @@ struct PlusPaywall: View {
             footer
                 .padding(.horizontal, 40)
                 .padding(.top, 14)
-                .padding(.bottom, 16)
+                // The home indicator's inset is already under it.
+                .padding(.bottom, 4)
         }
         .animation(Motion.fade, value: message)
     }
@@ -196,13 +200,13 @@ struct PlusPaywall: View {
     // --------------------------------------------------------------- glows --
 
     /// Two shapes blurred into light, each turned 45° and mostly off the
-    /// sheet: magenta over the upper left, yellow over the lower right. Set
+    /// sheet: one over the upper left, one over the lower right. Set
     /// against the sheet's edges rather than its middle, as the frame does.
     private func glows(in size: CGSize) -> some View {
         ZStack {
-            PaywallGlow(shape: .magenta)
+            PaywallGlow(shape: .upperLeft)
                 .position(x: -129, y: 257)
-            PaywallGlow(shape: .yellow)
+            PaywallGlow(shape: .lowerRight)
                 .position(x: size.width + 92, y: size.height - 166)
         }
         .frame(width: size.width, height: size.height)
@@ -216,8 +220,8 @@ struct PlusPaywall: View {
 
 /// From the Figma frame.
 private enum PaywallLayout {
-    static let ground = Color(hex: 0x2C1F29)
-    static let corner: CGFloat = 48
+    static let ground = Color(hex: 0x1A221A)
+    static let glow = Color(hex: 0xBEE2B9)
     static let pill = Color.black.opacity(0.3)
 }
 
@@ -260,11 +264,11 @@ private struct FeaturePill: View {
 }
 
 /// The app's icon, cut to the frame's corner with its hairline and the
-/// white glow along its inside top edge, and the two sparkles on it.
+/// white glow along its inside top edge.
 private struct PaywallIcon: View {
     private static let size: CGFloat = 142
     private static let corner: CGFloat = 41
-    private static let edge = Color(hex: 0xBEE2B9)
+    private static let edge = Color(hex: 0xFFF596)
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
@@ -284,63 +288,7 @@ private struct PaywallIcon: View {
                     .allowsHitTesting(false)
             }
             .overlay { shape.strokeBorder(Self.edge, lineWidth: 1) }
-            // Sparkles sit on the icon's corners, placed from its centre:
-            // the large one over the top right, the small one on the left
-            // edge below the middle.
-            .overlay {
-                ZStack {
-                    Sparkle(star: .large)
-                        .offset(x: 53, y: -63)
-                    Sparkle(star: .small)
-                        .offset(x: -48, y: 23)
-                }
-                .allowsHitTesting(false)
-            }
             .accessibilityHidden(true)
-    }
-}
-
-/// A four-pointed star and a blurred copy of itself under it, from the
-/// frame's two sparkle groups — drawn here rather than shipped as SVG,
-/// because an asset catalog does not render an SVG's blur filter.
-private struct Sparkle: View {
-    enum Star {
-        case large, small
-
-        /// The group's own box, and the blur the frame gives its copy.
-        var box: CGFloat { self == .large ? 82.0244 : 49.4766 }
-        var blur: CGFloat { self == .large ? 8.05 : 4.51 }
-
-        var points: [CGPoint] {
-            switch self {
-            case .large:
-                [
-                    (61.5183, 20.5061), (46.2902, 41.0122), (61.5183, 61.5183),
-                    (41.0122, 46.2902), (20.5061, 61.5183), (35.7342, 41.0122),
-                    (20.5061, 20.5061), (41.0122, 35.7342),
-                ].map { CGPoint(x: $0.0, y: $0.1) }
-            case .small:
-                [
-                    (40.4476, 20.529), (27.3017, 26.2183), (28.9476, 40.4476),
-                    (23.2583, 27.3017), (9.02902, 28.9476), (22.1749, 23.2583),
-                    (20.529, 9.02902), (26.2183, 22.1749),
-                ].map { CGPoint(x: $0.0, y: $0.1) }
-            }
-        }
-    }
-
-    let star: Star
-
-    var body: some View {
-        let path = Path { path in
-            path.addLines(star.points)
-            path.closeSubpath()
-        }
-        ZStack {
-            path.fill(.white).blur(radius: star.blur)
-            path.fill(.white)
-        }
-        .frame(width: star.box, height: star.box)
     }
 }
 
@@ -348,7 +296,7 @@ private struct Sparkle: View {
 /// frame's 106, inside a 318 square turned 45°.
 private struct PaywallGlow: View {
     enum Glow {
-        case yellow, magenta
+        case lowerRight, upperLeft
     }
 
     let shape: Glow
@@ -360,9 +308,9 @@ private struct PaywallGlow: View {
             // The SVG's own coordinates, less where the frame puts the
             // square inside it, plus the margin.
             context.translateBy(
-                x: Self.margin + (shape == .yellow ? -161.93 : -170.89),
+                x: Self.margin + (shape == .lowerRight ? -161.93 : -170.89),
                 y: Self.margin - 212)
-            context.fill(path, with: .color(color))
+            context.fill(path, with: .color(PaywallLayout.glow))
         }
         // The 318 square with room all round for the blur, which a Canvas
         // would otherwise cut at its edges. Same centre either way.
@@ -370,14 +318,10 @@ private struct PaywallGlow: View {
         .rotationEffect(.degrees(-45))
     }
 
-    private var color: Color {
-        shape == .yellow ? Color(hex: 0xFFFD00) : Color(hex: 0xFF19C5)
-    }
-
     private var path: Path {
         var path = Path()
         switch shape {
-        case .yellow:
+        case .lowerRight:
             path.move(to: CGPoint(x: 283.841, y: 274.335))
             path.addCurve(
                 to: CGPoint(x: 298.852, y: 212), control1: CGPoint(x: 253.002, y: 258.568),
@@ -398,7 +342,7 @@ private struct PaywallGlow: View {
             path.addCurve(
                 to: CGPoint(x: 283.841, y: 274.335), control1: CGPoint(x: 307.123, y: 305.185),
                 control2: CGPoint(x: 301.225, y: 283.223))
-        case .magenta:
+        case .upperLeft:
             path.move(to: CGPoint(x: 219.445, y: 300.792))
             path.addCurve(
                 to: CGPoint(x: 272.085, y: 212), control1: CGPoint(x: 197.575, y: 260.808),

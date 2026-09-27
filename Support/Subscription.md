@@ -18,8 +18,9 @@ what Plus opens.
   offers the paywall when pressed; subscribing from there turns it on. A
   switch left on when Plus lapses is ignored, so the app goes quiet when
   left, as it does on the free app.
-- The paywall is our own sheet, from the Figma frame "Paywall" (Prototyping,
-  node 226:2838), with the app icon in place of the other project's. It
+- The paywall is the system's sheet with our content, from the Figma frame
+  "Paywall" (Prototyping, node 280:8547): green ground and glows, the app
+  icon, Restore in the navigation bar and no close button. It
   shows the storefront's price and period, Restore, Privacy and Terms, and
   buys through `PlusStore.purchase()`. It opens from the locked panel in the
   mixer, the background playback switch, and Profile → Get SQIA Plus. Once
