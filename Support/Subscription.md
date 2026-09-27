@@ -11,6 +11,10 @@ what Plus opens.
   listens to `Transaction.updates` for the life of the app. Nothing goes to
   Supabase: the subscription belongs to the Apple ID, not the SQIA account,
   so signing out or into another account does not change it.
+- The owner's account, `serezhaok@gmail.com` (`PlusStore.complimentary`),
+  always has Plus without buying it; the profile's row says "Included".
+  It is a check on the phone against the signed-in address, not a server
+  grant, and it does not touch StoreKit.
 - Without Plus the second track keeps its notes but is silent and locked.
   A project drawn with two tracks in the browser, or before a lapse, opens
   intact and plays both again the moment Plus comes back.

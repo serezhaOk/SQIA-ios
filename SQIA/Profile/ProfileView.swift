@@ -153,10 +153,15 @@ struct ProfileView: View {
 
     /// Subscribe opens the paywall; once subscribed, Manage opens the
     /// system's own sheet for changing or cancelling it, which is where
-    /// somebody looking to cancel expects to end up.
+    /// somebody looking to cancel expects to end up. An account given Plus
+    /// has nothing to manage, and the row just says so.
     private var plusRow: some View {
         Button {
-            if plus.access.hasPlus { managingPlus = true } else { showingPaywall = true }
+            if plus.purchased {
+                managingPlus = true
+            } else if !plus.access.hasPlus {
+                showingPaywall = true
+            }
         } label: {
             HStack(spacing: 12) {
                 label("SQIA Plus")
@@ -176,7 +181,8 @@ struct ProfileView: View {
     }
 
     private var plusAction: String {
-        plus.access.hasPlus ? "Manage" : "Subscribe"
+        if plus.purchased { return "Manage" }
+        return plus.access.hasPlus ? "Included" : "Subscribe"
     }
 
     /// Plus. Without it the switch reads off whatever was stored, and

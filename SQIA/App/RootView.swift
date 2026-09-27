@@ -56,6 +56,10 @@ struct RootView: View {
         .onChange(of: app.auth.isSignedIn) { _, signedIn in
             app.sessionChanged(to: signedIn)
         }
+        // The owner's account has Plus without buying it.
+        .onChange(of: app.accountEmail, initial: true) { _, email in
+            app.plus.setAccount(email: email)
+        }
         .onChange(of: app.plus.access) { _, access in
             app.sequencer?.setAccess(access)
         }

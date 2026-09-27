@@ -206,6 +206,26 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(named("SQIA Plus").value as? String, "Manage", "the profile still sells Plus")
     }
 
+    /// The owner's account has Plus without buying it: the second track
+    /// opens, and the profile says it is included rather than selling it.
+    func testTheOwnerHasPlus() {
+        app.terminate()
+        app.launchArguments += ["-uiTestingAccount", "serezhaok@gmail.com"]
+        app.launch()
+
+        awaitElement("Profile", "the profile button is missing").tap()
+        let row = awaitElement("SQIA Plus", "the profile has no SQIA Plus row")
+        XCTAssertEqual(row.value as? String, "Included", "the owner is being sold Plus")
+        awaitElement("Back", "the profile has no way back").tap()
+
+        openAProject()
+        awaitElement("Tracks", "the track dots are missing").tap()
+        let second = awaitElement("Track 2", "the mixer has no second panel")
+        XCTAssertNotEqual(second.value as? String, "SQIA Plus", "the owner's second track is locked")
+        second.tap()
+        awaitElement("Note field", "the owner's second track did not open")
+    }
+
     /// Buying Plus on the paywall closes it and opens the second track.
     func testSubscribingOpensTheSecondTrack() {
         openAProject()

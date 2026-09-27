@@ -105,7 +105,16 @@ final class AppModel {
         ]
     #endif
 
-    var accountEmail: String? { auth.session?.user.email }
+    var accountEmail: String? {
+        #if DEBUG
+            // The smoke test has no real session; `-uiTestingAccount` says
+            // whose it would be, for the one test about the owner's Plus.
+            if Self.isUITesting {
+                return UserDefaults.standard.string(forKey: "uiTestingAccount")
+            }
+        #endif
+        return auth.session?.user.email
+    }
 
     // ------------------------------------------------------------ the door --
 

@@ -25,7 +25,19 @@ final class PlusStore {
     static let monthly = "com.serezhaok.sqia.plus.monthly"
     static let productIDs = [monthly]
 
+    /// What this phone may use: bought, or given to the signed-in account.
     private(set) var access: Access
+    /// Whether this Apple ID has the subscription, as StoreKit says.
+    private(set) var purchased: Bool
+    /// Whether the signed-in SQIA account has Plus without paying for it.
+    private(set) var isComplimentary = false
+
+    /// Accounts that always have Plus: the owner's, so the app can be used
+    /// and tested whole without a subscription of its own. Like the
+    /// workbench, this is a door marked for one person rather than
+    /// security — the address comes from a verified sign-in, and the check
+    /// runs on the phone.
+    static let complimentary: Set<String> = [Workbench.owner]
     /// For the profile's row, which says what it costs before anyone opens
     /// the paywall. Nil until StoreKit has answered, or if it cannot.
     private(set) var product: Product?
@@ -35,7 +47,16 @@ final class PlusStore {
     private static let cacheKey = "sqia.plus"
 
     init() {
-        access = Access(hasPlus: UserDefaults.standard.bool(forKey: Self.cacheKey))
+        let cached = UserDefaults.standard.bool(forKey: Self.cacheKey)
+        purchased = cached
+        access = Access(hasPlus: cached)
+    }
+
+    /// Who is signed in. Called whenever that changes, signing out included.
+    func setAccount(email: String?) {
+        let normalized = email?.trimmingCharacters(in: .whitespaces).lowercased()
+        isComplimentary = normalized.map(Self.complimentary.contains) ?? false
+        updateAccess()
     }
 
     /// Listen for transactions and read what is owned. Called once, at
@@ -78,7 +99,7 @@ final class PlusStore {
             switch try await product.purchase() {
             case .success(let verification):
                 await handle(verification)
-                return access.hasPlus
+                return purchased
                     ? .subscribed : .failed("The purchase could not be verified.")
             case .pending:
                 return .pending
@@ -106,7 +127,7 @@ final class PlusStore {
             return .failed(error.localizedDescription)
         }
         await refresh()
-        return access.hasPlus
+        return purchased
             ? .subscribed : .failed("There is no SQIA Plus on this Apple Account to restore.")
     }
 
@@ -145,7 +166,13 @@ final class PlusStore {
 
     private func set(_ hasPlus: Bool) {
         UserDefaults.standard.set(hasPlus, forKey: Self.cacheKey)
-        guard hasPlus != access.hasPlus else { return }
-        access = Access(hasPlus: hasPlus)
+        purchased = hasPlus
+        updateAccess()
+    }
+
+    private func updateAccess() {
+        let next = Access(hasPlus: purchased || isComplimentary)
+        guard next != access else { return }
+        access = next
     }
 }
