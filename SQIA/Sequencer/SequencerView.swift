@@ -1,7 +1,8 @@
 // The sequencer: the mixer, and a track opened out of it.
 //
-// Two screens in a stack. The mixer is the root — every track in its panel,
-// side by side — and a track is a screen pushed over it that zooms out of
+// Two screens in a stack. The mixer is the root — every track behind its
+// own pane of glass, one above the other — and a track is a screen pushed
+// over it that zooms out of
 // its own panel and shrinks back into it, cut to the panel's corners the
 // whole way, as a photo does out of a grid. It used to be one screen that
 // flew its field between full size and a slot on a clock of its own; the
@@ -11,8 +12,12 @@
 // Opening a project lands on its track with the mixer already underneath, so
 // the first thing on screen is still something to draw on.
 //
-// The second panel is SQIA Plus. Without it the panel wears a padlock, and
-// pressing it brings up the paywall instead of the track.
+// The second pane is SQIA Plus. Without it the pane holds the diamond and
+// "+ Add track", and pressing it brings up the paywall instead of the track.
+//
+// The mixer alone has the transport, between the tempo and the key: a play
+// button while the pattern is stopped, and a small pulsing wave while it
+// plays that pauses it when pressed.
 //
 // Tempo and key across the top of both, the field in the middle, the eraser,
 // the sound and the randomiser along the bottom of a track — laid out and
@@ -37,6 +42,9 @@ struct SequencerView: View {
     @State private var showingKey = false
     @State private var showingTempo = false
     @State private var showingPaywall = false
+    /// Paused from the mixer's transport. Coming back to the app does not
+    /// start what somebody stopped.
+    @State private var paused = false
     /// The line above the field. Set by an action, cleared by its own task.
     @State private var announcement: String?
     @State private var announcing: Task<Void, Never>?
@@ -109,7 +117,7 @@ struct SequencerView: View {
             // losing its audio context — unless the profile's switch says
             // to play on.
             if phase == .active {
-                model.start()
+                if !paused { model.start() }
             } else if !(playsInBackground && plus.access.allows(.backgroundPlayback)) {
                 model.stop()
             }
@@ -152,7 +160,7 @@ struct SequencerView: View {
 
     private var mixer: some View {
         VStack(spacing: 0) {
-            header(middle: false)
+            header(middle: false, transport: true)
             mixerStage
             // The toolbar is kept, invisibly, so the stage is exactly the
             // size it is on a track and the panels sit where the track
@@ -183,13 +191,16 @@ struct SequencerView: View {
 
     // -------------------------------------------------------------- header --
 
-    private func header(middle: Bool) -> some View {
+    private func header(middle: Bool, transport: Bool = false) -> some View {
         HStack(spacing: 0) {
             tempoPill
             Spacer(minLength: 8)
             if middle {
                 middleSlot
                     .animation(Motion.fade, value: currentAnnouncement)
+                Spacer(minLength: 8)
+            } else if transport {
+                transportButton
                 Spacer(minLength: 8)
             }
             keyPill
@@ -291,6 +302,37 @@ struct SequencerView: View {
         }
     }
 
+    /// Play while stopped; the wave while playing, which pauses.
+    private var transportButton: some View {
+        Button {
+            Haptics.toggle()
+            if model.isRunning {
+                paused = true
+                model.stop()
+            } else {
+                paused = false
+                model.start()
+            }
+        } label: {
+            ZStack {
+                if model.isRunning {
+                    PlayingWave(bpm: model.state.bpm)
+                        .transition(.opacity)
+                } else {
+                    Image("PlayIcon")
+                        .resizable()
+                        .frame(width: 20, height: 20)
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: 72, height: 40)
+            .contentShape(Rectangle())
+            .animation(Motion.fade, value: model.isRunning)
+        }
+        .buttonStyle(PressFade())
+        .accessibilityLabel(model.isRunning ? "Pause" : "Play")
+    }
+
     private var currentAnnouncement: String? {
         model.eraseMode ? "Eraser is on" : announcement
     }
@@ -333,9 +375,9 @@ struct SequencerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// Every track in its panel, drawn by one field, with a tap target over
-    /// each panel that the track zooms out of — and the four effect knobs
-    /// under them, a column to each panel.
+    /// Every track behind its pane, drawn by one field, with a tap target
+    /// over each pane that the track zooms out of — and the two effect knobs
+    /// under them.
     private var mixerStage: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
@@ -358,11 +400,11 @@ struct SequencerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    /// A panel, as something to press. The field under it is Metal and
-    /// cannot be the zoom's source itself, so this is: a shape exactly the
-    /// panel's size and corner, clear except while it is held.
+    /// A pane, as something to press. The field and the glass under it are
+    /// Metal and cannot be the zoom's source themselves, so this is: a shape
+    /// exactly the pane's size and corner, clear except while it is held.
     private func tile(_ index: Int, in panel: CGRect) -> some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .top) {
             Button {
                 open(index)
             } label: {
@@ -377,112 +419,95 @@ struct SequencerView: View {
                 model.isLocked(index) ? "Shows what SQIA Plus opens." : "Opens this track.")
 
             if model.isLocked(index) {
-                lockChip()
-                    .padding(MixerLayout.chipInset)
-            } else if model.hasPart(index) {
-                chipRow(index)
-                    .padding(MixerLayout.chipInset)
+                lockedPane
+            } else {
+                paneHeader(index)
             }
         }
         .frame(width: panel.width, height: panel.height)
         .position(x: panel.midX, y: panel.midY)
     }
 
-    /// One knob under each panel, in the space the panels leave: Scatter on
-    /// the left, Delay on the right. The size they had when there were two
-    /// rows of them, so the dial does not balloon into the room the other
-    /// two left — the pair sits in the middle of it instead.
+    /// Scatter and Delay side by side under the panes, each in half of the
+    /// row the design lays out: 20 in from a 351-wide strip down the middle.
     private func effectKnobs(in size: CGSize) -> some View {
-        let first = CGRect(model.mixerPanel(0, in: size))
-        let second = CGRect(model.mixerPanel(1, in: size))
-        let top = first.maxY + 18
-        let band = max(0, size.height - top - 8)
-        let height = band / 2
+        let last = CGRect(model.mixerPanel(SequencerState.trackCount - 1, in: size))
+        let top = last.maxY + MixerLayout.knobsGap
         let effects: [MasterEffect] = [.scatter, .delay]
 
-        return ForEach(effects.indices, id: \.self) { column in
-            let effect = effects[column]
-            let slot = column == 0 ? first : second
-            EffectKnob(
-                title: effect.name,
-                value: model.state.effects[effect],
-                onChange: { model.setEffect(effect, to: $0) }
-            )
-            .frame(width: slot.width, height: height)
-            .position(x: slot.midX, y: top + band / 2)
+        return HStack(spacing: 0) {
+            ForEach(effects, id: \.self) { effect in
+                EffectKnob(
+                    title: effect.name,
+                    value: model.state.effects[effect],
+                    onChange: { model.setEffect(effect, to: $0) }
+                )
+                .frame(maxWidth: .infinity)
+            }
         }
+        .padding(.horizontal, 20)
+        .frame(width: min(351, size.width - 24), height: EffectKnob.height)
+        .position(x: size.width / 2, y: top + EffectKnob.height / 2)
     }
 
     private var panelShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: MixerLayout.corner, style: .circular)
+        RoundedRectangle(cornerRadius: MixerLayout.stackCorner, style: .continuous)
     }
 
-    /// The name and mute chips, pinned inside the panel over its last rows
-    /// of dots.
-    private func chipRow(_ index: Int) -> some View {
-        let height = MixerLayout.chipHeight
-        let chip = palette.opened
+    /// The voice's name and its mute, across the top of the pane. The name
+    /// is only a picture — a press on it lands on the pane and opens it.
+    private func paneHeader(_ index: Int) -> some View {
+        let muted = model.isMuted(index)
         return HStack(spacing: 0) {
-            Button {
-                open(index)
-            } label: {
-                Text(model.voiceLabel(index))
-                    // The chip sets its tracking to zero, unlike the labels.
-                    .manrope(.regular, 16, tracking: 0)
-                    .foregroundStyle(chip.background)
-                    .lineLimit(1)
-                    .padding(.horizontal, 14)
-                    .frame(height: height)
-                    .background(chip.label, in: Capsule())
-            }
-            .buttonStyle(PressFade())
-            .accessibilityLabel("Open \(model.voiceLabel(index))")
+            // "Machine", as the design writes it, rather than the web's
+            // capitals the picker uses.
+            Text(model.voiceLabel(index).capitalized)
+                .manrope(.medium, 15.18, tracking: 0)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 8)
 
             Button {
                 Haptics.tap()
                 model.toggleMute(index)
             } label: {
-                Image(systemName: "speaker.slash.fill")
-                    .font(.system(size: 15))
-                    .foregroundStyle(
-                        model.isMuted(index)
-                            ? chip.background : chip.label
-                    )
-                    .frame(width: height, height: height)
-                    .background(
-                        model.isMuted(index)
-                            ? chip.label : chip.label.opacity(0.1),
-                        in: Capsule()
-                    )
-                    .animation(Motion.fade, value: model.isMuted(index))
+                Image("MuteIcon")
+                    .renderingMode(.template)
+                    .resizable()
+                    .frame(width: 18.35, height: 17.27)
+                    .foregroundStyle(muted ? Color(hex: 0x101010) : .white)
+                    .frame(width: 32, height: 32)
+                    .background(muted ? Color.white : palette.surface, in: Circle())
+                    .overlay { Circle().strokeBorder(palette.hairline, lineWidth: 1) }
+                    .innerBloom(muted ? .clear : palette.bloom)
+                    .clipShape(Circle())
+                    .animation(Motion.fade, value: muted)
+                    // A bigger target than the drawing.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(PressFade())
-            .accessibilityLabel(model.isMuted(index) ? "Unmute" : "Mute")
-            .accessibilityAddTraits(model.isMuted(index) ? [.isSelected] : [])
+            .accessibilityLabel(muted ? "Unmute \(model.voiceLabel(index))" : "Mute \(model.voiceLabel(index))")
+            .accessibilityAddTraits(muted ? [.isSelected] : [])
+            .padding(.trailing, -6)
         }
+        .padding(.leading, 20)
+        .padding(.trailing, 20)
+        .frame(height: 64)
     }
 
-    /// Where the name chip would be, on a panel Plus has not opened: the
-    /// same capsule, saying what it would take. Only a picture — a press on
-    /// it lands on the panel beneath, and the panel already says "SQIA Plus"
-    /// to VoiceOver.
-    private func lockChip() -> some View {
-        let chip = palette.opened
-        return HStack(spacing: 0) {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Plus")
-                    .manrope(.regular, 16, tracking: 0)
-            }
-            .foregroundStyle(chip.background)
-            .padding(.horizontal, 14)
-            .frame(height: MixerLayout.chipHeight)
-            .background(chip.label, in: Capsule())
-            Spacer(minLength: 0)
+    /// A pane Plus has not opened: the diamond, and what it would add.
+    private var lockedPane: some View {
+        VStack(spacing: 16) {
+            PlusBadge(size: 32)
+            Text("+ Add track")
+                .manrope(.medium, 15.18, tracking: 0)
+                .foregroundStyle(.white)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -497,8 +522,8 @@ struct SequencerView: View {
         } label: {
             ControlPill(width: 175, height: 50) {
                 Text("Back to projects")
-                    .manrope(.medium, 15, tracking: 0)
-                    .foregroundStyle(palette.pillLabel)
+                    .manrope(.semibold, 15, tracking: 0.01)
+                    .foregroundStyle(.white)
             }
         }
         .buttonStyle(PressFade())
@@ -648,4 +673,29 @@ private extension View {
 #Preview {
     SequencerView(
         model: SequencerModel(store: InMemoryProjectStore()), plus: PlusStore(), onLeave: {})
+}
+
+/// The mixer's transport while the pattern plays: nine bars, the design's
+/// heights, each breathing on the beat a little out of step with the next.
+private struct PlayingWave: View {
+    let bpm: Double
+
+    private static let heights: [CGFloat] = [14, 10, 6, 18, 14, 20, 8, 4, 6]
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let beat = timeline.date.timeIntervalSinceReferenceDate * bpm / 60
+            HStack(spacing: 2) {
+                ForEach(Self.heights.indices, id: \.self) { index in
+                    let phase = beat * .pi + Double(index) * 0.9
+                    let swell = 0.55 + 0.45 * abs(sin(phase))
+                    Capsule()
+                        .fill(.white)
+                        .frame(width: 4, height: max(4, Self.heights[index] * swell))
+                }
+            }
+            .frame(height: 20)
+        }
+        .accessibilityHidden(true)
+    }
 }

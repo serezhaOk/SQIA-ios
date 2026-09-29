@@ -151,6 +151,8 @@ final class SequencerModel {
         sequencer = Sequencer(engine: engine)
         state = SequencerState.fresh(voices: VoiceCatalog.defaultVoices)
         scenes = (0..<SequencerState.trackCount).map { _ in FieldScene() }
+        // Where the mixer's knobs lived before they were the project's.
+        UserDefaults.standard.removeObject(forKey: "sqia.effects")
 
         if let saved = UserDefaults.standard.string(forKey: Self.tuningKey),
             let restored = Tuning.fromJSON(saved)
@@ -373,33 +375,36 @@ final class SequencerModel {
         return FieldFrame(layers: [scenes[state.activeTrackIndex].layer(in: rect)])
     }
 
-    /// Every track, each in its panel with its hairline round it.
+    /// Every track behind its pane of glass.
+    ///
+    /// Each pane is a window onto its track laid out at full size, the way
+    /// it stands on its own screen — the notes keep their size and the pane
+    /// shows what falls inside it. A pane Plus has not opened shows no field
+    /// at all, only the glass.
     func mixerFrame(in rect: CGRect, dt: Double) -> FieldFrame {
         var frame = FieldFrame()
         for index in state.tracks.indices where scenes.indices.contains(index) {
-            let slot = CGRect(mixerPanel(index, in: rect.size))
-            var layer = scenes[index].layer(in: slot)
-            // A panel is a whole field squeezed into a card, so it keeps
-            // what it holds rather than letting a blob hang over the border.
-            layer.clipped = true
+            let pane = mixerPanel(index, in: rect.size)
+            frame.glass.append(FieldGlass(rect: CGRect(pane)))
+            guard !isLocked(index) else { continue }
+
+            let window = MixerLayout.window(
+                for: pane, stage: Double(rect.width), Double(rect.height))
+            var layer = scenes[index].layer(in: CGRect(window))
+            layer.clip = CGRect(pane)
+            layer.corner = MixerLayout.stackCorner
             layer.alpha = MixerLayout.alpha(
                 active: false, eased: 1,
                 muted: !access.sounds(track: index, muted: state.tracks[index].muted))
-            layer.detail = MixerLayout.detail(active: false, eased: 1)
             frame.layers.append(layer)
-            frame.outlines.append(
-                FieldOutline(rect: slot, alpha: MixerLayout.outlineAlpha(eased: 1)))
         }
         return frame
     }
 
-    /// Where a track's panel sits on a stage of this size. The field draws
+    /// Where a track's pane sits on a stage of this size. The field draws
     /// into it and the view zooms out of it, so both ask here.
     func mixerPanel(_ index: Int, in size: CGSize) -> Panel {
-        MixerLayout.panel(
-            index, of: state.tracks.count,
-            width: Double(size.width), height: Double(size.height),
-            ratio: MixerLayout.effectsPanelRatio, top: MixerLayout.effectsTop)
+        MixerLayout.stacked(index, width: Double(size.width))
     }
 
     // -------------------------------------------------------------- mixer --
@@ -432,14 +437,6 @@ final class SequencerModel {
         state.tracks[index].muted.toggle()
         syncScenes()
         publishVoicing()
-    }
-
-    /// Only a track that holds a part gets a name and a mute button, as in
-    /// the web — an empty panel is left clean. A locked one wears the
-    /// padlock instead, whatever it holds.
-    func hasPart(_ index: Int) -> Bool {
-        state.tracks.indices.contains(index) && state.tracks[index].grid.hasNotes
-            && !isLocked(index)
     }
 
     func voiceLabel(_ index: Int) -> String {

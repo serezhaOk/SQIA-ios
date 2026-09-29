@@ -210,16 +210,20 @@ private enum PaywallLayout {
     static let pill = Color.black.opacity(0.3)
 }
 
-/// The small white tag the profile marks what Plus opens with.
+/// The diamond that marks whatever SQIA Plus opens — wherever something is
+/// held back for it, this is what says so.
 struct PlusBadge: View {
+    /// 32 where it stands in for a whole locked thing, as on the mixer's
+    /// pane; smaller beside a line of text.
+    var size: CGFloat = 18
+
     var body: some View {
-        Text("Plus")
-            .manrope(.semibold, 13, tracking: 0.07)
-            .textCase(.uppercase)
-            .foregroundStyle(.black.opacity(0.7))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(.white, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        Image("PlusDiamond")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: size, height: size)
+            .foregroundStyle(.white.opacity(0.4))
             .accessibilityHidden(true)
     }
 }

@@ -84,6 +84,44 @@ public enum MixerLayout {
         return Panel(x: margin + Double(index) * (w + gutter), y: y, width: w, height: h)
     }
 
+    // ------------------------------------------------------ the stack --
+
+    // The mixer as it is designed now: the tracks one above the other, each
+    // a wide pane of glass the width of the screen less its margins, and the
+    // effect knobs under them. The numbers are the Figma's, measured on its
+    // 375 by 812 frame: 335 by 198 panes, eight points apart, eleven below
+    // the header, cut to a 32-point corner.
+    //
+    // The web's columns above stay as they are — they are what the parity
+    // fixtures check against.
+
+    public static let stackInset = 20.0
+    public static let stackGap = 8.0
+    public static let stackTop = 11.0
+    public static let stackRatio = 198.0 / 335.0
+    public static let stackCorner = 32.0
+    /// From the bottom of the last pane to the top of the knobs.
+    public static let knobsGap = 32.0
+
+    /// Where track `index` sits in the stack.
+    public static func stacked(_ index: Int, width: Double) -> Panel {
+        let w = max(0, width - stackInset * 2)
+        let h = (w * stackRatio).rounded()
+        return Panel(
+            x: stackInset, y: stackTop + Double(index) * (h + stackGap), width: w, height: h)
+    }
+
+    /// The field a pane looks into: the track at the size it has on its own
+    /// screen, centred on the pane. The pane is a window cut into it, not a
+    /// field squeezed down to fit — so the notes keep their size, and what
+    /// the track zooms out to is the middle of what the pane was showing.
+    public static func window(for pane: Panel, stage width: Double, _ height: Double) -> Panel {
+        Panel(
+            x: pane.x + pane.width / 2 - width / 2,
+            y: pane.y + pane.height / 2 - height / 2,
+            width: width, height: height)
+    }
+
     public static func full(width: Double, height: Double) -> Panel {
         Panel(x: 0, y: 0, width: width, height: height)
     }

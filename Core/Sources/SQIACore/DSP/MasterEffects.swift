@@ -4,9 +4,8 @@
 // room — and before the limiter. Scatter goes first, because it cuts the
 // sound itself; the delay is a send that listens to what it leaves.
 //
-// There used to be four; Reverb and Cloud came off the mixer at the
-// owner's call. The shared room every preset stands in is not this and is
-// untouched — it lives in the mixer.
+// The shared room every preset stands in is not this — it lives in the
+// mixer.
 //
 // Each is one knob, 0…1, that opens several things at once. At zero each
 // is a true bypass: what comes out is exactly what went in.
@@ -29,8 +28,7 @@ public enum MasterEffect: Int, CaseIterable, Sendable {
 ///
 /// Read forgivingly: a knob the row does not mention is at zero, so the
 /// column's `{}` default, and a knob added later, both open as a bypass.
-/// Keys it no longer has — `reverb` and `cloud`, from when there were
-/// four — are skipped.
+/// Keys it does not know are skipped.
 public struct EffectSettings: Sendable, Equatable, Codable {
     public var delay: Double
     public var scatter: Double

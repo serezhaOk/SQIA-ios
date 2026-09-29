@@ -1,9 +1,10 @@
 // A knob for one of the mixer's effects, 0 to 100.
 //
-// A first pass from the Figma, there to hear the effects by: a disc with a
-// dotted rim and a line that says where it is. Drag up to turn it up, down
-// to turn it down — sideways counts as well, so a thumb moving on a
-// diagonal still gets somewhere. Double tap goes back to zero.
+// From the Figma: a grey disc with a notched rim, forty notches round it,
+// and a dark line from just below the middle out toward the rim that says
+// where it is. Drag up to turn it up, down to turn it down — sideways counts
+// as well, so a thumb moving on a diagonal still gets somewhere. Double tap
+// goes back to zero.
 //
 // At zero the line points straight down, as drawn, and it turns clockwise
 // from there: all the way up is most of a turn round, just short of where
@@ -18,33 +19,32 @@ struct EffectKnob: View {
     let value: Double
     var onChange: (Double) -> Void
 
+    /// The design's dial, 109.5 across, in a 120-wide slot.
+    static let dialSize: CGFloat = 109.5
+    static let slotWidth: CGFloat = 120
+    /// Dial, gap, label.
+    static let height: CGFloat = dialSize + 12 + 18
+
     /// How far a finger travels for the whole range.
     private static let travel: CGFloat = 220
     /// How far round the line goes between 0 and 100.
     private static let sweep = 300.0
 
     @State private var dragStart: Double?
-    @Environment(\.sequencerPalette) private var palette
 
     private var percent: Int { Int((value * 100).rounded()) }
 
     var body: some View {
-        VStack(spacing: 10) {
-            GeometryReader { geometry in
-                let size = min(geometry.size.width, geometry.size.height)
-                dial(size: size)
-                    .frame(width: size, height: size)
-                    .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            }
-            // A little narrower than the panel above.
-            .padding(.horizontal, 8)
+        VStack(spacing: 12) {
+            dial
+                .frame(width: Self.slotWidth, height: Self.dialSize)
 
             // Under the dial, where a thumb turning it does not cover it.
             // The number while it is being turned, so it can be read off by
             // ear-testing; the name the rest of the time.
             Text(dragStart == nil ? title : "\(percent)")
-                .manrope(.regular, 14, tracking: 0)
-                .foregroundStyle(palette.label.opacity(0.5))
+                .manrope(.regular, 13, tracking: 0.02)
+                .foregroundStyle(Color(hex: 0xF5F3F3))
                 .monospacedDigit()
                 .frame(height: 18)
         }
@@ -67,22 +67,20 @@ struct EffectKnob: View {
         }
     }
 
-    private func dial(size: CGFloat) -> some View {
-        ZStack {
-            Circle()
-                .fill(Color(hex: 0x3A3A3A))
-            Circle()
-                .strokeBorder(
-                    palette.label.opacity(0.35),
-                    style: StrokeStyle(lineWidth: 1, dash: [1, 2.5]))
-            // The line from the middle toward the rim, drawn pointing down
-            // and turned into place.
+    private var dial: some View {
+        let size = Self.dialSize
+        return ZStack {
+            NotchedDisc()
+                .fill(Color(hex: 0x6D6D6D))
+            // From 9.75 below the middle to 48.4 below it, as drawn, and
+            // turned into place round the middle.
             Capsule()
-                .fill(Color.black)
-                .frame(width: 4, height: size * 0.38)
-                .offset(y: size * 0.26)
+                .fill(Color(hex: 0x1C1C1C))
+                .frame(width: 3, height: 38.6 + 3)
+                .offset(y: 9.75 + 38.6 / 2)
                 .rotationEffect(.degrees(value * Self.sweep))
         }
+        .frame(width: size, height: size)
         .animation(.interactiveSpring(response: 0.12), value: value)
     }
 
@@ -108,9 +106,48 @@ struct EffectKnob: View {
     }
 }
 
+/// The dial's outline: a circle with forty shallow notches round its rim,
+/// one of them dead centre at the top, as in the design's export.
+///
+/// Worked out as a radius that dips two points for most of each fortieth
+/// and eases out again, rather than copied from the export's path, so it
+/// stays true at any size.
+private struct NotchedDisc: Shape {
+    var notches = 40
+    /// Two points on the design's 109.5-point dial.
+    var depth: CGFloat = 2 / 109.5
+    /// How much of each period is notch.
+    var notchShare = 0.62
+
+    func path(in rect: CGRect) -> Path {
+        let centre = CGPoint(x: rect.midX, y: rect.midY)
+        let radius = min(rect.width, rect.height) / 2
+        let dip = depth * radius * 2
+        let steps = notches * 24
+        var path = Path()
+        for i in 0...steps {
+            let turn = Double(i) / Double(steps)
+            // Zero at the top, where a notch is centred.
+            let phase = (turn * Double(notches) + 0.5).truncatingRemainder(dividingBy: 1)
+            let nearness = 1 - abs(phase - 0.5) * 2  // 1 at a notch's middle
+            let t = min(max((nearness - (1 - notchShare)) / 0.12, 0), 1)
+            let inward = t * t * (3 - 2 * t)
+            let r = radius - dip * CGFloat(inward)
+            let angle = turn * 2 * .pi - .pi / 2
+            let point = CGPoint(
+                x: centre.x + r * CGFloat(cos(angle)), y: centre.y + r * CGFloat(sin(angle)))
+            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
 #Preview {
-    EffectKnob(title: "Delay", value: 0.3, onChange: { _ in })
-        .frame(width: 160, height: 190)
-        .padding()
-        .background(Color(hex: 0x1C1C1C))
+    HStack(spacing: 0) {
+        EffectKnob(title: "Scatter", value: 0, onChange: { _ in })
+        EffectKnob(title: "Delay", value: 0.3, onChange: { _ in })
+    }
+    .padding()
+    .background(Color(hex: 0x1C1C1C))
 }

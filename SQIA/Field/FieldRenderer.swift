@@ -29,6 +29,9 @@ struct FieldLayer {
     /// rim would otherwise hang over the panel's border and across its
     /// neighbour.
     var clipped = false
+    /// A window to cut it to instead of its own rect: the mixer's pane,
+    /// looking into a field laid out at full size behind it.
+    var clip: CGRect?
     /// The corner it is cut to, and the one its border is drawn on.
     var corner: Double = MixerLayout.corner
     /// Which row is sounding, or −1 when nothing is.
@@ -48,12 +51,33 @@ struct FieldOutline {
     var corner: Double = MixerLayout.corner
 }
 
+/// A pane of glass the frame is seen through.
+struct FieldGlass {
+    var rect: CGRect
+}
+
+/// How the mixer's glass is cut and how hard it bends. Points throughout.
+struct GlassLook {
+    var corner: Double = MixerLayout.stackCorner
+    var bezel: Double = 42
+    var refraction: Double = 40
+    var dispersion: Double = 1.1
+    var lens: Double = 0.12
+    /// The Figma's fill, rgba(0, 0, 0, 0.27).
+    var tint: Double = 0.27
+    var rim: Double = 1
+}
+
 /// Everything one frame draws. The outlines are not part of any layer: they
 /// belong to the slots, and the track on its way into a slot is somewhere
 /// else while it travels.
 struct FieldFrame {
     var layers: [FieldLayer] = []
     var outlines: [FieldOutline] = []
+    /// Panes the whole frame is seen through. None on a track; the mixer's
+    /// two on the mixer.
+    var glass: [FieldGlass] = []
+    var look = GlassLook()
 }
 
 /// Matches `FieldInstance` in FieldShaders.metal. The colour comes first so
@@ -104,6 +128,31 @@ private struct HeatUniforms {
         rippleFrequency = Float(tuning.rippleFrequency)
         rippleSpeed = Float(tuning.rippleSpeed)
         rippleAmplitude = Float(tuning.rippleAmplitude)
+    }
+}
+
+/// Matches `GlassUniforms` in FieldShaders.metal.
+private struct GlassUniforms {
+    var viewport: SIMD2<Float> = .zero
+    var scale: Float = 1
+    var time: Float = 0
+    var count: UInt32 = 0
+    var corner: Float = 0
+    var bezel: Float = 0
+    var refraction: Float = 0
+    var dispersion: Float = 0
+    var lens: Float = 0
+    var tint: Float = 0
+    var rim: Float = 0
+
+    mutating func take(_ look: GlassLook) {
+        corner = Float(look.corner)
+        bezel = Float(look.bezel)
+        refraction = Float(look.refraction)
+        dispersion = Float(look.dispersion)
+        lens = Float(look.lens)
+        tint = Float(look.tint)
+        rim = Float(look.rim)
     }
 }
 
@@ -160,6 +209,14 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     /// Reads the sum back and maps it through the ramp.
     private let heatPipeline: MTLRenderPipelineState
     private var accumulation: MTLTexture?
+    /// Seen through the glass: the frame, drawn here first when it has
+    /// panes, and read back through them onto the screen.
+    private let glassPipeline: MTLRenderPipelineState
+    private var scene: MTLTexture?
+    private var glassUniforms = GlassUniforms()
+    /// Each pane as a middle and a half-size, for the shader. At most four.
+    private var panes: [SIMD4<Float>] = []
+    private static let maxPanes = 4
     private var uniforms = HeatUniforms()
     private var stops = rampStops(.current)
     private var tuning = FieldTuning.current
@@ -215,8 +272,19 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             let sourceVertex = library.makeFunction(name: "sourceVertex"),
             let sourceFragment = library.makeFunction(name: "sourceFragment"),
             let heatVertex = library.makeFunction(name: "heatVertex"),
-            let heatFragment = library.makeFunction(name: "heatFragment")
+            let heatFragment = library.makeFunction(name: "heatFragment"),
+            let glassFragment = library.makeFunction(name: "glassFragment")
         else { return nil }
+
+        // The glass replaces every pixel it writes — outside the panes with
+        // the frame as it was — so it neither blends nor needs to.
+        let glass = MTLRenderPipelineDescriptor()
+        glass.vertexFunction = heatVertex
+        glass.fragmentFunction = glassFragment
+        glass.colorAttachments[0].pixelFormat = .bgra8Unorm
+        guard let glassState = try? device.makeRenderPipelineState(descriptor: glass) else {
+            return nil
+        }
 
         // Source over rather than the web's `lighter`. The heat pass below
         // already decides a pixel's colour from the whole sum, so adding
@@ -266,6 +334,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         pipeline = state
         sourcePipeline = sourceState
         heatPipeline = heatState
+        glassPipeline = glassState
         super.init()
 
         let length = MemoryLayout<FieldInstance>.stride * Self.maxInstances
@@ -299,6 +368,20 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         descriptor.usage = [.renderTarget, .shaderRead]
         descriptor.storageMode = .private
         accumulation = device.makeTexture(descriptor: descriptor)
+    }
+
+    /// The glass reads the frame back at the drawable's own size, so a
+    /// pixel under a flat stretch of pane comes out exactly as drawn.
+    private func resizeScene(for size: CGSize) -> MTLTexture? {
+        let width = max(1, Int(size.width))
+        let height = max(1, Int(size.height))
+        if let scene, scene.width == width, scene.height == height { return scene }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
+        descriptor.usage = [.renderTarget, .shaderRead]
+        descriptor.storageMode = .private
+        scene = device.makeTexture(descriptor: descriptor)
+        return scene
     }
 
     func draw(in view: MTKView) {
@@ -374,7 +457,20 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
             }
         }
 
-        guard let encoder = commands.makeRenderCommandEncoder(descriptor: descriptor) else {
+        // With glass on screen the frame is drawn off to one side first,
+        // cleared to the same ground, and the glass lays it onto the screen.
+        var target = descriptor
+        let seen = panes.isEmpty ? nil : resizeScene(for: view.drawableSize)
+        if let seen {
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = seen
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].clearColor = view.clearColor
+            pass.colorAttachments[0].storeAction = .store
+            target = pass
+        }
+
+        guard let encoder = commands.makeRenderCommandEncoder(descriptor: target) else {
             inFlight.signal()
             return
         }
@@ -401,6 +497,25 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                 type: .triangleStrip, vertexStart: 0, vertexCount: 4, instanceCount: count)
         }
         encoder.endEncoding()
+
+        if let seen {
+            guard let glass = commands.makeRenderCommandEncoder(descriptor: descriptor) else {
+                inFlight.signal()
+                return
+            }
+            glassUniforms.viewport = viewport
+            glassUniforms.scale = Float(view.contentScaleFactor)
+            glassUniforms.time = uniforms.time
+            glassUniforms.count = UInt32(panes.count)
+            glass.setRenderPipelineState(glassPipeline)
+            glass.setFragmentTexture(seen, index: 0)
+            glass.setFragmentBytes(
+                &glassUniforms, length: MemoryLayout<GlassUniforms>.stride, index: 0)
+            glass.setFragmentBytes(
+                panes, length: MemoryLayout<SIMD4<Float>>.stride * panes.count, index: 1)
+            glass.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+            glass.endEncoding()
+        }
 
         commands.addCompletedHandler { [inFlight] _ in inFlight.signal() }
         commands.present(drawable)
@@ -430,6 +545,7 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
     private func build(dt: Double, now: CFTimeInterval) {
         instances.removeAll(keepingCapacity: true)
         sources.removeAll(keepingCapacity: true)
+        panes.removeAll(keepingCapacity: true)
 
         // MTKView drives its delegate from the main run loop, so this is the
         // main thread; saying so lets the provider read main-actor state
@@ -437,6 +553,14 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
         // inside, so nothing has to cross the boundary on the way out.
         MainActor.assumeIsolated {
             guard let frame = frameProvider?(dt) else { return }
+
+            for pane in frame.glass.prefix(Self.maxPanes) {
+                panes.append(
+                    SIMD4(
+                        Float(pane.rect.midX), Float(pane.rect.midY),
+                        Float(pane.rect.width / 2), Float(pane.rect.height / 2)))
+            }
+            glassUniforms.take(frame.look)
 
             // Outlines first, so a panel's border sits under its dots the
             // way a stroke drawn before them does.
@@ -477,10 +601,9 @@ final class FieldRenderer: NSObject, MTKViewDelegate {
                 // to itself.
                 var clipCentre = SIMD2<Float>.zero
                 var clipHalf = SIMD2<Float>.zero
-                if layer.clipped {
-                    clipCentre = SIMD2(Float(layer.rect.midX), Float(layer.rect.midY))
-                    clipHalf = SIMD2(
-                        Float(layer.rect.width / 2), Float(layer.rect.height / 2))
+                if let cut = layer.clip ?? (layer.clipped ? layer.rect : nil) {
+                    clipCentre = SIMD2(Float(cut.midX), Float(cut.midY))
+                    clipHalf = SIMD2(Float(cut.width / 2), Float(cut.height / 2))
                 }
 
                 for draw in draws {

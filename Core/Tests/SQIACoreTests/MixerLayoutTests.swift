@@ -182,4 +182,22 @@ struct MixerLayoutTests {
         #expect(MixerLayout.outlineAlpha(eased: 0) == 0)
         #expect(MixerLayout.outlineAlpha(eased: 1) == 0.7)
     }
+
+    @Test("The stack is the Figma's on its own frame")
+    func stackMatchesTheDesign() {
+        let first = MixerLayout.stacked(0, width: 375)
+        let second = MixerLayout.stacked(1, width: 375)
+        #expect(first == Panel(x: 20, y: 11, width: 335, height: 198))
+        #expect(second == Panel(x: 20, y: 217, width: 335, height: 198))
+        #expect(second.y - first.maxY == MixerLayout.stackGap)
+    }
+
+    @Test("A pane looks into a whole field, centred on it")
+    func windowIsCentred() {
+        let pane = MixerLayout.stacked(1, width: 390)
+        let field = MixerLayout.window(for: pane, stage: 390, 600)
+        #expect(field.width == 390 && field.height == 600)
+        #expect(abs((field.x + field.width / 2) - (pane.x + pane.width / 2)) < 1e-9)
+        #expect(abs((field.y + field.height / 2) - (pane.y + pane.height / 2)) < 1e-9)
+    }
 }

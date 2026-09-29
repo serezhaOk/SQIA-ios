@@ -359,3 +359,128 @@ fragment float4 heatFragment(
     if (alpha <= 0.0) { discard_fragment(); }
     return float4(rgb, alpha);
 }
+
+// ----------------------------------------------------------------- glass --
+
+// The mixer's panes, from the Figma's glass: the field seen through a slab
+// with a rounded rim. Everything is drawn into a texture first, and this pass
+// reads it back through each pane — bent hard at the rim, where the slab
+// curves away, split into a spectrum while it bends, domed a little across
+// the middle, darkened by the fill and edged with a light-catching line.
+//
+// Turned up well past subtle on purpose. The panes are the one showpiece on
+// the screen, and a glass that only just refracts reads as a blur.
+
+struct GlassUniforms {
+    /// The screen in points, and what one point is in pixels.
+    float2 viewport;
+    float scale;
+    float time;
+    uint count;
+    /// The corner every pane is cut to.
+    float corner;
+    /// How far in from the rim the slab curves, in points.
+    float bezel;
+    /// How far the rim bends what is under it, in points.
+    float refraction;
+    /// How far apart the spectrum is pulled, as a fraction of the bend.
+    float dispersion;
+    /// How much the middle of the pane is magnified.
+    float lens;
+    /// The fill over it: the Figma's 27% black.
+    float tint;
+    /// How bright the rim line and the light along it are.
+    float rim;
+};
+
+/// Samples across the spectrum. Six left the split as six visible copies
+/// stepped along the rim; twelve, each weighted by an overlapping band per
+/// channel, run together into one continuous fringe.
+constant uint kSpectrumSamples = 12;
+
+/// Red at 0, green in the middle, blue at 1, each band overlapping the next.
+static float3 spectrumWeight(float t) {
+    return saturate(float3(
+        1.0 - abs(t - 0.0) * 2.2,
+        1.0 - abs(t - 0.5) * 2.2,
+        1.0 - abs(t - 1.0) * 2.2));
+}
+
+fragment float4 glassFragment(
+    ScreenOut in [[stage_in]],
+    texture2d<float> scene [[texture(0)]],
+    constant GlassUniforms &u [[buffer(0)]],
+    constant float4 *panes [[buffer(1)]]
+) {
+    constexpr sampler linearClamp(filter::linear, address::clamp_to_edge);
+    const float4 behind = scene.sample(linearClamp, in.uv);
+    const float2 p = in.uv * u.viewport;
+
+    // Which pane this is over, if any. A point of slack outside the rim so
+    // the edge can be feathered against the ground.
+    int hit = -1;
+    float d = 1e9;
+    for (uint i = 0; i < u.count; i++) {
+        const float here = roundedBox(p - panes[i].xy, panes[i].zw, u.corner);
+        if (here < 1.0) { hit = int(i); d = here; break; }
+    }
+    if (hit < 0) { return behind; }
+
+    const float2 centre = panes[hit].xy;
+    const float2 extent = panes[hit].zw;
+
+    // The outward normal, off the distance field itself.
+    const float2 e = float2(0.5, 0.0);
+    float2 normal = float2(
+        roundedBox(p + e.xy - centre, extent, u.corner)
+            - roundedBox(p - e.xy - centre, extent, u.corner),
+        roundedBox(p + e.yx - centre, extent, u.corner)
+            - roundedBox(p - e.yx - centre, extent, u.corner));
+    normal = normalize(normal + 1e-6);
+
+    // How far into the curve of the rim this point is: nothing across the
+    // flat middle, all of it at the edge. A quarter circle, so it steepens
+    // the way a real rounded rim does — gently, then all at once.
+    const float inside = max(-d, 0.0);
+    const float t = clamp(1.0 - inside / u.bezel, 0.0, 1.0);
+    const float bend = 1.0 - sqrt(max(1.0 - t * t, 0.0));
+
+    // Pulled from further in, so the field stretches out to meet the rim,
+    // and the middle domed toward the eye.
+    const float2 rel = (p - centre) / extent;
+    const float2 domed = (p - centre) * u.lens * (1.0 - 0.5 * dot(rel, rel));
+    const float2 offset = normal * bend * u.refraction + domed;
+
+    // Each channel divided by its own total weight, so an unbent pixel comes
+    // back exactly as it was drawn.
+    float3 colour = float3(0.0);
+    float3 total = float3(0.0);
+    for (uint k = 0; k < kSpectrumSamples; k++) {
+        const float t = float(k) / float(kSpectrumSamples - 1);
+        const float spread = 1.0 + u.dispersion * (t - 0.5) * 2.0;
+        const float2 q = (p - offset * spread) / u.viewport;
+        const float3 w = spectrumWeight(t);
+        colour += scene.sample(linearClamp, q).rgb * w;
+        total += w;
+    }
+    colour /= max(total, float3(1e-4));
+    colour *= 1.0 - u.tint;
+
+    // The light, from the top left and drifting a little, catching the rim
+    // where it faces it and the opposite rim where it faces away.
+    const float angle = -2.35 + 0.35 * sin(u.time * 0.35);
+    const float2 light = float2(cos(angle), sin(angle));
+    const float facing = abs(dot(normal, light));
+    const float catchLight = mix(0.35, 1.0, facing * facing);
+
+    // A one-point line along the rim, and a soft sheen just inside it.
+    const float px = 1.0 / u.scale;
+    const float line = 1.0 - smoothstep(1.0 - px, 1.0 + px, inside);
+    const float sheen = exp(-inside / 7.0) * 0.22 * facing;
+    colour = mix(colour, float3(1.0), clamp(line * catchLight * u.rim, 0.0, 1.0));
+    colour += sheen * u.rim;
+
+    // Feathered against the ground, a pixel wide.
+    const float coverage = 1.0 - smoothstep(-px, px, d);
+    return float4(mix(behind.rgb, colour, coverage), 1.0);
+}
