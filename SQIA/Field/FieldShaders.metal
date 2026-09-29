@@ -60,12 +60,23 @@ struct VertexOut {
 
 /// Distance to a rounded rectangle: negative inside, zero on the edge.
 ///
+/// The corner is iOS's continuous one rather than a quarter circle: the
+/// curve starts about half as far again back along each side and eases into
+/// it, so there is no point where a straight edge meets an arc. Drawn as a
+/// superellipse over that longer run, with the exponent that puts its middle
+/// where the circle's would be — the same corner SwiftUI's `.continuous`
+/// cuts the tap targets over it with.
+///
 /// `extent` rather than `half`, which is a type in this language and cannot
 /// be the name of anything.
 static float roundedBox(float2 offset, float2 extent, float radius) {
-    const float r = min(radius, min(extent.x, extent.y));
+    constexpr float kContinuousRun = 1.528;
+    constexpr float kExponent = 3.2;
+    const float r = min(radius * kContinuousRun, min(extent.x, extent.y));
     const float2 q = abs(offset) - (extent - r);
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+    const float2 c = max(q, 0.0);
+    const float corner = pow(pow(c.x, kExponent) + pow(c.y, kExponent), 1.0 / kExponent);
+    return corner + min(max(q.x, q.y), 0.0) - r;
 }
 
 /// How much of a pixel is inside the panel. One for everything when there is
@@ -389,7 +400,7 @@ struct GlassUniforms {
     float lens;
     /// The fill over it: the Figma's 27% black.
     float tint;
-    /// How bright the rim line and the light along it are.
+    /// The rim line's opacity at its brightest.
     float rim;
 };
 
@@ -471,12 +482,12 @@ fragment float4 glassFragment(
     const float angle = -2.35 + 0.35 * sin(u.time * 0.35);
     const float2 light = float2(cos(angle), sin(angle));
     const float facing = abs(dot(normal, light));
-    const float catchLight = mix(0.35, 1.0, facing * facing);
+    const float catchLight = mix(0.7, 1.0, facing * facing);
 
     // A one-point line along the rim, and a soft sheen just inside it.
     const float px = 1.0 / u.scale;
     const float line = 1.0 - smoothstep(1.0 - px, 1.0 + px, inside);
-    const float sheen = exp(-inside / 7.0) * 0.22 * facing;
+    const float sheen = exp(-inside / 7.0) * 0.25 * facing;
     colour = mix(colour, float3(1.0), clamp(line * catchLight * u.rim, 0.0, 1.0));
     colour += sheen * u.rim;
 

@@ -104,6 +104,20 @@ public final class AudioMixer: @unchecked Sendable {
 
     private var nextEvent: AudioEvent?
 
+    /// How loud each band of the output was over the last block, as the
+    /// bits of one double each — for the mixer's wave. Written once a
+    /// block, read whenever the screen draws.
+    private var meter: BandMeter
+    private var meterLevels = [Double](repeating: 0, count: BandMeter.bands)
+    private let publishedBands: UnsafeMutablePointer<SQIAAtomicUInt64>
+
+    /// Each band's RMS over the last block, low to high. Safe from any
+    /// thread.
+    public func bandLevel(_ band: Int) -> Double {
+        guard band >= 0 && band < BandMeter.bands else { return 0 }
+        return Double(bitPattern: SQIAAtomicLoadRelaxed(publishedBands + band))
+    }
+
     /// The knobs, as the bits of one double each.
     ///
     /// Not an event: the queue has one writer, the transport, and a knob is
@@ -161,6 +175,9 @@ public final class AudioMixer: @unchecked Sendable {
         reverb = Reverb(sampleRate: sampleRate)
         effects = MasterEffects(sampleRate: sampleRate)
         limiter = Limiter(sampleRate: sampleRate)
+        meter = BandMeter(sampleRate: sampleRate)
+        publishedBands = .allocate(capacity: BandMeter.bands)
+        for band in 0..<BandMeter.bands { SQIAAtomicInit(publishedBands + band, 0) }
         events = AudioEventQueue(capacity: queueCapacity)
         publishedFrame = .allocate(capacity: 1)
         SQIAAtomicInit(publishedFrame, 0)
@@ -179,6 +196,7 @@ public final class AudioMixer: @unchecked Sendable {
         publishedLoad.deallocate()
         publishedFaults.deallocate()
         publishedEffects.deallocate()
+        publishedBands.deallocate()
     }
 
     private func publishFrame() {
@@ -237,6 +255,7 @@ public final class AudioMixer: @unchecked Sendable {
             if activeHigh == 0 && masterQuiet >= Self.ringOutFrames {
                 left[i] = 0
                 right[i] = 0
+                meter.skip(1)
                 continue
             }
 
@@ -298,6 +317,7 @@ public final class AudioMixer: @unchecked Sendable {
             // caught it; this is the floor under that.
             left[i] = Float(min(max(out.left, -1), 1))
             right[i] = Float(min(max(out.right, -1), 1))
+            meter.process((out.left + out.right) * 0.5)
 
             if abs(out.left) + abs(out.right) > 1e-7 {
                 masterQuiet = 0
@@ -320,6 +340,11 @@ public final class AudioMixer: @unchecked Sendable {
             publishFaults()
         }
 
+        meter.read(into: &meterLevels)
+        for band in 0..<BandMeter.bands {
+            SQIAAtomicStoreRelease(publishedBands + band, meterLevels[band].bitPattern)
+        }
+
         publishFrame()
         publishLoad(started: started, frameCount: frameCount)
     }
@@ -335,6 +360,7 @@ public final class AudioMixer: @unchecked Sendable {
         reverb.clear()
         effects.clear()
         limiter.clear()
+        meter.clear()
         activeHigh = 0
         reverbRinging = 0
         masterQuiet = Self.ringOutFrames
@@ -419,6 +445,7 @@ public final class AudioMixer: @unchecked Sendable {
         reverb.clear()
         effects.clear()
         limiter.clear()
+        meter.clear()
         activeHigh = 0
         reverbRinging = 0
         masterQuiet = Self.ringOutFrames

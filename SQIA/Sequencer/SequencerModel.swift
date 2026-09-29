@@ -375,6 +375,17 @@ final class SequencerModel {
         return FieldFrame(layers: [scenes[state.activeTrackIndex].layer(in: rect)])
     }
 
+    /// How loud each band of what is playing is, low to high, 0…1 — for the
+    /// mixer's wave. Read straight off the render thread's meter; mapped
+    /// from decibels so a quiet pad still moves it and a kick does not pin it.
+    func outputBands(into levels: inout [Double]) {
+        for band in levels.indices {
+            let rms = engine.mixer.bandLevel(band)
+            let db = 20 * log10(max(rms, 1e-6))
+            levels[band] = min(max((db + 60) / 48, 0), 1)
+        }
+    }
+
     /// Every track behind its pane of glass.
     ///
     /// Each pane is a window onto its track laid out at full size, the way

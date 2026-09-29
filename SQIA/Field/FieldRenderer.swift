@@ -59,13 +59,14 @@ struct FieldGlass {
 /// How the mixer's glass is cut and how hard it bends. Points throughout.
 struct GlassLook {
     var corner: Double = MixerLayout.stackCorner
-    var bezel: Double = 42
-    var refraction: Double = 40
-    var dispersion: Double = 1.1
-    var lens: Double = 0.12
+    var bezel: Double = 36
+    var refraction: Double = 30
+    var dispersion: Double = 0.8
+    var lens: Double = 0.08
     /// The Figma's fill, rgba(0, 0, 0, 0.27).
     var tint: Double = 0.27
-    var rim: Double = 1
+    /// The rim line's opacity at its brightest.
+    var rim: Double = 0.2
 }
 
 /// Everything one frame draws. The outlines are not part of any layer: they

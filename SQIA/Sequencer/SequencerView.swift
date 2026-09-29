@@ -316,7 +316,7 @@ struct SequencerView: View {
         } label: {
             ZStack {
                 if model.isRunning {
-                    PlayingWave(bpm: model.state.bpm)
+                    PlayingWave(model: model)
                         .transition(.opacity)
                 } else {
                     Image("PlayIcon")
@@ -675,27 +675,55 @@ private extension View {
         model: SequencerModel(store: InMemoryProjectStore()), plus: PlusStore(), onLeave: {})
 }
 
-/// The mixer's transport while the pattern plays: nine bars, the design's
-/// heights, each breathing on the beat a little out of step with the next.
+/// The mixer's transport while the pattern plays: nine bars, one per band of
+/// the output from 60 Hz on the left to 10 kHz on the right, each as tall as
+/// that band is loud. They jump up with a hit and fall back more slowly, the
+/// way a level meter's needle does, so a beat reads as a beat.
 private struct PlayingWave: View {
-    let bpm: Double
+    let model: SequencerModel
 
-    private static let heights: [CGFloat] = [14, 10, 6, 18, 14, 20, 8, 4, 6]
+    /// Carried from frame to frame, so a bar can fall rather than snap.
+    @State private var smoother = Smoother()
+
+    private static let tallest: CGFloat = 20
+    private static let shortest: CGFloat = 4
 
     var body: some View {
         TimelineView(.animation) { timeline in
-            let beat = timeline.date.timeIntervalSinceReferenceDate * bpm / 60
+            let heights = smoother.step(model: model, at: timeline.date)
             HStack(spacing: 2) {
-                ForEach(Self.heights.indices, id: \.self) { index in
-                    let phase = beat * .pi + Double(index) * 0.9
-                    let swell = 0.55 + 0.45 * abs(sin(phase))
+                ForEach(heights.indices, id: \.self) { index in
                     Capsule()
                         .fill(.white)
-                        .frame(width: 4, height: max(4, Self.heights[index] * swell))
+                        .frame(
+                            width: 4,
+                            height: Self.shortest
+                                + (Self.tallest - Self.shortest) * CGFloat(heights[index]))
                 }
             }
-            .frame(height: 20)
+            .frame(height: Self.tallest)
         }
         .accessibilityHidden(true)
+    }
+
+    @MainActor
+    final class Smoother {
+        private var levels = [Double](repeating: 0, count: BandMeter.bands)
+        private var shown = [Double](repeating: 0, count: BandMeter.bands)
+        private var last: Date?
+
+        func step(model: SequencerModel, at now: Date) -> [Double] {
+            let dt = min(max(now.timeIntervalSince(last ?? now), 0), 0.1)
+            last = now
+            model.outputBands(into: &levels)
+            // Up in about 30 ms, down in about 250.
+            let rise = 1 - exp(-dt / 0.03)
+            let fall = 1 - exp(-dt / 0.25)
+            for band in shown.indices {
+                let target = levels[band]
+                shown[band] += (target - shown[band]) * (target > shown[band] ? rise : fall)
+            }
+            return shown
+        }
     }
 }

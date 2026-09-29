@@ -1,8 +1,8 @@
 // A knob for one of the mixer's effects, 0 to 100.
 //
-// From the Figma: a grey disc with a notched rim, forty notches round it,
-// and a dark line from just below the middle out toward the rim that says
-// where it is. Drag up to turn it up, down to turn it down — sideways counts
+// From the Figma: a grey disc with forty bites out of its rim and a dark
+// line from just below the middle out toward the edge — the design's own
+// export, turned whole the way a real knob turns. Drag up to turn it up, down to turn it down — sideways counts
 // as well, so a thumb moving on a diagonal still gets somewhere. Double tap
 // goes back to zero.
 //
@@ -67,21 +67,14 @@ struct EffectKnob: View {
         }
     }
 
+    /// The disc is centred in its 120 by 109.5 frame, so turning the frame
+    /// about its middle turns the disc about its own.
     private var dial: some View {
-        let size = Self.dialSize
-        return ZStack {
-            NotchedDisc()
-                .fill(Color(hex: 0x6D6D6D))
-            // From 9.75 below the middle to 48.4 below it, as drawn, and
-            // turned into place round the middle.
-            Capsule()
-                .fill(Color(hex: 0x1C1C1C))
-                .frame(width: 3, height: 38.6 + 3)
-                .offset(y: 9.75 + 38.6 / 2)
-                .rotationEffect(.degrees(value * Self.sweep))
-        }
-        .frame(width: size, height: size)
-        .animation(.interactiveSpring(response: 0.12), value: value)
+        Image("KnobDial")
+            .resizable()
+            .frame(width: Self.slotWidth, height: Self.dialSize)
+            .rotationEffect(.degrees(value * Self.sweep))
+            .animation(.interactiveSpring(response: 0.12), value: value)
     }
 
     private var drag: some Gesture {
@@ -103,43 +96,6 @@ struct EffectKnob: View {
                 onChange(next)
             }
             .onEnded { _ in dragStart = nil }
-    }
-}
-
-/// The dial's outline: a circle with forty shallow notches round its rim,
-/// one of them dead centre at the top, as in the design's export.
-///
-/// Worked out as a radius that dips two points for most of each fortieth
-/// and eases out again, rather than copied from the export's path, so it
-/// stays true at any size.
-private struct NotchedDisc: Shape {
-    var notches = 40
-    /// Two points on the design's 109.5-point dial.
-    var depth: CGFloat = 2 / 109.5
-    /// How much of each period is notch.
-    var notchShare = 0.62
-
-    func path(in rect: CGRect) -> Path {
-        let centre = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = min(rect.width, rect.height) / 2
-        let dip = depth * radius * 2
-        let steps = notches * 24
-        var path = Path()
-        for i in 0...steps {
-            let turn = Double(i) / Double(steps)
-            // Zero at the top, where a notch is centred.
-            let phase = (turn * Double(notches) + 0.5).truncatingRemainder(dividingBy: 1)
-            let nearness = 1 - abs(phase - 0.5) * 2  // 1 at a notch's middle
-            let t = min(max((nearness - (1 - notchShare)) / 0.12, 0), 1)
-            let inward = t * t * (3 - 2 * t)
-            let r = radius - dip * CGFloat(inward)
-            let angle = turn * 2 * .pi - .pi / 2
-            let point = CGPoint(
-                x: centre.x + r * CGFloat(cos(angle)), y: centre.y + r * CGFloat(sin(angle)))
-            if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
-        }
-        path.closeSubpath()
-        return path
     }
 }
 
