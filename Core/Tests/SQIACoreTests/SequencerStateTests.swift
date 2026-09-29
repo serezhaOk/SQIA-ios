@@ -157,12 +157,15 @@ struct SequencerStateTests {
         state.randomize(using: Mulberry32(seed: 8))
         state.toggleMute(1)
         state.setOctave(-1)
+        state.setEffect(.delay, to: 0.6)
+        state.setEffect(.scatter, to: 0.3)
 
         var restored = fresh()
         restored.apply(state.snapshot())
 
         #expect(restored.bpm == 137)
         #expect(restored.octave == -1)
+        #expect(restored.effects == EffectSettings(delay: 0.6, scatter: 0.3))
         #expect(restored.rootPc == state.rootPc)
         #expect(restored.scale.name == state.scale.name)
         #expect(restored.tracks.map(\.muted) == state.tracks.map(\.muted))
@@ -178,6 +181,23 @@ struct SequencerStateTests {
                 #expect(abs(Double(a.grid.cells[i]) - Double(b.grid.cells[i])) <= 0.005)
             }
         }
+    }
+
+    @Test("Each project brings its own knobs, and one without any plays dry")
+    func effectsFollowTheProject() {
+        var state = fresh()
+        state.setEffect(.delay, to: 0.8)
+        let wet = state.snapshot()
+
+        // Another project, saved with no knobs turned.
+        state.apply(ProjectSnapshot(bpm: 120, rootPc: 0, scale: "minor", tracks: []))
+        #expect(state.effects == EffectSettings())
+
+        state.apply(wet)
+        #expect(state.effects == EffectSettings(delay: 0.8, scatter: 0))
+
+        // A fresh project starts dry too.
+        #expect(fresh().effects == EffectSettings())
     }
 
     @Test("An octave moves every column twelve semitones and nothing else")

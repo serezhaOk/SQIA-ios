@@ -38,6 +38,9 @@ public struct ProjectSnapshot: Codable, Sendable, Equatable {
     /// iOS's own column; see `SequencerState.octave`. A row the web wrote
     /// before the column existed has none, and reads as 0.
     public var octave: Int
+    /// iOS's own column too: the mixer's knobs, as this project left them.
+    /// A row without it — the web's, or one from before — plays dry.
+    public var effects: EffectSettings
     public var tracks: [TrackSnapshot]
 
     enum CodingKeys: String, CodingKey {
@@ -45,16 +48,19 @@ public struct ProjectSnapshot: Codable, Sendable, Equatable {
         case rootPc = "root_pc"
         case scale
         case octave
+        case effects
         case tracks
     }
 
     public init(
-        bpm: Int, rootPc: Int, scale: String, octave: Int = 0, tracks: [TrackSnapshot]
+        bpm: Int, rootPc: Int, scale: String, octave: Int = 0,
+        effects: EffectSettings = EffectSettings(), tracks: [TrackSnapshot]
     ) {
         self.bpm = bpm
         self.rootPc = rootPc
         self.scale = scale
         self.octave = octave
+        self.effects = effects
         self.tracks = tracks
     }
 
@@ -64,6 +70,7 @@ public struct ProjectSnapshot: Codable, Sendable, Equatable {
         rootPc = try row.decode(Int.self, forKey: .rootPc)
         scale = try row.decode(String.self, forKey: .scale)
         octave = try row.decodeIfPresent(Int.self, forKey: .octave) ?? 0
+        effects = try row.decodeIfPresent(EffectSettings.self, forKey: .effects) ?? EffectSettings()
         tracks = try row.decode([TrackSnapshot].self, forKey: .tracks)
     }
 
@@ -84,6 +91,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
     public var rootPc: Int
     public var scale: String
     public var octave: Int
+    public var effects: EffectSettings
     public var tracks: [TrackSnapshot]
     public var updatedAt: String
 
@@ -94,6 +102,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         case rootPc = "root_pc"
         case scale
         case octave
+        case effects
         case tracks
         case updatedAt = "updated_at"
     }
@@ -105,6 +114,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         rootPc: Int,
         scale: String,
         octave: Int = 0,
+        effects: EffectSettings = EffectSettings(),
         tracks: [TrackSnapshot],
         updatedAt: String
     ) {
@@ -114,6 +124,7 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         self.rootPc = rootPc
         self.scale = scale
         self.octave = octave
+        self.effects = effects
         self.tracks = tracks
         self.updatedAt = updatedAt
     }
@@ -126,11 +137,14 @@ public struct Project: Codable, Sendable, Equatable, Identifiable {
         rootPc = try row.decode(Int.self, forKey: .rootPc)
         scale = try row.decode(String.self, forKey: .scale)
         octave = try row.decodeIfPresent(Int.self, forKey: .octave) ?? 0
+        effects = try row.decodeIfPresent(EffectSettings.self, forKey: .effects) ?? EffectSettings()
         tracks = try row.decode([TrackSnapshot].self, forKey: .tracks)
         updatedAt = try row.decode(String.self, forKey: .updatedAt)
     }
 
     public var snapshot: ProjectSnapshot {
-        ProjectSnapshot(bpm: bpm, rootPc: rootPc, scale: scale, octave: octave, tracks: tracks)
+        ProjectSnapshot(
+            bpm: bpm, rootPc: rootPc, scale: scale, octave: octave, effects: effects,
+            tracks: tracks)
     }
 }

@@ -87,6 +87,7 @@ public actor InMemoryProjectStore: ProjectStore {
             rootPc: snapshot.rootPc,
             scale: snapshot.scale,
             octave: snapshot.octave,
+            effects: snapshot.effects,
             tracks: snapshot.tracks,
             updatedAt: Self.now())
         rows[project.id] = project
@@ -103,6 +104,7 @@ public actor InMemoryProjectStore: ProjectStore {
         row.rootPc = snapshot.rootPc
         row.scale = snapshot.scale
         row.octave = snapshot.octave
+        row.effects = snapshot.effects
         row.tracks = snapshot.tracks
         row.updatedAt = Self.now()
         rows[id] = row

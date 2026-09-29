@@ -39,6 +39,9 @@ public struct SequencerState: Sendable, Equatable {
     /// Not the web's: a browser neither reads nor writes it, so its rows
     /// play at 0 there and keep what the phone set here.
     public var octave: Int
+    /// The mixer's knobs. Part of the project, like the key: one project's
+    /// delay is not another's.
+    public var effects: EffectSettings
     public var activeTrackIndex: Int
     public var bpm: Double
 
@@ -47,6 +50,7 @@ public struct SequencerState: Sendable, Equatable {
         rootPc: Int = defaultRootPc,
         scaleIndex: Int = defaultScaleIndex,
         octave: Int = 0,
+        effects: EffectSettings = EffectSettings(),
         activeTrackIndex: Int = 0,
         bpm: Double = defaultBPM
     ) {
@@ -54,6 +58,7 @@ public struct SequencerState: Sendable, Equatable {
         self.rootPc = rootPc
         self.scaleIndex = scaleIndex
         self.octave = Self.clampOctave(octave)
+        self.effects = effects
         self.activeTrackIndex = activeTrackIndex
         self.bpm = bpm
     }
@@ -112,6 +117,11 @@ public struct SequencerState: Sendable, Equatable {
         min(max(value, Music.octaveRange.lowerBound), Music.octaveRange.upperBound)
     }
 
+    /// Clamped by `EffectSettings` itself.
+    public mutating func setEffect(_ effect: MasterEffect, to amount: Double) {
+        effects[effect] = amount
+    }
+
     public mutating func setScale(_ index: Int) {
         guard Music.scales.indices.contains(index) else { return }
         scaleIndex = index
@@ -163,6 +173,7 @@ public struct SequencerState: Sendable, Equatable {
             rootPc: rootPc,
             scale: scale.name,
             octave: octave,
+            effects: effects,
             tracks: tracks.map {
                 TrackSnapshot(voiceIdx: $0.voiceIndex, muted: $0.muted, grid: $0.grid)
             }
@@ -179,6 +190,7 @@ public struct SequencerState: Sendable, Equatable {
         rootPc = project.rootPc
         scaleIndex = Music.scales.firstIndex { $0.name == project.scale } ?? 0
         octave = Self.clampOctave(project.octave)
+        effects = project.effects
 
         for (i, snapshot) in project.tracks.enumerated() where tracks.indices.contains(i) {
             tracks[i].voiceIndex = snapshot.voiceIdx

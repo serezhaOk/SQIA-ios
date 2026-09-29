@@ -405,7 +405,7 @@ struct SequencerView: View {
             let slot = column == 0 ? first : second
             EffectKnob(
                 title: effect.name,
-                value: model.effects[effect],
+                value: model.state.effects[effect],
                 onChange: { model.setEffect(effect, to: $0) }
             )
             .frame(width: slot.width, height: height)

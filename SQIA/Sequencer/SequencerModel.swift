@@ -129,14 +129,6 @@ final class SequencerModel {
     private(set) var dotField = false
     private static let dotFieldKey = "sqia.dotField"
 
-    /// The mixer's two knobs, 0…1 each.
-    ///
-    /// Kept on the phone rather than in the project for now, while the
-    /// sound of them is being settled: a project saved with a knob that
-    /// later means something else would play back wrong.
-    private(set) var effects = EffectSettings()
-    private static let effectsKey = "sqia.effects"
-
     /// What the subscription opens. Handed in by the app, which hears it
     /// from StoreKit; free until told otherwise, so a locked track is never
     /// heard by accident for the moment before that.
@@ -181,11 +173,6 @@ final class SequencerModel {
         {
             fieldTuning = restored
         }
-        if let saved = UserDefaults.standard.data(forKey: Self.effectsKey),
-            let restored = try? JSONDecoder().decode(EffectSettings.self, from: saved)
-        {
-            effects = restored
-        }
         lightBackground = UserDefaults.standard.bool(forKey: Self.lightBackgroundKey)
         dotField = UserDefaults.standard.bool(forKey: Self.dotFieldKey)
         applyFieldTuning()
@@ -205,6 +192,7 @@ final class SequencerModel {
         sequencer.bpm = state.bpm
         syncScenes()
         publishVoicing(saving: false)
+        publishEffects()
     }
 
     /// A blank field, with no row behind it yet. `adopt` gives it one once
@@ -215,6 +203,7 @@ final class SequencerModel {
         sequencer.bpm = state.bpm
         syncScenes()
         publishVoicing(saving: false)
+        publishEffects()
     }
 
     func adopt(_ project: Project) {
@@ -615,18 +604,18 @@ final class SequencerModel {
 
     // ------------------------------------------------------------ effects --
 
+    /// The knobs belong to the project, so turning one is an edit like any
+    /// other and is saved with it.
     func setEffect(_ effect: MasterEffect, to amount: Double) {
-        let clamped = min(max(amount, 0), 1)
-        guard effects[effect] != clamped else { return }
-        effects[effect] = clamped
+        let before = state.effects
+        state.setEffect(effect, to: amount)
+        guard state.effects != before else { return }
         publishEffects()
-        if let data = try? JSONEncoder().encode(effects) {
-            UserDefaults.standard.set(data, forKey: Self.effectsKey)
-        }
+        noteEdit()
     }
 
     private func publishEffects() {
-        engine.mixer.setEffects(effects)
+        engine.mixer.setEffects(state.effects)
     }
 
     func toggleErase() {

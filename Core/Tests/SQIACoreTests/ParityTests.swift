@@ -410,6 +410,8 @@ struct ProjectSnapshotTests {
         // The web does not know the octave column; a row without it is at 0.
         #expect(project.octave == 0)
         #expect(project.snapshot.octave == 0)
+        // Nor the effects column; a row without it plays dry.
+        #expect(project.effects == EffectSettings())
     }
 
     @Test("A row carrying an octave keeps it")
@@ -421,5 +423,27 @@ struct ProjectSnapshotTests {
         let project = try JSONDecoder().decode(Project.self, from: Data(json.utf8))
         #expect(project.octave == -2)
         #expect(project.snapshot.octave == -2)
+    }
+
+    @Test("A row carrying effects keeps them, and the column's default is dry")
+    func decodesEffects() throws {
+        func row(_ effects: String) throws -> Project {
+            let json = """
+                {"id": "a", "name": "Wet", "bpm": 90, "root_pc": 0, "scale": "minor",
+                 "effects": \(effects), "tracks": [], "updated_at": "2026-09-29T10:00:00+00:00"}
+                """
+            return try JSONDecoder().decode(Project.self, from: Data(json.utf8))
+        }
+        let wet = try row(#"{"delay": 0.7, "scatter": 0.2}"#)
+        #expect(wet.effects == EffectSettings(delay: 0.7, scatter: 0.2))
+        #expect(wet.snapshot.effects == wet.effects)
+        // What Postgres fills an existing row with.
+        #expect(try row("{}").effects == EffectSettings())
+        // Half a setting is still a setting, and a knob past its end stops there.
+        #expect(try row(#"{"delay": 3}"#).effects == EffectSettings(delay: 1, scatter: 0))
+        // Knobs that came off the mixer are skipped rather than refused.
+        #expect(
+            try row(#"{"reverb": 0.5, "cloud": 0.5, "scatter": 0.5}"#).effects
+                == EffectSettings(scatter: 0.5))
     }
 }

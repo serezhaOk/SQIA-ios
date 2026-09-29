@@ -25,10 +25,12 @@ public enum MasterEffect: Int, CaseIterable, Sendable {
     }
 }
 
-/// Where the two knobs are, 0…1 each.
+/// Where the two knobs are, 0…1 each. A project keeps its own.
 ///
-/// A setting saved while there were four still decodes: the synthesised
-/// decoder skips the `reverb` and `cloud` keys it no longer has.
+/// Read forgivingly: a knob the row does not mention is at zero, so the
+/// column's `{}` default, and a knob added later, both open as a bypass.
+/// Keys it no longer has — `reverb` and `cloud`, from when there were
+/// four — are skipped.
 public struct EffectSettings: Sendable, Equatable, Codable {
     public var delay: Double
     public var scatter: Double
@@ -36,6 +38,22 @@ public struct EffectSettings: Sendable, Equatable, Codable {
     public init(delay: Double = 0, scatter: Double = 0) {
         self.delay = delay
         self.scatter = scatter
+    }
+
+    public init(from decoder: Decoder) throws {
+        let row = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            delay: try row.decodeIfPresent(Double.self, forKey: .delay) ?? 0,
+            scatter: try row.decodeIfPresent(Double.self, forKey: .scatter) ?? 0)
+        // Through the subscript, so a hand-edited row cannot push a knob
+        // past its ends.
+        self[.delay] = delay
+        self[.scatter] = scatter
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case delay
+        case scatter
     }
 
     public subscript(effect: MasterEffect) -> Double {
