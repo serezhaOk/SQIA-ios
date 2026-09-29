@@ -12,7 +12,7 @@ what Plus opens.
   Supabase: the subscription belongs to the Apple ID, not the SQIA account,
   so signing out or into another account does not change it.
 - The owner's account, `serezhaok@gmail.com` (`PlusStore.complimentary`),
-  always has Plus without buying it; the profile's row says "Included".
+  always has Plus without buying it; the profile's row says "Active".
   It is a check on the phone against the signed-in address, not a server
   grant, and it does not touch StoreKit.
 - Without Plus the second track keeps its notes but is silent and locked.
@@ -29,7 +29,8 @@ what Plus opens.
   shows the storefront's price and period, Restore, Privacy and Terms, and
   buys through `PlusStore.purchase()`. It opens from the locked panel in the
   mixer, the background playback switch, and Profile → SQIA Plus → Subscribe. Once
-  subscribed, that row opens the system's Manage Subscriptions sheet.
+  subscribed, that row says Active and leads nowhere: cancelling is done in
+  the system's Settings, not from the app.
 
 ## Testing locally
 
