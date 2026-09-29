@@ -62,12 +62,10 @@ enum Palette {
 /// The inset glow along the bottom of every raised control is what makes them
 /// read as pressed out of the ground rather than laid on it.
 ///
-/// A value rather than a shelf of constants, because the screen can be turned
-/// over onto a light ground and every colour on it has to turn with it: a
-/// white label left behind on a pale surface is not a dimmer version of the
-/// design, it is an unreadable one. The chosen palette travels down the
-/// screen in the environment, so no control has to be told which ground it is
-/// standing on.
+/// A value rather than a shelf of constants, because the mixer stands on a
+/// ground of its own (`opened`) and every colour has to follow it there. The
+/// palette travels down the screen in the environment, so no control has to
+/// be told which ground it is standing on.
 struct SequencerPalette: Equatable {
     /// The ground, as one number. SwiftUI paints the bars with it and Metal
     /// clears the field to it, and the screen only reads as a single surface
@@ -156,28 +154,6 @@ struct SequencerPalette: Equatable {
         dimmed: 0.3,
         mixerGround: 0x1C1C1C,
         fieldGround: 0x000000
-    )
-
-    /// The same screen turned over, for looking at the field on paper rather
-    /// than in the dark. Every part keeps its job — the surface is still a
-    /// shade off the ground, the hairline is still barely there — so the
-    /// greys are inverted rather than chosen again, and the eraser's red and
-    /// the shuffle's pink stay put, because those are the design's colours
-    /// rather than its greys.
-    static let light = SequencerPalette(
-        ground: 0xF2F0EE,
-        surface: .white,
-        hairline: Color.black.opacity(0.08),
-        outline: Color.black.opacity(0.18),
-        label: Color(hex: 0x111111),
-        pillLabel: Color(hex: 0x1A1A1A),
-        cardEdge: Color.black.opacity(0.1),
-        bloom: Color(hex: 0xD9D5D1),
-        eraseBloom: .red,
-        shuffleBloom: Color(hex: 0xFF66E0),
-        dimmed: 0.3,
-        mixerGround: 0xE7E4E1,
-        fieldGround: 0xF2F0EE
     )
 }
 

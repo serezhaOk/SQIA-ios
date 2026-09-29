@@ -108,15 +108,6 @@ final class SequencerModel {
     /// and this build starts from its own.
     private static let fieldTuningKey = "sqia.fieldTuning.2"
 
-    /// Whether the screen stands on a light ground. Kept out of
-    /// `FieldTuning` on purpose: that one is pasted in and out as JSON, and
-    /// Swift's synthesised decoder does not fall back on a property's default
-    /// value — so a key added here would make every tuning written down
-    /// before today unreadable. This is a switch about the screen anyway,
-    /// not a number the field is drawn by.
-    private(set) var lightBackground = false
-    private static let lightBackgroundKey = "sqia.lightBackground"
-
     /// Whether to draw the dot field instead — the web's own look, dome and
     /// all, which the heat field replaced.
     ///
@@ -136,9 +127,7 @@ final class SequencerModel {
 
     /// The colours a track's screen wears. The mixer stands on `opened`, its
     /// own ground, so the panels have something to lie on.
-    var palette: SequencerPalette {
-        lightBackground ? .light : .dark
-    }
+    var palette: SequencerPalette { .dark }
 
     // ------------------------------------------------------------ the row --
     /// The project being played, and the thing that writes it. Every edit
@@ -173,7 +162,6 @@ final class SequencerModel {
         {
             fieldTuning = restored
         }
-        lightBackground = UserDefaults.standard.bool(forKey: Self.lightBackgroundKey)
         dotField = UserDefaults.standard.bool(forKey: Self.dotFieldKey)
         applyFieldTuning()
 
@@ -498,15 +486,6 @@ final class SequencerModel {
 
     func resetFieldTuning() {
         setFieldTuning(.current)
-    }
-
-    /// Turn the screen over. Nothing about the field itself changes — the
-    /// ramps are the panel's, and a look tuned against black will want
-    /// retyping against paper.
-    func setLightBackground(_ on: Bool) {
-        guard on != lightBackground else { return }
-        lightBackground = on
-        UserDefaults.standard.set(on, forKey: Self.lightBackgroundKey)
     }
 
     /// Put the dot field back, or take it away again.
