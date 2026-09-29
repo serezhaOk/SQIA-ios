@@ -203,7 +203,7 @@ final class SmokeTests: XCTestCase {
         // The sheet takes a moment to slide away once it has said yes.
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: subscribe)
         waitForExpectations(timeout: patience)
-        XCTAssertEqual(named("SQIA Plus").value as? String, "Manage", "the profile still sells Plus")
+        XCTAssertEqual(named("SQIA Plus").value as? String, "Active", "the profile still sells Plus")
     }
 
     /// The owner's account has Plus without buying it: the second track
@@ -215,7 +215,7 @@ final class SmokeTests: XCTestCase {
 
         awaitElement("Profile", "the profile button is missing").tap()
         let row = awaitElement("SQIA Plus", "the profile has no SQIA Plus row")
-        XCTAssertEqual(row.value as? String, "Included", "the owner is being sold Plus")
+        XCTAssertEqual(row.value as? String, "Active", "the owner is being sold Plus")
         awaitElement("Back", "the profile has no way back").tap()
 
         openAProject()

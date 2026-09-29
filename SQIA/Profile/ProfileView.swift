@@ -19,7 +19,6 @@ struct ProfileView: View {
     @AppStorage(Preferences.backgroundPlayback) private var playsInBackground = false
     @State private var closingAccount = false
     @State private var showingPaywall = false
-    @State private var managingPlus = false
     /// The switch was pressed without Plus: turn it on if the paywall it
     /// opened ends in a subscription.
     @State private var wantsBackground = false
@@ -80,7 +79,6 @@ struct ProfileView: View {
         .sheet(isPresented: $showingPaywall) {
             PlusPaywall(plus: plus)
         }
-        .manageSubscriptionsSheet(isPresented: $managingPlus)
         .onChange(of: plus.access.hasPlus) { _, hasPlus in
             if hasPlus && wantsBackground { playsInBackground = true }
             wantsBackground = false
@@ -151,17 +149,12 @@ struct ProfileView: View {
             .overlay(Self.cardShape.strokeBorder(Palette.glassEdge, lineWidth: 1))
     }
 
-    /// Subscribe opens the paywall; once subscribed, Manage opens the
-    /// system's own sheet for changing or cancelling it, which is where
-    /// somebody looking to cancel expects to end up. An account given Plus
-    /// has nothing to manage, and the row just says so.
+    /// Subscribe opens the paywall. Once Plus is on, bought or given, the row
+    /// only says Active and leads nowhere — changing or cancelling it is left
+    /// to the system's Settings, where the App Store keeps it.
     private var plusRow: some View {
         Button {
-            if plus.purchased {
-                managingPlus = true
-            } else if !plus.access.hasPlus {
-                showingPaywall = true
-            }
+            showingPaywall = true
         } label: {
             HStack(spacing: 12) {
                 label("SQIA Plus")
@@ -174,15 +167,15 @@ struct ProfileView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RowPress())
+        .disabled(plus.access.hasPlus)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("SQIA Plus")
         .accessibilityValue(plusAction)
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(plus.access.hasPlus ? [] : .isButton)
     }
 
     private var plusAction: String {
-        if plus.purchased { return "Manage" }
-        return plus.access.hasPlus ? "Included" : "Subscribe"
+        plus.access.hasPlus ? "Active" : "Subscribe"
     }
 
     /// Plus. Without it the switch reads off whatever was stored, and
