@@ -112,15 +112,17 @@ public enum MixerLayout {
             x: stackInset, y: stackTop + Double(index) * (h + stackGap), width: w, height: h)
     }
 
-    /// The field a pane looks into: the track at the size it has on its own
-    /// screen, centred on the pane. The pane is a window cut into it, not a
-    /// field squeezed down to fit — so the notes keep their size, and what
-    /// the track zooms out to is the middle of what the pane was showing.
+    /// The field a pane looks into: the track in the shape it has on its own
+    /// screen, scaled so its width is the pane's and centred on it. Every
+    /// column fits across, edge notes included; the pane cuts off what runs
+    /// past its top and bottom.
     public static func window(for pane: Panel, stage width: Double, _ height: Double) -> Panel {
-        Panel(
-            x: pane.x + pane.width / 2 - width / 2,
-            y: pane.y + pane.height / 2 - height / 2,
-            width: width, height: height)
+        let scale = width > 0 ? pane.width / width : 1
+        let h = height * scale
+        return Panel(
+            x: pane.x,
+            y: pane.y + pane.height / 2 - h / 2,
+            width: pane.width, height: h)
     }
 
     public static func full(width: Double, height: Double) -> Panel {

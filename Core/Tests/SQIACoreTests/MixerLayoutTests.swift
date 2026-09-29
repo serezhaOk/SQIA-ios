@@ -192,11 +192,12 @@ struct MixerLayoutTests {
         #expect(second.y - first.maxY == MixerLayout.stackGap)
     }
 
-    @Test("A pane looks into a whole field, centred on it")
+    @Test("A pane looks into its field fitted to its width, centred on it")
     func windowIsCentred() {
         let pane = MixerLayout.stacked(1, width: 390)
         let field = MixerLayout.window(for: pane, stage: 390, 600)
-        #expect(field.width == 390 && field.height == 600)
+        #expect(field.x == pane.x && field.width == pane.width)
+        #expect(abs(field.height / field.width - 600.0 / 390.0) < 1e-9)
         #expect(abs((field.x + field.width / 2) - (pane.x + pane.width / 2)) < 1e-9)
         #expect(abs((field.y + field.height / 2) - (pane.y + pane.height / 2)) < 1e-9)
     }
