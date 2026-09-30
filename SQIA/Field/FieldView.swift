@@ -55,6 +55,9 @@ struct FieldView: UIViewRepresentable {
     /// frame it stopped on. A few a second keep it close to true for a
     /// fraction of the cost.
     var isResting = false
+    /// Shows what is behind it wherever the frame leaves clear — the mixer,
+    /// whose glass is all it draws and whose ground is SwiftUI's.
+    var isTranslucent = false
     /// Where a finger is, for as long as it is down. Nil for a field that
     /// is only looked at.
     var onTouch: (@MainActor (CGPoint) -> Void)?
@@ -88,7 +91,7 @@ struct FieldView: UIViewRepresentable {
         // surface. Which ground that is comes down the environment and can
         // be turned over while the field is running.
         ground(context.environment.sequencerPalette, on: view)
-        view.isOpaque = true
+        view.isOpaque = !isTranslucent
         view.framebufferOnly = true
         // The field is never still, so it draws continuously rather than
         // waiting to be invalidated.
@@ -131,7 +134,7 @@ struct FieldView: UIViewRepresentable {
     /// the old ground for a frame in the strip that has not been drawn yet.
     private func ground(_ palette: SequencerPalette, on view: MTKView) {
         view.clearColor = palette.clearColor
-        view.backgroundColor = UIColor(palette.fieldBackground)
+        view.backgroundColor = isTranslucent ? .clear : UIColor(palette.fieldBackground)
     }
 
     @MainActor

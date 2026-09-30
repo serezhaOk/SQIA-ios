@@ -1,14 +1,13 @@
 // A knob for one of the mixer's effects, 0 to 100.
 //
-// From the Figma: a grey disc with forty bites out of its rim and a dark
-// line from just below the middle out toward the edge — the design's own
-// export, turned whole the way a real knob turns. Drag up to turn it up, down to turn it down — sideways counts
-// as well, so a thumb moving on a diagonal still gets somewhere. Double tap
-// goes back to zero.
+// From the Figma: a grey disc in a heavy black ring, and a black dot inside
+// the rim that says where it is set. Drag up to turn it up, down to turn it
+// down — sideways counts as well, so a thumb moving on a diagonal still gets
+// somewhere. Double tap goes back to zero.
 //
-// At zero the line points straight down, as drawn, and it turns clockwise
-// from there: all the way up is most of a turn round, just short of where
-// it started.
+// At zero the dot sits at about seven o'clock, where the design draws
+// Scatter, and it turns clockwise from there over the top to five o'clock —
+// the dead zone at the bottom, the way a knob on a desk has one.
 
 import SQIACore
 import SwiftUI
@@ -25,10 +24,21 @@ struct EffectKnob: View {
     /// Dial, gap, label.
     static let height: CGFloat = dialSize + 12 + 18
 
+    /// The disc as drawn: 55 to the middle of a 5-point ring, so 115
+    /// across its outside — a little over the slot's height, as in the
+    /// design, where it hangs over the frame it is laid out in.
+    private static let discSize: CGFloat = 115
+    private static let ringWidth: CGFloat = 5
+    private static let dotSize: CGFloat = 10
+    /// From the disc's middle to the dot's.
+    private static let dotRadius: CGFloat = 39.5
+
     /// How far a finger travels for the whole range.
     private static let travel: CGFloat = 220
-    /// How far round the line goes between 0 and 100.
-    private static let sweep = 300.0
+    /// Where the dot is at zero, clockwise from twelve o'clock, and how far
+    /// round it goes to 100 — symmetric about six o'clock.
+    private static let rest = 215.0
+    private static let sweep = 290.0
 
     @State private var dragStart: Double?
 
@@ -67,14 +77,22 @@ struct EffectKnob: View {
         }
     }
 
-    /// The disc is centred in its 120 by 109.5 frame, so turning the frame
-    /// about its middle turns the disc about its own.
+    /// The disc stays put and the dot goes round it: turning the whole of a
+    /// plain disc would look the same as not turning it.
     private var dial: some View {
-        Image("KnobDial")
-            .resizable()
-            .frame(width: Self.slotWidth, height: Self.dialSize)
-            .rotationEffect(.degrees(value * Self.sweep))
-            .animation(.interactiveSpring(response: 0.12), value: value)
+        ZStack {
+            Circle()
+                .fill(Color(hex: 0xB9B9B9))
+                .overlay { Circle().strokeBorder(.black, lineWidth: Self.ringWidth) }
+                .frame(width: Self.discSize, height: Self.discSize)
+
+            Circle()
+                .fill(.black)
+                .frame(width: Self.dotSize, height: Self.dotSize)
+                .offset(y: -Self.dotRadius)
+                .rotationEffect(.degrees(Self.rest + value * Self.sweep))
+                .animation(.interactiveSpring(response: 0.12), value: value)
+        }
     }
 
     private var drag: some Gesture {

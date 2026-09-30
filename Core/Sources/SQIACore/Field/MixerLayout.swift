@@ -89,9 +89,13 @@ public enum MixerLayout {
     // The mixer as it is designed now: the tracks one above the other, each
     // a wide pane of glass the width of the screen less its margins, and the
     // effect knobs under them. The numbers are the Figma's, measured on its
-    // 375 by 812 frame — 335-wide panes, eight points apart, eleven below the
-    // header, cut to a 32-point corner — except the height: 178 rather than
-    // the frame's 198, so the knobs are not pushed down toward the button.
+    // 375 by 812 frame — 335 by 198 panes, eight points apart, eleven below
+    // the header, cut to a 44-point corner, the knobs 32 under the last one.
+    //
+    // The frame puts its header where a phone keeps its status bar, so a
+    // real screen has less stage than the frame does. The panes keep the
+    // design's shape for as long as the knobs still fit beneath them, and
+    // give up height, both alike, once they would not.
     //
     // The web's columns above stay as they are — they are what the parity
     // fixtures check against.
@@ -99,15 +103,28 @@ public enum MixerLayout {
     public static let stackInset = 20.0
     public static let stackGap = 8.0
     public static let stackTop = 11.0
-    public static let stackRatio = 178.0 / 335.0
-    public static let stackCorner = 32.0
+    public static let stackRatio = 198.0 / 335.0
+    public static let stackCorner = 44.0
     /// From the bottom of the last pane to the top of the knobs.
     public static let knobsGap = 32.0
+    /// Kept clear under the knobs, above the band the back button sits in.
+    /// The band holds 25 over the button, and the design leaves 36 between
+    /// the knobs' labels and it.
+    public static let stackFloor = 11.0
 
-    /// Where track `index` sits in the stack.
-    public static func stacked(_ index: Int, width: Double) -> Panel {
+    /// Where track `index` sits in the stack, on a stage `height` tall that
+    /// keeps `below` under the last pane for whatever hangs there.
+    public static func stacked(
+        _ index: Int,
+        width: Double,
+        height: Double = .infinity,
+        reserving below: Double = 0,
+        count: Int = SequencerState.trackCount
+    ) -> Panel {
         let w = max(0, width - stackInset * 2)
-        let h = (w * stackRatio).rounded()
+        let tracks = Double(max(1, count))
+        let room = (height - stackTop - below - stackGap * (tracks - 1)) / tracks
+        let h = max(minimumHeight, min((w * stackRatio).rounded(), room.rounded(.down)))
         return Panel(
             x: stackInset, y: stackTop + Double(index) * (h + stackGap), width: w, height: h)
     }

@@ -402,6 +402,9 @@ struct GlassUniforms {
     float tint;
     /// The rim line's opacity at its brightest.
     float rim;
+    /// 1 to leave what is outside the panes clear, premultiplied, so the
+    /// view behind shows through; 0 to fill it with the frame.
+    float clearsOutside;
 };
 
 /// Samples across the spectrum. Six left the split as six visible copies
@@ -435,7 +438,8 @@ fragment float4 glassFragment(
         const float here = roundedBox(p - panes[i].xy, panes[i].zw, u.corner);
         if (here < 1.0) { hit = int(i); d = here; break; }
     }
-    if (hit < 0) { return behind; }
+    const bool clear = u.clearsOutside > 0.5;
+    if (hit < 0) { return clear ? float4(0.0) : behind; }
 
     const float2 centre = panes[hit].xy;
     const float2 extent = panes[hit].zw;
@@ -493,5 +497,6 @@ fragment float4 glassFragment(
 
     // Feathered against the ground, a pixel wide.
     const float coverage = 1.0 - smoothstep(-px, px, d);
+    if (clear) { return float4(colour * coverage, coverage); }
     return float4(mix(behind.rgb, colour, coverage), 1.0);
 }

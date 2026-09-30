@@ -183,13 +183,25 @@ struct MixerLayoutTests {
         #expect(MixerLayout.outlineAlpha(eased: 1) == 0.7)
     }
 
-    @Test("The stack is the Figma's on its own frame, 20 shorter")
+    @Test("The stack is the Figma's on its own frame")
     func stackMatchesTheDesign() {
         let first = MixerLayout.stacked(0, width: 375)
         let second = MixerLayout.stacked(1, width: 375)
-        #expect(first == Panel(x: 20, y: 11, width: 335, height: 178))
-        #expect(second == Panel(x: 20, y: 197, width: 335, height: 178))
+        #expect(first == Panel(x: 20, y: 11, width: 335, height: 198))
+        #expect(second == Panel(x: 20, y: 217, width: 335, height: 198))
         #expect(second.y - first.maxY == MixerLayout.stackGap)
+    }
+
+    @Test("On a short stage the panes give up height so what hangs below fits")
+    func stackFitsItsStage() {
+        let below = 180.0
+        let roomy = MixerLayout.stacked(1, width: 375, height: 800, reserving: below)
+        #expect(roomy.height == 198)
+
+        let short = MixerLayout.stacked(1, width: 375, height: 560, reserving: below)
+        #expect(short.height < 198)
+        #expect(short.maxY + below <= 560)
+        #expect(short.width == 335)
     }
 
     @Test("A pane looks into its field fitted to its width, centred on it")

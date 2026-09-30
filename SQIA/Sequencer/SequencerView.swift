@@ -169,7 +169,7 @@ struct SequencerView: View {
                 .hidden()
                 .overlay { backTile }
         }
-        .background(palette.opened.background.ignoresSafeArea())
+        .background(GrainGround(ground: palette.opened.background).ignoresSafeArea())
         .environment(\.sequencerPalette, palette.opened)
         .toolbar(.hidden, for: .navigationBar)
     }
@@ -383,7 +383,8 @@ struct SequencerView: View {
             ZStack(alignment: .topLeading) {
                 FieldView(
                     frame: { rect, dt in model.mixerFrame(in: rect, dt: dt) },
-                    isResting: !mixerLive
+                    isResting: !mixerLive,
+                    isTranslucent: true
                 )
                 .accessibilityHidden(true)
 

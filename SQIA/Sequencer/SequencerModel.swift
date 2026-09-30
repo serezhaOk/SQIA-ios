@@ -394,6 +394,9 @@ final class SequencerModel {
     /// at all, only the glass.
     func mixerFrame(in rect: CGRect, dt: Double) -> FieldFrame {
         var frame = FieldFrame()
+        // Between and around the panes is the screen's own ground, which
+        // SwiftUI paints behind the field.
+        frame.look.clearsOutside = true
         for index in state.tracks.indices where scenes.indices.contains(index) {
             let pane = mixerPanel(index, in: rect.size)
             frame.glass.append(FieldGlass(rect: CGRect(pane)))
@@ -415,7 +418,9 @@ final class SequencerModel {
     /// Where a track's pane sits on a stage of this size. The field draws
     /// into it and the view zooms out of it, so both ask here.
     func mixerPanel(_ index: Int, in size: CGSize) -> Panel {
-        MixerLayout.stacked(index, width: Double(size.width))
+        MixerLayout.stacked(
+            index, width: Double(size.width), height: Double(size.height),
+            reserving: MixerLayout.knobsGap + EffectKnob.height + MixerLayout.stackFloor)
     }
 
     // -------------------------------------------------------------- mixer --

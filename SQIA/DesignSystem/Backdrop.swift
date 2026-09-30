@@ -2,6 +2,7 @@
 // blurred forest behind them and the blur the bottom of the screen goes
 // soft under.
 
+import SQIACore
 import SwiftUI
 import UIKit
 
@@ -96,5 +97,41 @@ struct UntintedBlur: UIViewRepresentable {
             super.layoutSubviews()
             for view in subviews.dropFirst() { view.isHidden = true }
         }
+    }
+}
+
+/// Behind the mixer: a dark ground with a sparse grain on it, the design's
+/// noise. Measured off the Figma's frame — about 38 specks to every hundred
+/// points square, each a couple of points across and barely lighter than
+/// the ground, so it reads as a texture rather than as dots.
+///
+/// The specks come off a fixed seed, so the grain is the same one every
+/// time it is drawn and does not crawl when the screen redraws it; the
+/// canvas is only asked again when its size changes.
+struct GrainGround: View {
+    var ground: Color = Color(hex: 0x1C1C1C)
+
+    /// Specks per square point.
+    private static let density = 38.0 / 10_000
+    private static let seed: UInt32 = 0x5C1A
+
+    var body: some View {
+        Canvas { context, size in
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(ground))
+            let random = Mulberry32(seed: Self.seed)
+            let count = Int(size.width * size.height * Self.density)
+            for _ in 0..<count {
+                let x = random.value(0, size.width)
+                let y = random.value(0, size.height)
+                let diameter = random.value(1.0, 2.6)
+                let strength = random.value(0.03, 0.075)
+                context.fill(
+                    Path(ellipseIn: CGRect(
+                        x: x - diameter / 2, y: y - diameter / 2,
+                        width: diameter, height: diameter)),
+                    with: .color(.white.opacity(strength)))
+            }
+        }
+        .accessibilityHidden(true)
     }
 }

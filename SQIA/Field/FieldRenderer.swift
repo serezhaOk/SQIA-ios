@@ -60,13 +60,21 @@ struct FieldGlass {
 struct GlassLook {
     var corner: Double = MixerLayout.stackCorner
     var bezel: Double = 36
-    var refraction: Double = 30
-    var dispersion: Double = 0.8
+    /// Settled by turning them on a phone: a strong bend at the rim, and
+    /// only a trace of colour pulled apart in it.
+    var refraction: Double = 60
+    var dispersion: Double = 0.2
     var lens: Double = 0.08
     /// The Figma's fill, rgba(0, 0, 0, 0.27).
     var tint: Double = 0.27
-    /// The rim line's opacity at its brightest.
-    var rim: Double = 0.2
+    /// The rim line's opacity at its brightest, and the sheen inside it.
+    /// Off: the Figma draws a 40% white border, and on a phone it read as
+    /// a frame round the glass rather than the edge of it. The bend at the
+    /// rim is edge enough.
+    var rim: Double = 0
+    /// Whether what lies outside the panes is left clear, for SwiftUI to
+    /// show its own ground through, rather than filled with the frame's.
+    var clearsOutside = false
 }
 
 /// Everything one frame draws. The outlines are not part of any layer: they
@@ -145,6 +153,7 @@ private struct GlassUniforms {
     var lens: Float = 0
     var tint: Float = 0
     var rim: Float = 0
+    var clearsOutside: Float = 0
 
     mutating func take(_ look: GlassLook) {
         corner = Float(look.corner)
@@ -154,6 +163,7 @@ private struct GlassUniforms {
         lens = Float(look.lens)
         tint = Float(look.tint)
         rim = Float(look.rim)
+        clearsOutside = look.clearsOutside ? 1 : 0
     }
 }
 
