@@ -18,6 +18,8 @@ public struct AudioEvent: Sendable {
         case chain
         /// Where the steps fall, for the effects that keep time.
         case grid
+        /// A note for one of the Lab's sounds.
+        case soundNote
     }
 
     public var kind: Kind
@@ -28,6 +30,7 @@ public struct AudioEvent: Sendable {
     public var room: RoomSettings
     public var chain: ChainSettings
     public var grid: StepGrid
+    public var sound: SoundNote
 
     public init(
         kind: Kind,
@@ -36,7 +39,8 @@ public struct AudioEvent: Sendable {
         drift: PresetDrift = PresetDrift(),
         room: RoomSettings = RoomSettings(),
         chain: ChainSettings = ChainSettings(),
-        grid: StepGrid = StepGrid()
+        grid: StepGrid = StepGrid(),
+        sound: SoundNote = SoundNote()
     ) {
         self.kind = kind
         self.frame = frame
@@ -45,10 +49,15 @@ public struct AudioEvent: Sendable {
         self.room = room
         self.chain = chain
         self.grid = grid
+        self.sound = sound
     }
 
     public static func note(_ recipe: VoiceRecipe, at frame: Int64) -> AudioEvent {
         AudioEvent(kind: .synthNote, frame: frame, recipe: recipe)
+    }
+
+    public static func sound(_ note: SoundNote, at frame: Int64) -> AudioEvent {
+        AudioEvent(kind: .soundNote, frame: frame, sound: note)
     }
 
     public static func drift(_ drift: PresetDrift, at frame: Int64) -> AudioEvent {
@@ -111,5 +120,23 @@ public struct ChainSettings: Sendable, Equatable {
         self.preset = preset
         self.sendHighpass = sendHighpass
         self.delayWet = delayWet
+    }
+}
+
+/// A note for a Lab sound: which sound, and what to play on it. Its timbre
+/// is rolled inside the synth, so this is all that has to cross.
+public struct SoundNote: Sendable, Equatable {
+    /// Index into `Sound.library`.
+    public var sound: Int
+    public var midi: Int
+    public var velocity: Double
+    /// How long the key is held.
+    public var seconds: Double
+
+    public init(sound: Int = 0, midi: Int = 60, velocity: Double = 1, seconds: Double = 0.1) {
+        self.sound = sound
+        self.midi = midi
+        self.velocity = velocity
+        self.seconds = seconds
     }
 }

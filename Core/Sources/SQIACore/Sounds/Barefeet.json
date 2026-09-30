@@ -1,0 +1,82 @@
+{
+  "ampMode" : "lpg",
+  "engine" : "va_vcf",
+  "format" : "sqia.sound",
+  "name" : "Barefeet",
+  "params" : {
+    "attack" : {
+      "spread" : 0.37044272,
+      "value" : 0.001
+    },
+    "aux_mix" : {
+      "value" : 0.21139322
+    },
+    "decay" : {
+      "value" : 0.057334457
+    },
+    "env_to_morph" : {
+      "value" : 0.27504337
+    },
+    "env_to_pitch" : {
+      "value" : 0
+    },
+    "env_to_timbre" : {
+      "spread" : 0.13229167,
+      "value" : 0.030598998
+    },
+    "fine" : {
+      "value" : 0
+    },
+    "harmonics" : {
+      "spread" : 0.115950525,
+      "value" : 0
+    },
+    "level" : {
+      "value" : -8
+    },
+    "lpg_colour" : {
+      "value" : 0.96844625
+    },
+    "lpg_decay" : {
+      "value" : 0.38430995
+    },
+    "morph" : {
+      "spread" : 0.15166014,
+      "value" : 0.09114583
+    },
+    "pan" : {
+      "spread" : 0.3204861,
+      "value" : 0
+    },
+    "polyphony" : {
+      "value" : 8
+    },
+    "release" : {
+      "spread" : 0.3838433,
+      "value" : 0.05228004
+    },
+    "reverb_mix" : {
+      "value" : 0.46019965
+    },
+    "reverb_time" : {
+      "value" : 0.29008245
+    },
+    "reverb_tone" : {
+      "value" : 1
+    },
+    "sustain" : {
+      "value" : 0.16365018
+    },
+    "timbre" : {
+      "spread" : 0.26926,
+      "value" : 0.1797092
+    },
+    "transpose" : {
+      "value" : 0
+    },
+    "velocity" : {
+      "value" : 0.5766059
+    }
+  },
+  "version" : 1
+}

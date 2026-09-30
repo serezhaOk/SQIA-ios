@@ -1,0 +1,78 @@
+{
+  "ampMode" : "lpg",
+  "engine" : "wave_terrain",
+  "format" : "sqia.sound",
+  "name" : "Dancing flower",
+  "params" : {
+    "attack" : {
+      "value" : 0.031011716
+    },
+    "aux_mix" : {
+      "value" : 0
+    },
+    "decay" : {
+      "value" : 0.04799284
+    },
+    "env_to_morph" : {
+      "value" : 0
+    },
+    "env_to_pitch" : {
+      "value" : -0.40546876
+    },
+    "env_to_timbre" : {
+      "value" : 0.12905532
+    },
+    "fine" : {
+      "value" : 0
+    },
+    "harmonics" : {
+      "value" : 0.23641782
+    },
+    "level" : {
+      "value" : -6.15703
+    },
+    "lpg_colour" : {
+      "value" : 0.83673775
+    },
+    "lpg_decay" : {
+      "spread" : 0.28973526,
+      "value" : 0.4634115
+    },
+    "morph" : {
+      "value" : 0.11729759
+    },
+    "pan" : {
+      "spread" : 0.2023546,
+      "value" : 0
+    },
+    "polyphony" : {
+      "value" : 8
+    },
+    "release" : {
+      "value" : 0.08353176
+    },
+    "reverb_mix" : {
+      "value" : 0.32532555
+    },
+    "reverb_time" : {
+      "value" : 0.42061633
+    },
+    "reverb_tone" : {
+      "value" : 0.28949654
+    },
+    "sustain" : {
+      "value" : 0.7
+    },
+    "timbre" : {
+      "spread" : 0.11662327,
+      "value" : 0.16084915
+    },
+    "transpose" : {
+      "value" : 0
+    },
+    "velocity" : {
+      "value" : 0.8906033
+    }
+  },
+  "version" : 1
+}

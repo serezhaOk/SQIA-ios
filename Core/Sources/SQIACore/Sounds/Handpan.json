@@ -1,0 +1,92 @@
+{
+  "ampMode" : "ping",
+  "engine" : "virtual_analog",
+  "format" : "sqia.sound",
+  "name" : "Handpan",
+  "params" : {
+    "attack" : {
+      "value" : 0.003
+    },
+    "aux_mix" : {
+      "value" : 0
+    },
+    "cutoff" : {
+      "spread" : 0.1,
+      "value" : 20000
+    },
+    "decay" : {
+      "value" : 0.6
+    },
+    "env_to_morph" : {
+      "value" : 0
+    },
+    "env_to_pitch" : {
+      "value" : 0
+    },
+    "env_to_timbre" : {
+      "value" : 0
+    },
+    "fine" : {
+      "spread" : 0.1,
+      "value" : 0
+    },
+    "harmonics" : {
+      "value" : 0.5
+    },
+    "key_track" : {
+      "value" : 1
+    },
+    "level" : {
+      "value" : -6
+    },
+    "lpg_colour" : {
+      "value" : 0.5
+    },
+    "lpg_decay" : {
+      "value" : 0.5
+    },
+    "morph" : {
+      "value" : 0.5
+    },
+    "pan" : {
+      "spread" : 0.2,
+      "value" : 0
+    },
+    "polyphony" : {
+      "value" : 8
+    },
+    "release" : {
+      "value" : 0.4
+    },
+    "resonance" : {
+      "value" : 0
+    },
+    "reverb_mix" : {
+      "value" : 0.15
+    },
+    "reverb_time" : {
+      "value" : 0.6
+    },
+    "reverb_tone" : {
+      "value" : 0.5
+    },
+    "sample_start" : {
+      "value" : 0
+    },
+    "sustain" : {
+      "value" : 0.7
+    },
+    "timbre" : {
+      "value" : 0.5
+    },
+    "transpose" : {
+      "value" : 0
+    },
+    "velocity" : {
+      "value" : 0.6
+    }
+  },
+  "samples" : "hang it",
+  "source" : "samples",
+  "version" : 1
+}

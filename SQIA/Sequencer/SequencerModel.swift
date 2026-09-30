@@ -19,7 +19,7 @@ private final class VoicingBox: @unchecked Sendable {
     struct Track {
         var grid = NoteGrid()
         var muted = false
-        var preset = SynthPreset.reverie
+        var voice = TrackVoice.synth(.reverie)
         /// The MIDI note each column plays, in the current key.
         var midi: [Int] = []
     }
@@ -292,13 +292,33 @@ final class SequencerModel {
                 // which is what the web does.
                 if track.muted { continue }
 
+                // A Lab sound is a synth of its own, with its timbre rolled
+                // inside it: it needs the note and how long to hold it.
+                if case .sound(let sound) = track.voice {
+                    for hit in StepVoicing.hits(
+                        step: step, in: track.grid, voice: .synth, using: random)
+                    {
+                        let midi =
+                            track.midi.indices.contains(hit.column) ? track.midi[hit.column] : 60
+                        mixer.schedule(
+                            AudioEvent.sound(
+                                SoundNote(
+                                    sound: sound, midi: midi, velocity: hit.velocity,
+                                    seconds: Sound.noteSteps * 60 / bpm / 4),
+                                at: frame))
+                        lit.append((index, hit.column, hit.velocity))
+                    }
+                    continue
+                }
+                guard let preset = track.voice.preset else { continue }
+
                 // Once a bar, and once per preset however many tracks use
                 // it, the chain wanders somewhere new.
-                let presetIndex = track.preset.rawValue
+                let presetIndex = preset.rawValue
                 if step == 0 && !drifted.contains(presetIndex) {
                     drifted.insert(presetIndex)
                     var drift = SynthVoicing.drift(
-                        preset: track.preset, bpm: bpm,
+                        preset: preset, bpm: bpm,
                         division: voicing.divisions[presetIndex], using: random)
                     if drift.echo > 0 {
                         voicing.divisions[presetIndex] =
@@ -315,7 +335,7 @@ final class SequencerModel {
                     let midi =
                         track.midi.indices.contains(hit.column) ? track.midi[hit.column] : 60
                     for voice in SynthVoicing.notes(
-                        preset: track.preset, midi: midi, velocity: hit.velocity,
+                        preset: preset, midi: midi, velocity: hit.velocity,
                         using: random, tuning: tuning)
                     {
                         mixer.schedule(
@@ -699,8 +719,8 @@ final class SequencerModel {
         VoiceCatalog.label(at: state.activeTrack.voiceIndex)
     }
 
-    func selectVoice(_ preset: SynthPreset) {
-        let index = VoiceCatalog.index(of: preset)
+    func selectVoice(_ voice: TrackVoice) {
+        let index = voice.index
         guard index != state.activeTrack.voiceIndex else { return }
         state.activeTrack.voiceIndex = index
         publishVoicing()
@@ -734,12 +754,12 @@ final class SequencerModel {
         let drums = tuning.isOn(.machineFollowsKey) ? midi : Music.drumTable
         voicing.write(
             tracks: state.tracks.enumerated().map { index, track in
-                let preset = VoiceCatalog.preset(at: track.voiceIndex)
+                let voice = VoiceCatalog.voice(at: track.voiceIndex)
                 return VoicingBox.Track(
                     grid: track.grid,
                     muted: !access.sounds(track: index, muted: track.muted),
-                    preset: preset,
-                    midi: preset == .machine ? drums : midi
+                    voice: voice,
+                    midi: voice == .synth(.machine) ? drums : midi
                 )
             },
             bpm: state.bpm)

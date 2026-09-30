@@ -52,7 +52,17 @@ gesture for gesture. One consequence worth naming: the key is chosen from a
 list instead of cycled a semitone per tap.
 
 The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
-lives in `SQIACore`, where it can be tested off a device. [PLAN.md](PLAN.md)
+lives in `SQIACore`, where it can be tested off a device.
+
+Beside the five, the picker offers the sounds made in
+[SQIA Lab](../SQIA-Lab), the Mac bench for designing them. Each is a preset
+file in `Core/Sources/SQIACore/Sounds/`, played by `SQIASound`: eight Plaits
+voices and a Rings reverb in C++ behind a C header, which the Lab uses too,
+so a sound plays in the app exactly as it did on the bench. A sound can also
+be made of recordings: the Handpan plays twelve WAVs from
+`Sounds/samples/hang it/`, repitched to the key. Adding one means
+dropping its `.json` into that folder (and its samples under `samples/`) and
+appending it to `Sound.catalogue`. [PLAN.md](PLAN.md)
 explains why, and what it costs.
 
 ## Two fields, and which one ships
@@ -166,9 +176,10 @@ out of the variable font — the variable file's default instance is ExtraLight,
 which is not a weight SQIA uses anywhere.
 
 Manrope is under the SIL Open Font License 1.1; the licence ships beside the
-fonts in `SQIA/Resources/Fonts/`. It is also the whole of the third-party
-list — see [NOTICE.md](NOTICE.md). There are no package dependencies: the
-sound is written out in `SQIACore` and Supabase is reached over plain HTTPS.
+fonts in `SQIA/Resources/Fonts/`. It is also on the third-party
+list, along with the Mutable Instruments DSP behind the Lab sounds — see
+[NOTICE.md](NOTICE.md). There are no package dependencies: the code is
+vendored in `Core`, and Supabase is reached over plain HTTPS.
 
 ## Copyright
 

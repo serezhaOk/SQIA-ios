@@ -1,0 +1,54 @@
+{
+  "mode": "pitched",
+  "note": "Roots measured from each recording's lowest strong partial; fractions are how far off true pitch the drum is tuned.",
+  "samples": [
+    {
+      "file": "C0000009.WAV",
+      "root": 45.05
+    },
+    {
+      "file": "C0000010.WAV",
+      "root": 48.07
+    },
+    {
+      "file": "C0000011.WAV",
+      "root": 50.05
+    },
+    {
+      "file": "C0000012.WAV",
+      "root": 52.06
+    },
+    {
+      "file": "C0000004.WAV",
+      "root": 52.07
+    },
+    {
+      "file": "C0000002.WAV",
+      "root": 54.09
+    },
+    {
+      "file": "C0000005.WAV",
+      "root": 55.1
+    },
+    {
+      "file": "C0000006.WAV",
+      "root": 57.13
+    },
+    {
+      "file": "C0000007.WAV",
+      "root": 60.23
+    },
+    {
+      "file": "C0000008.WAV",
+      "root": 62.16
+    },
+    {
+      "file": "C0000001.WAV",
+      "root": 63.96
+    },
+    {
+      "file": "C0000003.WAV",
+      "root": 69.0
+    }
+  ]
+}

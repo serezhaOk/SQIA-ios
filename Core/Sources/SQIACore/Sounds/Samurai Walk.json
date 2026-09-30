@@ -1,0 +1,79 @@
+{
+  "ampMode" : "lpg",
+  "engine" : "string",
+  "format" : "sqia.sound",
+  "name" : "Samurai Walk",
+  "params" : {
+    "attack" : {
+      "spread" : 0.25088975,
+      "value" : 0.0041713463
+    },
+    "aux_mix" : {
+      "value" : 0
+    },
+    "decay" : {
+      "value" : 0.8493797
+    },
+    "env_to_morph" : {
+      "value" : -0.3444444
+    },
+    "env_to_pitch" : {
+      "spread" : 0.0077691004,
+      "value" : 0.2557726
+    },
+    "env_to_timbre" : {
+      "value" : 0.15533853
+    },
+    "fine" : {
+      "spread" : 0.13644749,
+      "value" : 0
+    },
+    "harmonics" : {
+      "value" : 1
+    },
+    "level" : {
+      "value" : -8
+    },
+    "lpg_colour" : {
+      "value" : 0.27118057
+    },
+    "lpg_decay" : {
+      "value" : 0.19003907
+    },
+    "morph" : {
+      "value" : 0.5366774
+    },
+    "pan" : {
+      "spread" : 0.2522027,
+      "value" : 0
+    },
+    "polyphony" : {
+      "value" : 4
+    },
+    "release" : {
+      "value" : 0.22345768
+    },
+    "reverb_mix" : {
+      "value" : 0.3701823
+    },
+    "reverb_time" : {
+      "value" : 0.12250434
+    },
+    "reverb_tone" : {
+      "value" : 0.24513888
+    },
+    "sustain" : {
+      "value" : 0.29659286
+    },
+    "timbre" : {
+      "value" : 0.70035714
+    },
+    "transpose" : {
+      "value" : 0
+    },
+    "velocity" : {
+      "value" : 0.6
+    }
+  },
+  "version" : 1
+}

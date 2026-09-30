@@ -9,26 +9,28 @@
 //
 // The picker offers the presets that have voices behind them. The index
 // never moves as more of them are written.
+//
+// After the five come the sounds made in SQIA Lab, numbered on from 5 in the
+// order `Sound.library` lists them — see `TrackVoice`.
 
 import SQIACore
 
 enum VoiceCatalog {
-    /// What the picker shows, in the web's order.
-    static var offered: [SynthPreset] { SynthPreset.available }
+    /// The original five, in the web's order.
+    static var synths: [TrackVoice] { SynthPreset.available.map { .synth($0) } }
+
+    /// The Lab's sounds, in the order they were added.
+    static var sounds: [TrackVoice] { Sound.library.indices.map { .sound($0) } }
 
     /// The web's defaults: the two tracks start on REVERIE and MACHINE, so
     /// the mixer is useful straight away.
     static let defaultVoices = [SynthPreset.reverie.rawValue, SynthPreset.machine.rawValue]
 
-    static func preset(at index: Int) -> SynthPreset {
-        SynthPreset(rawValue: index) ?? .reverie
-    }
-
-    static func index(of preset: SynthPreset) -> Int {
-        preset.rawValue
+    static func voice(at index: Int) -> TrackVoice {
+        TrackVoice(index: index)
     }
 
     static func label(at index: Int) -> String {
-        preset(at: index).label
+        voice(at: index).label
     }
 }

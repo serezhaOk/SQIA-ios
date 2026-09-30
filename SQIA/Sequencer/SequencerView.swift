@@ -84,8 +84,8 @@ struct SequencerView: View {
         .sheet(isPresented: $showingVoices) {
             VoiceSheet(
                 model: model,
-                onPick: { preset in
-                    model.selectVoice(preset)
+                onPick: { voice in
+                    model.selectVoice(voice)
                     showingVoices = false
                 }
             )

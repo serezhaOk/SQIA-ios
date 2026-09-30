@@ -13,10 +13,15 @@
 // the master and sends into one shared reverb, the sum goes through the
 // mixer's two knobs, and the master runs at 0.9 into the limiter.
 //
+// The Lab's sounds come in beside all that: each is a whole synth of its own
+// in SQIASound — voices, envelopes and its own room — so its output joins
+// the dry sum just ahead of the knobs and the limiter, as it left the Lab.
+//
 // Nothing in `render` allocates, locks or touches a reference count.
 
 import CSQIAAtomics
 import Dispatch
+import SQIASound
 
 public final class AudioMixer: @unchecked Sendable {
     /// The master gain the web app runs at, before the limiter.
@@ -40,6 +45,14 @@ public final class AudioMixer: @unchecked Sendable {
     /// Delay and Scatter, over everything.
     private var effects: MasterEffects
     private var limiter: Limiter
+
+    /// One synth per Lab sound, by `Sound.library` index, set up once.
+    private let sounds: [OpaquePointer]
+    /// Frames each sound is still worth rendering for: topped up by every
+    /// note, long enough for the longest release and its room to die away.
+    /// A sound at zero is not rendered at all.
+    private var soundAwake: [Int]
+    private let soundRingOut: Int
 
     /// Frames rendered since the mixer started — the clock events are
     /// scheduled against. Owned by the render thread.
@@ -175,6 +188,13 @@ public final class AudioMixer: @unchecked Sendable {
         reverb = Reverb(sampleRate: sampleRate)
         effects = MasterEffects(sampleRate: sampleRate)
         limiter = Limiter(sampleRate: sampleRate)
+        sounds = Sound.library.map { sound in
+            let synth = sqia_synth_create_at(sampleRate)!
+            sound.apply(to: synth)
+            return synth
+        }
+        soundAwake = Array(repeating: 0, count: sounds.count)
+        soundRingOut = Int(16 * sampleRate)
         meter = BandMeter(sampleRate: sampleRate)
         publishedBands = .allocate(capacity: BandMeter.bands)
         for band in 0..<BandMeter.bands { SQIAAtomicInit(publishedBands + band, 0) }
@@ -192,6 +212,7 @@ public final class AudioMixer: @unchecked Sendable {
     }
 
     deinit {
+        for synth in sounds { sqia_synth_destroy(synth) }
         publishedFrame.deallocate()
         publishedLoad.deallocate()
         publishedFaults.deallocate()
@@ -250,9 +271,22 @@ public final class AudioMixer: @unchecked Sendable {
                 nextEvent = events.pop()
             }
 
+            var soundLeft = 0.0
+            var soundRight = 0.0
+            var soundsAwake = false
+            for s in soundAwake.indices where soundAwake[s] > 0 {
+                soundAwake[s] -= 1
+                soundsAwake = true
+                var l: Float = 0
+                var r: Float = 0
+                sqia_synth_render(sounds[s], &l, &r, 1)
+                soundLeft += Double(l)
+                soundRight += Double(r)
+            }
+
             // Nothing sounding and nothing left ringing: there is no
             // arithmetic that would produce anything but zero.
-            if activeHigh == 0 && masterQuiet >= Self.ringOutFrames {
+            if activeHigh == 0 && !soundsAwake && masterQuiet >= Self.ringOutFrames {
                 left[i] = 0
                 right[i] = 0
                 meter.skip(1)
@@ -270,8 +304,8 @@ public final class AudioMixer: @unchecked Sendable {
                 busesRight[slot] += out.right
             }
 
-            var dryLeft = 0.0
-            var dryRight = 0.0
+            var dryLeft = soundLeft
+            var dryRight = soundRight
             var sendLeft = 0.0
             var sendRight = 0.0
 
@@ -335,6 +369,9 @@ public final class AudioMixer: @unchecked Sendable {
         // thousand samples of work is nothing, and the UI wants the number.
         var live = 0
         for v in 0..<activeHigh where voices[v].isActive { live += 1 }
+        for s in soundAwake.indices where soundAwake[s] > 0 {
+            live += Int(sqia_synth_active_voices(sounds[s]))
+        }
         if live != liveVoices {
             liveVoices = live
             publishFaults()
@@ -356,6 +393,7 @@ public final class AudioMixer: @unchecked Sendable {
     /// The alternative is a renderer that roars until the app is killed.
     private func recoverFromBlowup() {
         for v in voices.indices { voices[v].stop() }
+        silenceSounds()
         for c in chains.indices { chains[c].clear() }
         reverb.clear()
         effects.clear()
@@ -384,6 +422,7 @@ public final class AudioMixer: @unchecked Sendable {
         switch event.kind {
         case .silence:
             for v in voices.indices { voices[v].stop() }
+            silenceSounds()
             for c in chains.indices { chains[c].clear() }
             reverb.clear()
             effects.clear()
@@ -422,6 +461,24 @@ public final class AudioMixer: @unchecked Sendable {
             voices[slot].start(event.recipe, sampleRate: sampleRate)
             if slot >= activeHigh { activeHigh = slot + 1 }
             masterQuiet = 0
+
+        case .soundNote:
+            let note = event.sound
+            guard sounds.indices.contains(note.sound) else { return }
+            // The synth's own queue: this thread is its only writer.
+            sqia_synth_note_on_for(
+                sounds[note.sound], Int32(note.midi), Float(note.velocity), Float(note.seconds))
+            soundAwake[note.sound] = soundRingOut
+            masterQuiet = 0
+        }
+    }
+
+    /// Everything the sounds are playing, tails and rooms, gone. The panic
+    /// is picked up the next time a sound renders, ahead of any new note.
+    private func silenceSounds() {
+        for s in sounds.indices {
+            sqia_synth_panic(sounds[s])
+            soundAwake[s] = 0
         }
     }
 
@@ -441,6 +498,7 @@ public final class AudioMixer: @unchecked Sendable {
         nextEvent = nil
         while events.pop() != nil {}
         for v in voices.indices { voices[v].stop() }
+        silenceSounds()
         for c in chains.indices { chains[c].clear() }
         reverb.clear()
         effects.clear()

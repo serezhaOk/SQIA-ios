@@ -1,0 +1,80 @@
+{
+  "ampMode" : "lpg",
+  "engine" : "phase_distortion",
+  "format" : "sqia.sound",
+  "name" : "Garedener",
+  "params" : {
+    "attack" : {
+      "value" : 0.003
+    },
+    "aux_mix" : {
+      "value" : 0
+    },
+    "decay" : {
+      "value" : 0.6
+    },
+    "env_to_morph" : {
+      "value" : 0.81139636
+    },
+    "env_to_pitch" : {
+      "value" : 0.41874993
+    },
+    "env_to_timbre" : {
+      "spread" : 0.25804037,
+      "value" : 0.30770242
+    },
+    "fine" : {
+      "value" : 0
+    },
+    "harmonics" : {
+      "spread" : 0.31794706,
+      "value" : 0.26767433
+    },
+    "level" : {
+      "value" : -8
+    },
+    "lpg_colour" : {
+      "value" : 0.17727867
+    },
+    "lpg_decay" : {
+      "value" : 0.42992622
+    },
+    "morph" : {
+      "spread" : 0.54144967,
+      "value" : 0.108134985
+    },
+    "pan" : {
+      "spread" : 0.28911674,
+      "value" : 0
+    },
+    "polyphony" : {
+      "value" : 8
+    },
+    "release" : {
+      "value" : 0.4
+    },
+    "reverb_mix" : {
+      "value" : 0.19142795
+    },
+    "reverb_time" : {
+      "value" : 0.5
+    },
+    "reverb_tone" : {
+      "value" : 0.5
+    },
+    "sustain" : {
+      "value" : 0.7
+    },
+    "timbre" : {
+      "spread" : 0.06666667,
+      "value" : 0.03459354
+    },
+    "transpose" : {
+      "value" : 0
+    },
+    "velocity" : {
+      "value" : 0.98417974
+    }
+  },
+  "version" : 1
+}

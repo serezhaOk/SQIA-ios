@@ -15,7 +15,7 @@ import SwiftUI
 
 struct VoiceSheet: View {
     let model: SequencerModel
-    let onPick: (SynthPreset) -> Void
+    let onPick: (TrackVoice) -> Void
 
     private var selected: Int { model.state.activeTrack.voiceIndex }
 
@@ -27,11 +27,23 @@ struct VoiceSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(VoiceCatalog.offered, id: \.rawValue) { preset in
-                        row(preset)
+                    ForEach(VoiceCatalog.synths, id: \.self) { voice in
+                        row(voice)
                     }
                 } footer: {
                     Text("The patch drifts once a bar, and every note is rolled fresh.")
+                }
+
+                if !VoiceCatalog.sounds.isEmpty {
+                    Section {
+                        ForEach(VoiceCatalog.sounds, id: \.self) { voice in
+                            row(voice)
+                        }
+                    } header: {
+                        Text("New sounds")
+                    } footer: {
+                        Text("Every note rolls its own shade of the sound.")
+                    }
                 }
 
                 // A workbench, not a feature. The sound has one and is done
@@ -70,20 +82,20 @@ struct VoiceSheet: View {
         .presentationDragIndicator(.visible)
     }
 
-    private func row(_ preset: SynthPreset) -> some View {
+    private func row(_ voice: TrackVoice) -> some View {
         Button {
-            onPick(preset)
+            onPick(voice)
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(preset.label)
+                    Text(voice.label)
                         .font(.body)
-                    Text(preset.hint)
+                    Text(voice.hint)
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                if preset.rawValue == selected {
+                if voice.index == selected {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Color.accentColor)
@@ -92,7 +104,7 @@ struct VoiceSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(preset.rawValue == selected ? [.isSelected] : [])
+        .accessibilityAddTraits(voice.index == selected ? [.isSelected] : [])
     }
 }
 

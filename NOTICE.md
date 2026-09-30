@@ -16,11 +16,19 @@ Four static instances ship — Regular, Medium, SemiBold, Bold — cut from the
 variable font by `tools/make-fonts.py`. The licence text travels with them as
 `SQIA/Resources/Fonts/Manrope-OFL.txt`.
 
-That is the whole list, which is worth saying out loud. The web version
-bundles Tone.js for its sound and supabase-js for its backend; this app has
-neither. Every voice, filter, envelope and reverb is written out in
-`Core/Sources/SQIACore`, and the two things it asks of Supabase — rows and
-sign-ins — are plain HTTPS requests. Icons are SF Symbols, which are Apple's
+| [Mutable Instruments eurorack](https://github.com/pichenettes/eurorack) — Plaits, the Rings reverb, [stmlib](https://github.com/pichenettes/stmlib) | MIT | The sounds made in SQIA Lab |
+
+The Mutable Instruments code is Émilie Gillet's, vendored unmodified under
+`Core/Sources/SQIASound/vendor/mi` (commits in `UPSTREAM.txt`). Only the DSP
+is taken, none of the firmware. The MIT notice ships in the app as
+`SQIA/Resources/Licenses/MutableInstruments-MIT.txt`. The repository asks that
+derivative works not use the "Mutable Instruments" name, a registered
+trademark, or the modules' names, so neither appears anywhere a user can see
+it.
+
+The five original voices are still written out in `Core/Sources/SQIACore`,
+and the two things the app asks of Supabase — rows and sign-ins — are plain
+HTTPS requests. Icons are SF Symbols, which are Apple's
 and stay Apple's: they are drawn by the system rather than shipped, and the
 licence permits exactly that use.
 
