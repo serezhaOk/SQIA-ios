@@ -42,6 +42,9 @@ struct SequencerView: View {
     @State private var showingKey = false
     @State private var showingTempo = false
     @State private var showingPaywall = false
+    /// A Plus sound picked without Plus: the paywall follows once the
+    /// picker has gone, since one sheet cannot open over another.
+    @State private var paywallAfterVoices = false
     /// Paused from the mixer's transport. Coming back to the app does not
     /// start what somebody stopped.
     @State private var paused = false
@@ -81,14 +84,34 @@ struct SequencerView: View {
                 palette: palette
             )
         }
-        .sheet(isPresented: $showingVoices) {
+        .sheet(
+            isPresented: $showingVoices,
+            onDismiss: {
+                if paywallAfterVoices {
+                    paywallAfterVoices = false
+                    showingPaywall = true
+                }
+            }
+        ) {
             VoiceSheet(
                 model: model,
                 onPick: { voice in
-                    model.selectVoice(voice)
-                    showingVoices = false
+                    switch model.selectVoice(voice) {
+                    case .switched:
+                        showingVoices = false
+                    case .downloading, .unavailable:
+                        // Stays open with the bar on the row; it closes
+                        // when the sound lands.
+                        break
+                    case .needsPlus:
+                        paywallAfterVoices = true
+                        showingVoices = false
+                    }
                 }
             )
+        }
+        .onChange(of: model.landedCount) {
+            showingVoices = false
         }
         .sheet(isPresented: $showingKey) {
             KeySheet(
@@ -574,6 +597,16 @@ struct SequencerView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
+            // A sound on its way, if the picker was closed before it landed.
+            .overlay(alignment: .bottom) {
+                if model.pendingShowsProgress {
+                    PendingBar(fraction: model.pendingProgress, colour: palette.pillLabel)
+                        .padding(.horizontal, 22)
+                        .padding(.bottom, 8)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: model.pendingShowsProgress)
         }
         .buttonStyle(PressFade())
         .opacity(model.eraseMode ? palette.dimmed : 1)
@@ -725,5 +758,25 @@ private struct PlayingWave: View {
             }
             return shown
         }
+    }
+}
+
+/// A hairline that fills as a sound downloads.
+private struct PendingBar: View {
+    let fraction: Double
+    let colour: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(colour.opacity(0.2))
+                Capsule()
+                    .fill(colour)
+                    .frame(width: geo.size.width * min(max(fraction, 0), 1))
+                    .animation(.linear(duration: 0.15), value: fraction)
+            }
+        }
+        .frame(height: 2)
+        .accessibilityHidden(true)
     }
 }

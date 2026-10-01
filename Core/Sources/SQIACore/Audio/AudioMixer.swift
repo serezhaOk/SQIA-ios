@@ -46,12 +46,29 @@ public final class AudioMixer: @unchecked Sendable {
     private var effects: MasterEffects
     private var limiter: Limiter
 
-    /// One synth per Lab sound, by `Sound.library` index, set up once.
-    private let sounds: [OpaquePointer]
+    /// Sounds are numbered by voice index, and there is room for this many.
+    public static let soundSlots = 256
+
+    /// One synth per sound, by voice index, as the bits of its pointer.
+    ///
+    /// Sounds arrive while the audio runs — a download finishes, the
+    /// catalogue names a new one — so the synth is built on the main thread
+    /// and published here with a release store; the render thread picks it
+    /// up with an acquire load when a note asks for it. A slot is filled
+    /// once and never emptied while the mixer lives, so the render thread
+    /// never holds a synth somebody else could free.
+    private let soundTable: UnsafeMutablePointer<SQIAAtomicUInt64>
+    /// Main thread: which recordings each installed sound was given, so
+    /// installing it again does not copy them again.
+    private var installedSamples: [Int: String] = [:]
+
     /// Frames each sound is still worth rendering for: topped up by every
     /// note, long enough for the longest release and its room to die away.
-    /// A sound at zero is not rendered at all.
+    /// A sound at zero is not rendered at all; the ones above zero are
+    /// listed in `awake`, so a sample costs nothing for the rest.
     private var soundAwake: [Int]
+    private var awake: [Int]
+    private var awakeCount = 0
     private let soundRingOut: Int
 
     /// Frames rendered since the mixer started — the clock events are
@@ -188,12 +205,10 @@ public final class AudioMixer: @unchecked Sendable {
         reverb = Reverb(sampleRate: sampleRate)
         effects = MasterEffects(sampleRate: sampleRate)
         limiter = Limiter(sampleRate: sampleRate)
-        sounds = Sound.library.map { sound in
-            let synth = sqia_synth_create_at(sampleRate)!
-            sound.apply(to: synth)
-            return synth
-        }
-        soundAwake = Array(repeating: 0, count: sounds.count)
+        soundTable = .allocate(capacity: Self.soundSlots)
+        for slot in 0..<Self.soundSlots { SQIAAtomicInit(soundTable + slot, 0) }
+        soundAwake = Array(repeating: 0, count: Self.soundSlots)
+        awake = Array(repeating: 0, count: Self.soundSlots)
         soundRingOut = Int(16 * sampleRate)
         meter = BandMeter(sampleRate: sampleRate)
         publishedBands = .allocate(capacity: BandMeter.bands)
@@ -209,10 +224,48 @@ public final class AudioMixer: @unchecked Sendable {
         for effect in MasterEffect.allCases {
             SQIAAtomicInit(publishedEffects + effect.rawValue, 0)
         }
+        // The bundle's sounds are there from the first note.
+        for sound in Sound.bundled { install(sound, samples: nil) }
+    }
+
+    private func synth(_ id: Int) -> OpaquePointer? {
+        guard id >= 0 && id < Self.soundSlots else { return nil }
+        return OpaquePointer(bitPattern: UInt(SQIAAtomicLoadAcquire(soundTable + id)))
+    }
+
+    /// Makes a sound playable, or brings it up to date. Main thread only.
+    ///
+    /// A sound made of recordings needs them: install it once they are on
+    /// the phone and decoded, not before. Installing again with new knobs
+    /// changes them under notes that are playing, which the knobs allow.
+    public func install(_ sound: Sound, samples: SampleSet?) {
+        guard sound.id >= 0 && sound.id < Self.soundSlots else { return }
+        let existing = synth(sound.id)
+        guard let target = existing ?? sqia_synth_create_at(sampleRate) else { return }
+        sound.apply(to: target)
+        if let manifest = sound.samples, let samples,
+            installedSamples[sound.id] != manifest.folder
+        {
+            sqia_synth_set_samples(target, samples.make())
+            installedSamples[sound.id] = manifest.folder
+        }
+        if existing == nil {
+            SQIAAtomicStoreRelease(soundTable + sound.id, UInt64(UInt(bitPattern: target)))
+        }
+    }
+
+    /// Whether a sound can be played on this mixer. Main thread only.
+    public func isInstalled(_ sound: Sound) -> Bool {
+        guard synth(sound.id) != nil else { return false }
+        guard let manifest = sound.samples else { return true }
+        return installedSamples[sound.id] == manifest.folder
     }
 
     deinit {
-        for synth in sounds { sqia_synth_destroy(synth) }
+        for slot in 0..<Self.soundSlots {
+            if let synth = synth(slot) { sqia_synth_destroy(synth) }
+        }
+        soundTable.deallocate()
         publishedFrame.deallocate()
         publishedLoad.deallocate()
         publishedFaults.deallocate()
@@ -273,15 +326,23 @@ public final class AudioMixer: @unchecked Sendable {
 
             var soundLeft = 0.0
             var soundRight = 0.0
-            var soundsAwake = false
-            for s in soundAwake.indices where soundAwake[s] > 0 {
-                soundAwake[s] -= 1
-                soundsAwake = true
-                var l: Float = 0
-                var r: Float = 0
-                sqia_synth_render(sounds[s], &l, &r, 1)
-                soundLeft += Double(l)
-                soundRight += Double(r)
+            let soundsAwake = awakeCount > 0
+            var a = awakeCount - 1
+            while a >= 0 {
+                let id = awake[a]
+                if let synth = synth(id) {
+                    var l: Float = 0
+                    var r: Float = 0
+                    sqia_synth_render(synth, &l, &r, 1)
+                    soundLeft += Double(l)
+                    soundRight += Double(r)
+                }
+                soundAwake[id] -= 1
+                if soundAwake[id] <= 0 {
+                    awakeCount -= 1
+                    awake[a] = awake[awakeCount]
+                }
+                a -= 1
             }
 
             // Nothing sounding and nothing left ringing: there is no
@@ -369,8 +430,8 @@ public final class AudioMixer: @unchecked Sendable {
         // thousand samples of work is nothing, and the UI wants the number.
         var live = 0
         for v in 0..<activeHigh where voices[v].isActive { live += 1 }
-        for s in soundAwake.indices where soundAwake[s] > 0 {
-            live += Int(sqia_synth_active_voices(sounds[s]))
+        for a in 0..<awakeCount {
+            if let synth = synth(awake[a]) { live += Int(sqia_synth_active_voices(synth)) }
         }
         if live != liveVoices {
             liveVoices = live
@@ -464,10 +525,16 @@ public final class AudioMixer: @unchecked Sendable {
 
         case .soundNote:
             let note = event.sound
-            guard sounds.indices.contains(note.sound) else { return }
+            // Not installed yet — its recordings still on their way. The
+            // note is lost, which is all a silent track can do.
+            guard let synth = synth(note.sound) else { return }
             // The synth's own queue: this thread is its only writer.
             sqia_synth_note_on_for(
-                sounds[note.sound], Int32(note.midi), Float(note.velocity), Float(note.seconds))
+                synth, Int32(note.midi), Float(note.velocity), Float(note.seconds))
+            if soundAwake[note.sound] <= 0 {
+                awake[awakeCount] = note.sound
+                awakeCount += 1
+            }
             soundAwake[note.sound] = soundRingOut
             masterQuiet = 0
         }
@@ -476,10 +543,11 @@ public final class AudioMixer: @unchecked Sendable {
     /// Everything the sounds are playing, tails and rooms, gone. The panic
     /// is picked up the next time a sound renders, ahead of any new note.
     private func silenceSounds() {
-        for s in sounds.indices {
-            sqia_synth_panic(sounds[s])
-            soundAwake[s] = 0
+        for slot in 0..<Self.soundSlots {
+            if let synth = synth(slot) { sqia_synth_panic(synth) }
+            soundAwake[slot] = 0
         }
+        awakeCount = 0
     }
 
     /// Which subdivision a preset's echo currently sits on. The transport

@@ -86,6 +86,31 @@ final class SequencerModel {
     @ObservationIgnored private let sequencer: Sequencer
     @ObservationIgnored private let voicing = VoicingBox()
     @ObservationIgnored private let random = SystemRandomSource()
+    @ObservationIgnored let bank = SoundBank.shared
+
+    /// A sound picked before its recordings were on the phone. The track
+    /// keeps playing what it had until this lands, then switches.
+    private(set) var pendingVoice: TrackVoice?
+    @ObservationIgnored private var pendingTrack = 0
+    @ObservationIgnored private var pendingTask: Task<Void, Never>?
+    /// Whether the wait has gone on long enough to deserve a bar — a quick
+    /// download should look like no download at all.
+    private(set) var pendingShowsProgress = false
+    /// Bumped each time a pending sound lands, for the picker to close on.
+    private(set) var landedCount = 0
+    /// How long a download may take before its progress is shown.
+    static let progressDelay: Duration = .seconds(1.5)
+
+    enum VoicePick {
+        /// Playing now.
+        case switched
+        /// Downloading; the track switches when it is done.
+        case downloading
+        /// A Plus sound, and no Plus.
+        case needsPlus
+        /// A sound the catalogue no longer has.
+        case unavailable
+    }
 
 
     /// What the panel has set. The transport reads its own copy through the
@@ -170,6 +195,11 @@ final class SequencerModel {
         syncScenes()
         publishVoicing(saving: false)
         wireTransport()
+        bank.onChange = { [weak self] in
+            self?.prepareTracks()
+            self?.publishVoicing(saving: false)
+        }
+        bank.refreshIfNeeded()
         voicing.write(tuning: tuning)
     }
 
@@ -180,9 +210,11 @@ final class SequencerModel {
         projectId = project.id
         state.apply(project.snapshot)
         sequencer.bpm = state.bpm
+        cancelPending()
         syncScenes()
         publishVoicing(saving: false)
         publishEffects()
+        prepareTracks()
     }
 
     /// A blank field, with no row behind it yet. `adopt` gives it one once
@@ -191,6 +223,7 @@ final class SequencerModel {
         projectId = nil
         state = SequencerState.fresh(voices: VoiceCatalog.defaultVoices)
         sequencer.bpm = state.bpm
+        cancelPending()
         syncScenes()
         publishVoicing(saving: false)
         publishEffects()
@@ -245,6 +278,7 @@ final class SequencerModel {
                 self?.publishRoom()
                 self?.publishChain(.machine)
                 self?.publishEffects()
+                self?.prepareTracks()
             }
         }
         // A restored tuning, or a mixer rebuilt after a route change, both
@@ -252,6 +286,9 @@ final class SequencerModel {
         publishRoom()
         publishChain(.machine)
         publishEffects()
+        // The engine may have built a new mixer, which knows only the
+        // bundle's sounds.
+        prepareTracks()
         sequencer.bpm = state.bpm
         sequencer.start()
         isRunning = true
@@ -477,7 +514,7 @@ final class SequencerModel {
 
     func voiceLabel(_ index: Int) -> String {
         guard state.tracks.indices.contains(index) else { return "" }
-        return VoiceCatalog.label(at: state.tracks[index].voiceIndex)
+        return VoiceCatalog.label(VoiceCatalog.voice(at: state.tracks[index].voiceIndex), bank)
     }
 
     func isMuted(_ index: Int) -> Bool {
@@ -716,14 +753,101 @@ final class SequencerModel {
     // ------------------------------------------------------------ the voice --
 
     var activeVoiceLabel: String {
-        VoiceCatalog.label(at: state.activeTrack.voiceIndex)
+        VoiceCatalog.label(VoiceCatalog.voice(at: state.activeTrack.voiceIndex), bank)
     }
 
-    func selectVoice(_ voice: TrackVoice) {
-        let index = voice.index
-        guard index != state.activeTrack.voiceIndex else { return }
-        state.activeTrack.voiceIndex = index
+    var activeVoice: TrackVoice { VoiceCatalog.voice(at: state.activeTrack.voiceIndex) }
+
+    /// How far the pending sound's download has got, 0…1.
+    var pendingProgress: Double {
+        guard case .sound(let id) = pendingVoice else { return 0 }
+        return bank.progress[id] ?? 0
+    }
+
+    /// Set the active track's sound — at once if it can play, otherwise
+    /// once its recordings are down. The last pick wins: picking anything
+    /// else meanwhile drops the wait (the download itself carries on and
+    /// is there next time).
+    @discardableResult
+    func selectVoice(_ voice: TrackVoice) -> VoicePick {
+        if case .sound(let id) = voice {
+            guard let sound = bank.sound(id) else { return .unavailable }
+            guard access.plays(sound) else { return .needsPlus }
+            if !engine.mixer.isInstalled(sound) {
+                guard bank.isReady(sound) else {
+                    wait(for: sound, as: voice)
+                    return .downloading
+                }
+                engine.mixer.install(sound, samples: bank.samples(for: sound))
+            }
+        }
+        cancelPending()
+        assign(voice, toTrack: state.activeTrackIndex)
+        return .switched
+    }
+
+    private func assign(_ voice: TrackVoice, toTrack index: Int) {
+        guard state.tracks.indices.contains(index),
+            state.tracks[index].voiceIndex != voice.index
+        else { return }
+        state.tracks[index].voiceIndex = voice.index
         publishVoicing()
+    }
+
+    private func wait(for sound: Sound, as voice: TrackVoice) {
+        guard pendingVoice != voice else { return }
+        cancelPending()
+        pendingVoice = voice
+        pendingTrack = state.activeTrackIndex
+        let bank = bank
+        pendingTask = Task { [weak self] in
+            let reveal = Task { [weak self] in
+                try? await Task.sleep(for: Self.progressDelay)
+                guard !Task.isCancelled, self?.pendingVoice == voice else { return }
+                self?.pendingShowsProgress = true
+            }
+            defer { reveal.cancel() }
+            do {
+                let samples = try await bank.prepare(sound)
+                guard !Task.isCancelled, let self, self.pendingVoice == voice else { return }
+                self.engine.mixer.install(sound, samples: samples)
+                let track = self.pendingTrack
+                self.cancelPending()
+                self.assign(voice, toTrack: track)
+                self.landedCount += 1
+            } catch {
+                guard !Task.isCancelled, let self, self.pendingVoice == voice else { return }
+                self.cancelPending()
+                self.failure = "Couldn't download \(sound.label). Check the connection and try again."
+            }
+        }
+    }
+
+    private func cancelPending() {
+        pendingTask?.cancel()
+        pendingTask = nil
+        pendingVoice = nil
+        pendingShowsProgress = false
+    }
+
+    /// Every sound the tracks use, made playable on the current mixer —
+    /// downloaded first if need be. A track whose sound is still coming is
+    /// silent until it arrives; there is nothing it could play instead.
+    private func prepareTracks() {
+        for track in state.tracks {
+            guard case .sound(let id) = VoiceCatalog.voice(at: track.voiceIndex),
+                let sound = bank.sound(id)
+            else { continue }
+            if bank.isReady(sound) {
+                engine.mixer.install(sound, samples: bank.samples(for: sound))
+                continue
+            }
+            let bank = bank
+            Task { [weak self] in
+                guard let samples = try? await bank.prepare(sound), let self else { return }
+                self.engine.mixer.install(sound, samples: samples)
+            }
+        }
     }
 
     // ------------------------------------------------------------ plumbing --
@@ -755,9 +879,12 @@ final class SequencerModel {
         voicing.write(
             tracks: state.tracks.enumerated().map { index, track in
                 let voice = VoiceCatalog.voice(at: track.voiceIndex)
+                // A Plus sound without Plus keeps its place, silent.
+                var plays = true
+                if case .sound(let id) = voice { plays = access.plays(bank.sound(id)) }
                 return VoicingBox.Track(
                     grid: track.grid,
-                    muted: !access.sounds(track: index, muted: track.muted),
+                    muted: !access.sounds(track: index, muted: track.muted) || !plays,
                     voice: voice,
                     midi: voice == .synth(.machine) ? drums : midi
                 )

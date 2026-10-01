@@ -55,14 +55,24 @@ The audio graph is one `AVAudioSourceNode`; everything that shapes the sound
 lives in `SQIACore`, where it can be tested off a device.
 
 Beside the five, the picker offers the sounds made in
-[SQIA Lab](../SQIA-Lab), the Mac bench for designing them. Each is a preset
-file in `Core/Sources/SQIACore/Sounds/`, played by `SQIASound`: eight Plaits
-voices and a Rings reverb in C++ behind a C header, which the Lab uses too,
-so a sound plays in the app exactly as it did on the bench. A sound can also
-be made of recordings: the Handpan plays twelve WAVs from
-`Sounds/samples/hang it/`, repitched to the key. Adding one means
-dropping its `.json` into that folder (and its samples under `samples/`) and
-appending it to `Sound.catalogue`. [PLAN.md](PLAN.md)
+[SQIA Lab](../SQIA-Lab), the Mac bench for designing them, played by
+`SQIASound`: eight Plaits voices, a sampler and a Rings reverb in C++
+behind a C header, which the Lab uses too, so a sound plays in the app
+exactly as it did on the bench.
+
+New sounds do not need a release. The Lab's **Publish** writes a row to
+the `sounds` table and uploads any recordings to the public `sounds`
+bucket (`supabase/migrations/20261001100000_sounds.sql`). The app reads the
+table at launch, keeps the last copy for offline use, and downloads a
+sound's recordings the first time it is picked or found in a project. While
+they download, the track keeps playing what it had. After 1.5 seconds the
+picker shows a progress bar, and the track switches once everything is on
+the phone. A row can also mark a sound as Plus (it gets the diamond and the
+paywall), hide it from the picker without breaking the projects that use it,
+or re-label and re-order one of the five that ship in the bundle
+(`Core/Sources/SQIACore/Sounds/`). A sound's number is the voice index
+projects store, so it is never reused. The handpan, #10, is the first sound
+served this way, and it is Plus. [PLAN.md](PLAN.md)
 explains why, and what it costs.
 
 ## Two fields, and which one ships

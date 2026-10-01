@@ -15,6 +15,12 @@ public struct WaveFile: Sendable {
 
     public var frames: Int { left.count }
 
+    public init(sampleRate: Double, left: [Float], right: [Float]?) {
+        self.sampleRate = sampleRate
+        self.left = left
+        self.right = right
+    }
+
     public init?(data: Data) {
         let bytes = [UInt8](data)
         func u16(_ i: Int) -> Int { Int(bytes[i]) | Int(bytes[i + 1]) << 8 }

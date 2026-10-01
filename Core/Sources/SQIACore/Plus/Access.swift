@@ -17,6 +17,8 @@ public enum PlusFeature: String, CaseIterable, Sendable {
     /// The pattern playing on once the app is out of sight or the phone
     /// is locked.
     case backgroundPlayback
+    /// The sounds the catalogue marks as Plus.
+    case plusSounds
 }
 
 public struct Access: Sendable, Equatable {
@@ -33,7 +35,7 @@ public struct Access: Sendable, Equatable {
     /// ever comes free — or free for a while — is one line to change.
     public func allows(_ feature: PlusFeature) -> Bool {
         switch feature {
-        case .secondTrack, .backgroundPlayback: hasPlus
+        case .secondTrack, .backgroundPlayback, .plusSounds: hasPlus
         }
     }
 
@@ -50,5 +52,12 @@ public struct Access: Sendable, Equatable {
     /// silent rather than emptied, so nothing is lost by not paying.
     public func sounds(track index: Int, muted: Bool) -> Bool {
         !muted && opens(track: index)
+    }
+
+    /// Whether a sound may be picked and heard. A track already set to a
+    /// Plus sound when Plus lapses keeps it, silent, the same as a locked
+    /// track keeps its notes.
+    public func plays(_ sound: Sound?) -> Bool {
+        !(sound?.plus ?? false) || allows(.plusSounds)
     }
 }

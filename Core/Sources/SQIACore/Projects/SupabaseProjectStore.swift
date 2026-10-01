@@ -256,7 +256,7 @@ public actor SupabaseProjectStore: ProjectStore {
 extension URL {
     /// `appending(queryItems:)` percent-encodes the `eq.` and the commas
     /// PostgREST wants left alone, so the query goes on as written.
-    fileprivate func appending(query: String) -> URL {
+    func appending(query: String) -> URL {
         URL(string: absoluteString + "?" + query) ?? self
     }
 }

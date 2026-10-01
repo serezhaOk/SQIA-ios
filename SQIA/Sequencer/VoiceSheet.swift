@@ -27,7 +27,7 @@ struct VoiceSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(VoiceCatalog.offered, id: \.self) { voice in
+                    ForEach(VoiceCatalog.offered(model.bank), id: \.self) { voice in
                         row(voice)
                     }
                 } footer: {
@@ -71,16 +71,38 @@ struct VoiceSheet: View {
     }
 
     private func row(_ voice: TrackVoice) -> some View {
-        Button {
+        let plus = VoiceCatalog.isPlus(voice, model.bank)
+        let pending = model.pendingVoice == voice
+        return Button {
             onPick(voice)
         } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(voice.label)
-                        .font(.body)
-                    Text(voice.hint)
+                    HStack(spacing: 6) {
+                        Text(VoiceCatalog.label(voice, model.bank))
+                            .font(.body)
+                        if plus {
+                            // The Plus diamond, as on the mixer's locked pane.
+                            Image("PlusDiamond")
+                                .renderingMode(.template)
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 14, height: 14)
+                                .foregroundStyle(.secondary)
+                                .accessibilityLabel("SQIA Plus")
+                        }
+                    }
+                    Text(VoiceCatalog.hint(voice, model.bank))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
+                    // Only once the wait is long enough to notice: a quick
+                    // download should look like no download at all.
+                    if pending && model.pendingShowsProgress {
+                        ProgressView(value: model.pendingProgress)
+                            .progressViewStyle(.linear)
+                            .padding(.top, 4)
+                            .accessibilityLabel("Downloading")
+                    }
                 }
                 Spacer(minLength: 12)
                 if voice.index == selected {
@@ -90,6 +112,7 @@ struct VoiceSheet: View {
                 }
             }
             .contentShape(Rectangle())
+            .animation(.easeOut(duration: 0.2), value: model.pendingShowsProgress)
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(voice.index == selected ? [.isSelected] : [])

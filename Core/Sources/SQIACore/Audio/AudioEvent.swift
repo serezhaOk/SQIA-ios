@@ -126,7 +126,7 @@ public struct ChainSettings: Sendable, Equatable {
 /// A note for a Lab sound: which sound, and what to play on it. Its timbre
 /// is rolled inside the synth, so this is all that has to cross.
 public struct SoundNote: Sendable, Equatable {
-    /// Index into `Sound.library`.
+    /// The sound's id — its voice index.
     public var sound: Int
     public var midi: Int
     public var velocity: Double
