@@ -4,25 +4,28 @@
 // database the web reads — so it has to mean the same thing on both sides.
 // The web's list is the five synths in order, followed by a sample set it
 // keeps commented out, which makes the index a preset's own position:
-// REVERIE 0, PLUCKED 1, RHODES 2, ACID 3, MACHINE 4 — the web calls the
-// second one KALIMBA, and the index is what the two agree on, not the word.
+// reverie 0, plucked 1, rhodes 2, acid 3, machine 4 — the web calls the
+// second one kalimba, and the index is what the two agree on, not the word.
 //
 // The picker offers the presets that have voices behind them. The index
 // never moves as more of them are written.
 //
 // After the five come the sounds made in SQIA Lab, numbered on from 5 in the
-// order `Sound.library` lists them — see `TrackVoice`.
+// order `Sound.library` lists them — see `TrackVoice`. The picker shows them
+// all as one list: where a sound came from is not the listener's business.
+//
+// Every name is written in lower case, here and everywhere it appears.
 
 import SQIACore
 
 enum VoiceCatalog {
-    /// The original five, in the web's order.
-    static var synths: [TrackVoice] { SynthPreset.available.map { .synth($0) } }
+    /// Every sound, the original five first and then the Lab's in the order
+    /// they were added.
+    static var offered: [TrackVoice] {
+        SynthPreset.available.map { .synth($0) } + Sound.library.indices.map { .sound($0) }
+    }
 
-    /// The Lab's sounds, in the order they were added.
-    static var sounds: [TrackVoice] { Sound.library.indices.map { .sound($0) } }
-
-    /// The web's defaults: the two tracks start on REVERIE and MACHINE, so
+    /// The web's defaults: the two tracks start on reverie and machine, so
     /// the mixer is useful straight away.
     static let defaultVoices = [SynthPreset.reverie.rawValue, SynthPreset.machine.rawValue]
 

@@ -27,23 +27,11 @@ struct VoiceSheet: View {
         NavigationStack {
             List {
                 Section {
-                    ForEach(VoiceCatalog.synths, id: \.self) { voice in
+                    ForEach(VoiceCatalog.offered, id: \.self) { voice in
                         row(voice)
                     }
                 } footer: {
-                    Text("The patch drifts once a bar, and every note is rolled fresh.")
-                }
-
-                if !VoiceCatalog.sounds.isEmpty {
-                    Section {
-                        ForEach(VoiceCatalog.sounds, id: \.self) { voice in
-                            row(voice)
-                        }
-                    } header: {
-                        Text("New sounds")
-                    } footer: {
-                        Text("Every note rolls its own shade of the sound.")
-                    }
+                    Text("Every note is rolled fresh, so a pattern never plays quite the same twice.")
                 }
 
                 // A workbench, not a feature. The sound has one and is done

@@ -71,11 +71,11 @@ the SQIA PLUS paragraph above it has to name the price and the period.
 > a bar, and a replay never sounds quite the same twice.
 >
 > FIVE VOICES
-> • REVERIE: a drifting pad
-> • PLUCKED: a muted wooden pluck
-> • RHODES: an electric piano with a slow stereo tremolo
-> • ACID: a bassline whose filter opens on every note
-> • MACHINE: a drum kit laid out across the grid, one instrument per column
+> • reverie: a drifting pad
+> • plucked: a muted wooden pluck
+> • rhodes: an electric piano with a slow stereo tremolo
+> • acid: a bassline whose filter opens on every note
+> • machine: a drum kit laid out across the grid, one instrument per column
 >
 > Switch voices mid-pattern and the same drawing turns into a different
 > soundscape.
@@ -116,7 +116,7 @@ App Store Connect requires this field on every version, including 1.0; it
 just won't be shown until the first update. Worth having ready:
 
 > First release. Draw a pattern on the grid and it plays — two tracks, five
-> synthesised voices (REVERIE, PLUCKED, RHODES, ACID, MACHINE), a key and a
+> synthesised voices (reverie, plucked, rhodes, acid, machine), a key and a
 > tempo. Sign in with Apple or Google; projects sync with
 > sqia.serezhaok.com.
 

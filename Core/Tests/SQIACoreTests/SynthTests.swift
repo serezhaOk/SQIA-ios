@@ -65,7 +65,7 @@ struct PresetTests {
     func order() {
         #expect(
             SynthPreset.allCases.map(\.label) == [
-                "REVERIE", "PLUCKED", "RHODES", "ACID", "MACHINE",
+                "reverie", "plucked", "rhodes", "acid", "machine",
             ])
     }
 

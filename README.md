@@ -38,9 +38,9 @@ flies into its panel while the other fades up beside it, each with a name and
 a mute button.
 
 The sounds are synthesised, not sampled — the sample set is gone. All five
-presets are written: REVERIE the drifting pad, PLUCKED a plucked string,
-RHODES an FM electric piano with a stereo tremolo, ACID a 303 whose filter
-an envelope sweeps on every note, and MACHINE the drums whose instrument is
+presets are written: reverie the drifting pad, plucked a plucked string,
+rhodes an FM electric piano with a stereo tremolo, acid a 303 whose filter
+an envelope sweeps on every note, and machine the drums whose instrument is
 chosen by the column's register. Every rolled value comes off the random
 stream in the order the web takes it, including the ones Tone asks for and
 never uses.

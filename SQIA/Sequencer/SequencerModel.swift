@@ -746,7 +746,7 @@ final class SequencerModel {
     private func publishVoicing(saving: Bool = true) {
         if saving { noteEdit() }
         let midi = state.midiTable
-        // A drum kit is not in a key. MACHINE picks its instrument from the
+        // A drum kit is not in a key. machine picks its instrument from the
         // note's pitch class, so transposing it slides the whole kit between
         // columns — the kicks somebody drew become toms. Unless the panel
         // says to follow the key, drums get a chromatic run instead, where a

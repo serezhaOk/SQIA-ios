@@ -33,7 +33,9 @@ public struct Sound: Sendable, Identifiable {
     /// plays with unless told otherwise, and so what these were tuned to.
     public static let noteSteps = 0.5
 
-    public var label: String { name.uppercased() }
+    /// Lower case, like every sound's name in the app, whatever the Lab
+    /// file was saved as.
+    public var label: String { name.lowercased() }
 
     /// Hand every knob to a synth, and its recordings if it has any.
     public func apply(to synth: OpaquePointer) {

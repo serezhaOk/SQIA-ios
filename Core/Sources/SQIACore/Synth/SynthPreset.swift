@@ -12,7 +12,7 @@ import Foundation
 
 public enum SynthPreset: Int, Sendable, CaseIterable {
     case reverie
-    /// Shown as PLUCKED. The case keeps the web's name because the index it
+    /// Shown as "plucked". The case keeps the web's name because the index it
     /// carries is written to a database the web reads, and every knob in
     /// `Tuning` that belongs to this voice is named after it — the sound is
     /// the same Karplus-Strong string either way, and only the word on the
@@ -22,13 +22,14 @@ public enum SynthPreset: Int, Sendable, CaseIterable {
     case acid
     case machine
 
+    /// Lower case, the way every sound's name is written in the app.
     public var label: String {
         switch self {
-        case .reverie: return "REVERIE"
-        case .kalimba: return "PLUCKED"
-        case .rhodes: return "RHODES"
-        case .acid: return "ACID"
-        case .machine: return "MACHINE"
+        case .reverie: return "reverie"
+        case .kalimba: return "plucked"
+        case .rhodes: return "rhodes"
+        case .acid: return "acid"
+        case .machine: return "machine"
         }
     }
 

@@ -460,9 +460,8 @@ struct SequencerView: View {
     private func paneHeader(_ index: Int) -> some View {
         let muted = model.isMuted(index)
         return HStack(spacing: 0) {
-            // "Machine", as the design writes it, rather than the web's
-            // capitals the picker uses.
-            Text(model.voiceLabel(index).capitalized)
+            // Lower case, as every sound's name is written.
+            Text(model.voiceLabel(index))
                 .manrope(.medium, 15.18, tracking: 0)
                 .foregroundStyle(.white)
                 .lineLimit(1)
