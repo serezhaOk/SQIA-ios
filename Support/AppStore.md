@@ -201,6 +201,18 @@ has nothing to ask about.
 > SQIA Plus opens the system's Manage Subscriptions sheet. Everything else
 > in the app is free.
 >
+> **Background audio (`UIBackgroundModes` → `audio`, Guideline 2.5.4).**
+> The sequencer keeps playing with the app in the background, which is
+> what the mode is for. It is off by default and is a SQIA Plus feature, so
+> it will not show up on a free account: open a project and start it
+> playing, then go to library → face icon → Profile and turn on
+> "Background playback" (the sandbox subscription unlocks it; the test
+> account below has Plus). Press Home or lock the device and the music
+> carries on, with transport controls on the lock screen. With the switch
+> off the sequencer stops when the app leaves the screen. A screen recording
+> on a physical device, ending on the Home Screen with the audio still
+> playing, is attached to this submission.
+>
 > **How to see it working in about a minute.** Sign in → tap
 > "+ Create first project" → drag a finger across the grid of dots. It starts
 > playing at once. The two dots at the top of the screen open the mixer,
